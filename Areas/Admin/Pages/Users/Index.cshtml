@@ -1,0 +1,67 @@
+﻿@page
+@model NextStakeWebApp.Areas.Admin.Pages.Users.IndexModel
+@{
+    ViewData["Title"] = "Gestione Utenti";
+}
+
+<h2 class="mb-4">Gestione Utenti</h2>
+@if (TempData["Msg"] is string msg)
+{
+    <div class="alert alert-success">@msg</div>
+}
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>Email</th>
+            <th>Piano</th>
+            <th>Scadenza</th>
+            <th>Approvato</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model.Users)
+        {
+            <tr>
+                <td>@user.Email</td>
+                <td>@user.Plan</td>
+                <td>@(user.PlanExpiresAtUtc?.ToString("dd/MM/yyyy") ?? "∞")</td>
+                <td>
+                    @if (user.IsApproved)
+                    {
+                        <span class="badge bg-success">Sì</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger">No</span>
+                    }
+                </td>
+                <td>
+                    <form method="post"
+                          action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
+                          class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">
+                            @(user.IsApproved ? "Blocca" : "Approva")
+                        </button>
+                    </form>
+
+                    <form method="post"
+                          action="/Admin/Users?handler=ChangePlan&id=@user.Id"
+                          class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <select name="plan" class="form-select form-select-sm d-inline w-auto">
+                            @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
+                            {
+                                <option value="@p" selected="@(p == user.Plan)">@p</option>
+                            }
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Cambia</button>
+                    </form>
+
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

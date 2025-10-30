@@ -1,0 +1,198 @@
+﻿@page
+@model NextStakeWebApp.Pages.Events.IndexModel
+@{
+    ViewData["Title"] = "Eventi";
+}
+
+<div class="container py-4">
+
+    <!-- Barra data + frecce + Oggi -->
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="h5 mb-0">Data: @Model.SelectedDate.ToString("dd/MM/yyyy")</div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary"
+               href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query"
+               aria-label="Giorno precedente">←</a>
+
+            <a class="btn btn-outline-primary"
+               href="/Events?d=@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                Oggi
+            </a>
+
+            <a class="btn btn-outline-secondary"
+               href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query"
+               aria-label="Giorno successivo">→</a>
+        </div>
+    </div>
+
+    <!-- Azioni globali -->
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a class="btn @(Model.OnlyFavorites ? "btn-warning" : "btn-outline-warning")"
+           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 0 : 1)&country=@Model.SelectedCountryCode&q=@Model.Query">
+            ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
+        </a>
+
+        <!-- Collega al best=1 per mostrare i migliori pronostici -->
+        <a class="btn btn-success"
+           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1">
+            Migliori pronostici
+        </a>
+
+        @if (Model.ShowBest)
+        {
+            <a class="btn btn-outline-secondary"
+               href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                Nascondi pronostici
+            </a>
+        }
+    </div>
+
+    <!-- Sezione: Migliori pronostici -->
+    @if (Model.ShowBest)
+    {
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="fw-semibold">Migliori pronostici</div>
+                <small class="text-muted">Fonte: analyses (Partite in Pronostico)</small>
+            </div>
+            <div class="card-body">
+                @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
+                {
+                    <div class="alert alert-info mb-3">@Model.BestMessage</div>
+                }
+
+                @if (Model.BestPicks.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Data Evento</th>
+                                    <th>Competizione</th>
+                                    <th>Partita</th>
+                                    <th class="text-end">GS Casa</th>
+                                    <th class="text-end">GS Ospite</th>
+                                    <th class="text-end">Totale GS</th>
+                                    <th>Esito</th>
+                                    <th>Over/Under</th>
+                                    <th class="text-end">Over 1.5</th>
+                                    <th class="text-end">Over 2.5</th>
+                                    <th class="text-end">Over 3.5</th>
+                                    <th>GG/NG</th>
+                                    <th>Multigoal Casa</th>
+                                    <th>Multigoal Ospite</th>
+                                    <th>Combo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
+                                {
+                                    <tr>
+                                        <td>@r.EventDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                        <td>@r.Competition</td>
+                                        <td>
+                                            <a href="/Match/Details?id=@r.Id" class="text-decoration-none">@r.Match</a>
+                                        </td>
+                                        <td class="text-end">@r.GoalSimulatiCasa</td>
+                                        <td class="text-end">@r.GoalSimulatiOspite</td>
+                                        <td class="text-end fw-semibold">@r.TotaleGoalSimulati</td>
+                                        <td>@r.Esito</td>
+                                        <td>@r.OverUnderRange</td>
+                                        <td class="text-end">@r.Over15</td>
+                                        <td class="text-end">@r.Over25</td>
+                                        <td class="text-end">@r.Over35</td>
+                                        <td>@r.GG_NG</td>
+                                        <td>@r.MultigoalCasa</td>
+                                        <td>@r.MultigoalOspite</td>
+                                        <td class="fw-semibold">@r.ComboFinale</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Filtri: Nazione + Ricerca -->
+    <form method="get" action="/Events" class="mb-3 row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">Filtro Nazione</label>
+            <select class="form-select" name="country" onchange="this.form.submit()">
+                <option value="">— Mostra tutte —</option>
+                @foreach (var c in Model.AvailableCountries)
+                {
+                    <option value="@c.Code" selected="@(Model.SelectedCountryCode == c.Code)">
+                        @c.Name (@c.Code)
+                    </option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Cerca (squadra o competizione)</label>
+            <input class="form-control" type="text" name="q" value="@Model.Query" placeholder="Es: Serie A, Inter, Premier..." />
+        </div>
+
+        <!-- preserva data, preferiti e stato 'best' -->
+        <input type="hidden" name="d" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
+        <input type="hidden" name="fav" value="@(Model.OnlyFavorites ? 1 : 0)" />
+        @if (Model.ShowBest)
+        {
+            <input type="hidden" name="best" value="1" />
+        }
+
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">Filtra</button>
+        </div>
+    </form>
+
+    <!-- Lista partite raggruppate per competizione -->
+    @if (Model.Rows.Count == 0)
+    {
+        <p>Nessuna partita trovata per il giorno selezionato.</p>
+    }
+    else
+    {
+        @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo }))
+        {
+            <div class="mb-4">
+                <div class="d-flex align-items-center gap-2 fw-semibold mb-2">
+                    @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
+                    {
+                        <img src="@group.Key.LeagueLogo" alt="logo" style="height:18px;width:auto;" />
+                    }
+                    <span>@group.Key.LeagueName</span>
+                    <small class="text-muted">(#@group.Key.LeagueId)</small>
+                </div>
+                <div class="list-group">
+                    @foreach (var r in group)
+                    {
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1">
+                                <span>@r.Home — @r.Away</span>
+                                <span class="text-muted ms-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
+                                @if (!string.IsNullOrWhiteSpace(r.CountryName))
+                                {
+                                    <span class="badge bg-light text-dark ms-2">@r.CountryName</span>
+                                }
+                            </a>
+
+                            <!-- ⭐ Toggle preferito -->
+                            <form method="post"
+                                  action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
+                                  class="ms-3">
+                                @Html.AntiForgeryToken()
+                                <button type="submit"
+                                        class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
+                                        title="Aggiungi/rimuovi dai preferiti">
+                                    ⭐
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>

@@ -1,0 +1,28 @@
+# Build
+bin/
+obj/
+
+# VS/IDE
+.vs/
+*.user
+*.suo
+
+# Publish
+*.Publish.xml
+
+# Logs
+*.log
+
+# DB/SQLite locali
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Secrets / env (gestiscili con user-secrets o env vars)
+appsettings.Local.json
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
