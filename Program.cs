@@ -1,21 +1,31 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
-using NextStakeWebApp.Models; // << aggiungi questo using
+using NextStakeWebApp.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connString = builder.Configuration.GetConnectionString("DefaultConnection");
+// --- LETTURA CONNECTION STRING (ENV -> appsettings -> errore chiaro) ---
+var conn =
+    Environment.GetEnvironmentVariable("CONNECTION_STRING") ??
+    builder.Configuration.GetConnectionString("DefaultConnection");
 
-// DbContext SOLO per Identity (migrazioni qui)
+if (string.IsNullOrWhiteSpace(conn))
+    throw new InvalidOperationException(
+        "No DB connection string found. Set ENV 'CONNECTION_STRING' or ConnectionStrings:DefaultConnection in appsettings / user-secrets."
+    );
+
+// (facoltativo ma utile con Postgres)
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+// --- DbContext ---
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connString));
+    options.UseNpgsql(conn));
 
-// DbContext lettura tabelle esistenti
 builder.Services.AddDbContext<ReadDbContext>(options =>
-    options.UseNpgsql(connString));
+    options.UseNpgsql(conn));
 
-// ✅ Identity con ApplicationUser
+// --- Identity ---
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
@@ -28,28 +38,26 @@ builder.Services
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders()
-    .AddDefaultUI(); // << necessario per servire /Identity/Account/Login
-// Imposta le route del cookie di autenticazione
+    .AddDefaultUI();
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Identity/Account/Login";
     options.AccessDeniedPath = "/Identity/Account/AccessDenied";
 });
 
-
+// Razor Pages / MVC
 builder.Services.AddRazorPages(options =>
 {
     options.Conventions.AuthorizeFolder("/");
     options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
     options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
 });
-
-builder.Services.AddRazorPages();
-
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
+// --- Seed ruoli/utenti di servizio (usa DI già pronto) ---
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
@@ -59,22 +67,15 @@ using (var scope = app.Services.CreateScope())
 
     const string superRole = "SuperAdmin";
     if (!await roleManager.RoleExistsAsync(superRole))
-    {
         await roleManager.CreateAsync(new IdentityRole(superRole));
-    }
 
     var superEmail = config["SuperAdmin:Email"];
     if (!string.IsNullOrWhiteSpace(superEmail))
     {
         var user = await userManager.FindByEmailAsync(superEmail);
-        if (user != null)
-        {
-            if (!await userManager.IsInRoleAsync(user, superRole))
-            {
-                await userManager.AddToRoleAsync(user, superRole);
-            }
-        }
-        // Se vuoi creare automaticamente l'utente se non esiste, dimmelo e ti metto il codice (con password temp).
+        if (user != null && !await userManager.IsInRoleAsync(user, superRole))
+            await userManager.AddToRoleAsync(user, superRole);
+        // Se vuoi anche la creazione automatica dell'utente se non esiste, dimmelo.
     }
 }
 
