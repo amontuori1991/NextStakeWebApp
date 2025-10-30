@@ -76,11 +76,10 @@ var app = builder.Build();
 // --- (Opzionale) applica migrazioni Identity all’avvio: evita 42P01 se mancano ---
 using (var scope = app.Services.CreateScope())
 {
-    // Se vuoi creare/aggiornare automaticamente le tabelle Identity, lascia questa riga abilitata:
-    // var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    // db.Database.Migrate();
+    // CREA/AGGIORNA lo schema Identity se mancante
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
 
-    // Seed ruoli/utente di servizio (con DB pronto)
     var sp = scope.ServiceProvider;
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
