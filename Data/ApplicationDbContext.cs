@@ -16,6 +16,9 @@ namespace NextStakeWebApp.Data
         {
             base.OnModelCreating(builder);
 
+            // << AGGIUNGI QUESTA RIGA >>
+            builder.HasDefaultSchema("public");
+
             builder.Entity<FavoriteMatch>()
                    .HasIndex(x => new { x.UserId, x.MatchId })
                    .IsUnique();

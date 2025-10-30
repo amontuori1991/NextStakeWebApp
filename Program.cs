@@ -2,28 +2,44 @@
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
+using Npgsql; // << AGGIUNTO per loggare i dettagli connessione
 
 var builder = WebApplication.CreateBuilder(args);
 
 // --- LETTURA CONNECTION STRING (ENV -> appsettings -> errore chiaro) ---
 var conn =
-    Environment.GetEnvironmentVariable("CONNECTION_STRING") ??
-    builder.Configuration.GetConnectionString("DefaultConnection");
+    Environment.GetEnvironmentVariable("CONNECTION_STRING")
+    ?? Environment.GetEnvironmentVariable("DATABASE_URL") // << fallback opzionale
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrWhiteSpace(conn))
     throw new InvalidOperationException(
-        "No DB connection string found. Set ENV 'CONNECTION_STRING' or ConnectionStrings:DefaultConnection in appsettings / user-secrets."
+        "No DB connection string found. Set ENV 'CONNECTION_STRING' (or 'DATABASE_URL') or ConnectionStrings:DefaultConnection in appsettings / user-secrets."
     );
 
 // (facoltativo ma utile con Postgres)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-// --- DbContext ---
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(conn));
+// --- LOG: stampa host/porta/db/utente realmente usati ---
+var csb = new NpgsqlConnectionStringBuilder(conn);
+Console.WriteLine($"[DB] Host={csb.Host}; Port={csb.Port}; Database={csb.Database}; Username={csb.Username}; Pooling={csb.Pooling}");
 
-builder.Services.AddDbContext<ReadDbContext>(options =>
-    options.UseNpgsql(conn));
+// --- DbContext con pool + retry + timeout ---
+builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
+    options.UseNpgsql(conn, o =>
+    {
+        o.CommandTimeout(60);                    // 60s
+        o.EnableRetryOnFailure(5,               // 5 tentativi
+            TimeSpan.FromSeconds(5),            // backoff 5s
+            null);                              // errori transient qualunque
+    }));
+
+builder.Services.AddDbContextPool<ReadDbContext>(options =>
+    options.UseNpgsql(conn, o =>
+    {
+        o.CommandTimeout(60);
+        o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
+    }));
 
 // --- Identity ---
 builder.Services
@@ -57,9 +73,14 @@ builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// --- Seed ruoli/utenti di servizio (usa DI già pronto) ---
+// --- (Opzionale) applica migrazioni Identity all’avvio: evita 42P01 se mancano ---
 using (var scope = app.Services.CreateScope())
 {
+    // Se vuoi creare/aggiornare automaticamente le tabelle Identity, lascia questa riga abilitata:
+    // var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    // db.Database.Migrate();
+
+    // Seed ruoli/utente di servizio (con DB pronto)
     var sp = scope.ServiceProvider;
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
@@ -75,7 +96,6 @@ using (var scope = app.Services.CreateScope())
         var user = await userManager.FindByEmailAsync(superEmail);
         if (user != null && !await userManager.IsInRoleAsync(user, superRole))
             await userManager.AddToRoleAsync(user, superRole);
-        // Se vuoi anche la creazione automatica dell'utente se non esiste, dimmelo.
     }
 }
 
