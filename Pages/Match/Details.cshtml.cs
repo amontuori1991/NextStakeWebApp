@@ -16,20 +16,15 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly string _cs;
 
-        public DetailsModel(
-            ReadDbContext read,
-            ApplicationDbContext write,
-            UserManager<ApplicationUser> userManager,
-            IConfiguration configuration)
+
+        public DetailsModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager)
         {
             _read = read;
             _write = write;
             _userManager = userManager;
-            _cs = configuration.GetConnectionString("DefaultConnection")
-                  ?? throw new InvalidOperationException("Missing 'DefaultConnection' in configuration.");
         }
+
 
         public VM Data { get; private set; } = new();
 
@@ -156,6 +151,8 @@ namespace NextStakeWebApp.Pages.Match
             ).AsNoTracking().ToListAsync();
 
             // --- Prediction ---
+            // --- Prediction ---
+            // --- Prediction ---
             PredictionRow? prediction = null;
             var script = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatch_Prediction_New")
@@ -165,14 +162,14 @@ namespace NextStakeWebApp.Pages.Match
 
             if (!string.IsNullOrWhiteSpace(script))
             {
-                await using var conn = new NpgsqlConnection(_cs);
+                var cs = _read.Database.GetConnectionString();   // <-- prendi la connection string
+                await using var conn = new NpgsqlConnection(cs); // <-- connessione *separata*
                 await conn.OpenAsync();
 
                 await using var cmd = new NpgsqlCommand(script, conn);
                 cmd.Parameters.AddWithValue("@MatchId", (int)id);
 
                 await using var rd = await cmd.ExecuteReaderAsync();
-
                 if (await rd.ReadAsync())
                 {
                     prediction = new PredictionRow
@@ -194,6 +191,8 @@ namespace NextStakeWebApp.Pages.Match
                 }
             }
 
+
+            // --- Exchange ---
             // --- Exchange ---
             ExchangePredictionRow? exchange = null;
             var exchangeScript = await _read.Analyses
@@ -204,14 +203,14 @@ namespace NextStakeWebApp.Pages.Match
 
             if (!string.IsNullOrWhiteSpace(exchangeScript))
             {
-                await using var conn2 = new NpgsqlConnection(_cs);
+                var cs = _read.Database.GetConnectionString();
+                await using var conn2 = new NpgsqlConnection(cs);
                 await conn2.OpenAsync();
 
                 await using var cmd2 = new NpgsqlCommand(exchangeScript, conn2);
                 cmd2.Parameters.AddWithValue("@MatchId", (int)id);
 
                 await using var rd2 = await cmd2.ExecuteReaderAsync();
-
                 if (await rd2.ReadAsync())
                 {
                     exchange = new ExchangePredictionRow
@@ -227,6 +226,7 @@ namespace NextStakeWebApp.Pages.Match
                     };
                 }
             }
+
 
             // --- H2H (tutte le stagioni, solo partite terminate) ---
             var finished = new[] { "FT", "AET", "PEN" };
