@@ -73,6 +73,20 @@ builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+                                       .CreateLogger("Global");
+        logger.LogError(ex, "Unhandled exception on {Path}", ctx.Request.Path);
+        throw; // lascia gestire a UseExceptionHandler in produzione
+    }
+});
 // --- (Opzionale) applica migrazioni Identity all’avvio: evita 42P01 se mancano ---
 using (var scope = app.Services.CreateScope())
 {
