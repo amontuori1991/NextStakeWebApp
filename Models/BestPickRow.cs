@@ -32,13 +32,14 @@ namespace NextStakeWebApp.Models
         [Column("OverUnderRange")]
         public string OverUnderRange { get; set; } = "";
 
-        [Column("% Over 1.5 Match")]
+        // ✅ Aggiornati con i nomi reali presenti nella query finale
+        [Column("Over1_5")]
         public decimal Over15 { get; set; }
 
-        [Column("% Over 2.5 Match")]
+        [Column("Over2_5")]
         public decimal Over25 { get; set; }
 
-        [Column("% Over 3.5 Match")]
+        [Column("Over3_5")]
         public decimal Over35 { get; set; }
 
         [Column("GG_NG")]
