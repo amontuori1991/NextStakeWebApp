@@ -58,6 +58,11 @@ namespace NextStakeWebApp.Pages.Match
 
             public PredictionRow? Prediction { get; set; }
             public ExchangePredictionRow? Exchange { get; set; }
+
+            public int? HomeGoal { get; set; }
+            public int? AwayGoal { get; set; }
+            public string? StatusShort { get; set; }
+
         }
 
         public class FormRow
@@ -117,9 +122,13 @@ namespace NextStakeWebApp.Pages.Match
                     AwayLogo = ta.Logo,
                     HomeTeamId = th.Id,
                     AwayTeamId = ta.Id,
-                    KickoffUtc = mm.Date
+                    KickoffUtc = mm.Date,
+                    HomeGoal = mm.HomeGoal,
+                    AwayGoal = mm.AwayGoal,
+                    StatusShort = mm.StatusShort
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
+
 
             if (dto == null) return NotFound();
 
@@ -266,6 +275,9 @@ namespace NextStakeWebApp.Pages.Match
                 HomeId = dto.HomeTeamId,
                 AwayId = dto.AwayTeamId,
                 KickoffUtc = dto.KickoffUtc,
+                HomeGoal = dto.HomeGoal,
+                AwayGoal = dto.AwayGoal,
+                StatusShort = dto.StatusShort,
                 IsFavorite = isFav,
                 HomeForm = homeForm,
                 AwayForm = awayForm,
