@@ -2,99 +2,92 @@
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
-using Npgsql; // << AGGIUNTO per loggare i dettagli connessione
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- LETTURA CONNECTION STRING (ENV -> appsettings -> errore chiaro) ---
-var conn =
-    Environment.GetEnvironmentVariable("CONNECTION_STRING")
-    ?? Environment.GetEnvironmentVariable("DATABASE_URL") // << fallback opzionale
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+// --- Helper: prendi le connection string da ENV con fallback a appsettings ---
+static string GetConn(IConfiguration cfg, string envName1, string envName2, string? appsettingsKey = null)
+{
+    var c =
+        Environment.GetEnvironmentVariable(envName1) ??
+        Environment.GetEnvironmentVariable(envName2) ??
+        (appsettingsKey != null ? cfg.GetConnectionString(appsettingsKey) : null);
 
-if (string.IsNullOrWhiteSpace(conn))
-    throw new InvalidOperationException(
-        "No DB connection string found. Set ENV 'CONNECTION_STRING' (or 'DATABASE_URL') or ConnectionStrings:DefaultConnection in appsettings / user-secrets."
-    );
+    if (string.IsNullOrWhiteSpace(c))
+        throw new InvalidOperationException(
+            $"Missing connection string. Set ENV '{envName1}' (or '{envName2}') " +
+            (appsettingsKey != null ? $"or ConnectionStrings:{appsettingsKey} in appsettings/user-secrets." : ".")
+        );
+    return c;
+}
 
-// (facoltativo ma utile con Postgres)
+// WRITE = Identity + migrazioni/seed | READ = queries (Events, analyses, matches)
+var writeConn = GetConn(builder.Configuration, "CONNECTION_STRING_WRITE", "CONNECTION_STRING");
+var readConn = GetConn(builder.Configuration, "CONNECTION_STRING_READ", "CONNECTION_STRING", "DefaultConnection");
+
+// utile con Postgres 14+
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-// --- LOG: stampa host/porta/db/utente realmente usati ---
-var csb = new NpgsqlConnectionStringBuilder(conn);
-Console.WriteLine($"[DB] Host={csb.Host}; Port={csb.Port}; Database={csb.Database}; Username={csb.Username}; Pooling={csb.Pooling}");
+// Loggare a startup quali host stiamo usando
+var wcsb = new NpgsqlConnectionStringBuilder(writeConn);
+var rcsb = new NpgsqlConnectionStringBuilder(readConn);
+Console.WriteLine($"[DB:WRITE] Host={wcsb.Host}; Port={wcsb.Port}; Db={wcsb.Database}; User={wcsb.Username}");
+Console.WriteLine($"[DB:READ ] Host={rcsb.Host}; Port={rcsb.Port}; Db={rcsb.Database}; User={rcsb.Username}");
 
-// --- DbContext con pool + retry + timeout ---
-builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
-    options.UseNpgsql(conn, o =>
-    {
-        o.CommandTimeout(60);                    // 60s
-        o.EnableRetryOnFailure(5,               // 5 tentativi
-            TimeSpan.FromSeconds(5),            // backoff 5s
-            null);                              // errori transient qualunque
-    }));
-
-builder.Services.AddDbContextPool<ReadDbContext>(options =>
-    options.UseNpgsql(conn, o =>
+// DbContext: pooling + retry
+builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
+    opt.UseNpgsql(writeConn, o =>
     {
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
 
-// --- Identity ---
-builder.Services
-    .AddIdentity<ApplicationUser, IdentityRole>(options =>
+builder.Services.AddDbContextPool<ReadDbContext>(opt =>
+    opt.UseNpgsql(readConn, o =>
     {
-        options.SignIn.RequireConfirmedAccount = false;
-        options.Password.RequiredLength = 4;
-        options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequireUppercase = false;
-        options.Password.RequireLowercase = false;
-        options.Password.RequireDigit = false;
+        o.CommandTimeout(60);
+        o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
+    }));
+
+// Identity
+builder.Services
+    .AddIdentity<ApplicationUser, IdentityRole>(o =>
+    {
+        o.SignIn.RequireConfirmedAccount = false;
+        o.Password.RequiredLength = 4;
+        o.Password.RequireNonAlphanumeric = false;
+        o.Password.RequireUppercase = false;
+        o.Password.RequireLowercase = false;
+        o.Password.RequireDigit = false;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders()
     .AddDefaultUI();
 
-builder.Services.ConfigureApplicationCookie(options =>
+builder.Services.ConfigureApplicationCookie(o =>
 {
-    options.LoginPath = "/Identity/Account/Login";
-    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+    o.LoginPath = "/Identity/Account/Login";
+    o.AccessDeniedPath = "/Identity/Account/AccessDenied";
 });
 
-// Razor Pages / MVC
-builder.Services.AddRazorPages(options =>
+builder.Services.AddRazorPages(o =>
 {
-    options.Conventions.AuthorizeFolder("/");
-    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
-    options.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
+    o.Conventions.AuthorizeFolder("/");
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
 });
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-app.Use(async (ctx, next) =>
-{
-    try
-    {
-        await next();
-    }
-    catch (Exception ex)
-    {
-        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-                                       .CreateLogger("Global");
-        logger.LogError(ex, "Unhandled exception on {Path}", ctx.Request.Path);
-        throw; // lascia gestire a UseExceptionHandler in produzione
-    }
-});
-// --- (Opzionale) applica migrazioni Identity all’avvio: evita 42P01 se mancano ---
+// Migrazioni/seed SOLO sul DB WRITE (evita 42P01 in avvio su ambienti vuoti)
 using (var scope = app.Services.CreateScope())
 {
-    // CREA/AGGIORNA lo schema Identity se mancante
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await db.Database.MigrateAsync();
-
     var sp = scope.ServiceProvider;
+    var appDb = sp.GetRequiredService<ApplicationDbContext>();
+    await appDb.Database.MigrateAsync(); // aggiorna/tiene allineato lo schema Identity
+
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
     var config = sp.GetRequiredService<IConfiguration>();
@@ -109,6 +102,7 @@ using (var scope = app.Services.CreateScope())
         var user = await userManager.FindByEmailAsync(superEmail);
         if (user != null && !await userManager.IsInRoleAsync(user, superRole))
             await userManager.AddToRoleAsync(user, superRole);
+        // (volendo: crea l'utente se non esiste)
     }
 }
 
@@ -120,12 +114,16 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapRazorPages();
+
+// Endpoint diagnostico minimale (opzionale)
+app.MapGet("/_debug/db", () => Results.Json(new
+{
+    write = new { wcsb.Host, wcsb.Database, wcsb.Username },
+    read = new { rcsb.Host, rcsb.Database, rcsb.Username }
+}));
 
 app.Run();
