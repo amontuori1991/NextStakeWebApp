@@ -169,40 +169,28 @@
         </div>
 
         <!-- PRONOSTICI: H2H (tutti) -->
+        <!-- TAB: H2H (Widget API-SPORTS) -->
         <div class="tab-pane fade" id="tab-h2h-all" role="tabpanel">
-            @if (Model.Data.HeadToHead.Count == 0)
-            {
-                <div class="text-muted">Nessun testa a testa trovato tra queste squadre.</div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:110px;">Data</th>
-                                <th>Lega</th>
-                                <th>Match</th>
-                                <th class="text-center">Risultato</th>
-                                <th style="width:100px;" class="text-end">Apri</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var r in Model.Data.HeadToHead)
-                            {
-                                <tr>
-                                    <td>@r.DateUtc.ToLocalTime().ToString("dd/MM/yyyy")</td>
-                                    <td>@r.LeagueName</td>
-                                    <td><strong>@r.HomeName</strong> – <strong>@r.AwayName</strong></td>
-                                    <td class="text-center">@r.Score</td>
-                                    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/Match/Details?id=@r.MatchId">Apri</a></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
+            <div class="card card-body text-center">
+                <api-sports-widget data-type="config"
+                                   data-key="9146b11baf44d94af6e14d347213d63a"
+                                   data-sport="football"
+                                   data-lang="it"
+                                   data-theme="grey"
+                                   data-show-logos="true">
+                </api-sports-widget>
+
+                <api-sports-widget data-type="h2h"
+                                   data-h2h="@Model.Data.HomeId-@Model.Data.AwayId"
+                                   data-show-logos="true">
+                </api-sports-widget>
+
+                <noscript class="text-muted">
+                    Abilita JavaScript per visualizzare il widget H2H.
+                </noscript>
+            </div>
         </div>
+
 
         <!-- ANALISI: Goal Attesi (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-goals" role="tabpanel">
