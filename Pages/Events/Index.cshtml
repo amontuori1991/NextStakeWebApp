@@ -202,14 +202,25 @@
                     @foreach (var r in group)
                     {
                         <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1">
-                                <span>@r.Home — @r.Away</span>
-                                <span class="text-muted ms-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
+                            <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
+                                <span class="me-2">@r.Home — @r.Away</span>
+
+                                @* Risultato se disponibile *@
+                                @if (r.HomeGoal.HasValue && r.AwayGoal.HasValue)
+                                {
+                                    <span class="badge bg-light text-dark fw-semibold me-2">
+                                        @r.HomeGoal — @r.AwayGoal
+                                    </span>
+                                }
+
+                                <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
+
                                 @if (!string.IsNullOrWhiteSpace(r.CountryName))
                                 {
-                                    <span class="badge bg-light text-dark ms-2">@r.CountryName</span>
+                                    <span class="badge bg-light text-dark">@r.CountryName</span>
                                 }
                             </a>
+
 
                             <!-- ⭐ Toggle preferito -->
                             <form method="post"

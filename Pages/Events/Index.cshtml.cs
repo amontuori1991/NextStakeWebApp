@@ -59,6 +59,8 @@ namespace NextStakeWebApp.Pages.Events
             public string? CountryCode { get; set; }
             public string Home { get; set; } = "";
             public string Away { get; set; } = "";
+            public int? HomeGoal { get; set; }
+            public int? AwayGoal { get; set; }
             public DateTime KickoffUtc { get; set; }
         }
 
@@ -101,6 +103,8 @@ namespace NextStakeWebApp.Pages.Events
                     m.LeagueId,
                     LeagueName = lg.Name,
                     LeagueLogo = lg.Logo,
+                    HomeGoal = m.HomeGoal,
+                    AwayGoal = m.AwayGoal,
                     CountryName = lg.CountryName,
                     CountryCode = lg.CountryCode,
                     Home = th.Name,
@@ -139,6 +143,8 @@ namespace NextStakeWebApp.Pages.Events
                 CountryCode = r.CountryCode,
                 Home = r.Home ?? "",
                 Away = r.Away ?? "",
+                HomeGoal = r.HomeGoal,
+                AwayGoal = r.AwayGoal,
                 KickoffUtc = r.Date
             }).ToList();
 
