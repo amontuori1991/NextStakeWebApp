@@ -187,16 +187,31 @@
     }
     else
     {
-        @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo }))
+        @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
         {
             <div class="mb-4">
                 <div class="d-flex align-items-center gap-2 fw-semibold mb-2">
                     @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
                     {
-                        <img src="@group.Key.LeagueLogo" alt="logo" style="height:18px;width:auto;" />
+                        <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
                     }
                     <span>@group.Key.LeagueName</span>
-                    <small class="text-muted">(#@group.Key.LeagueId)</small>
+
+                    @* Country + bandiera accanto alla lega *@
+                    @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                    {
+                        <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                            (
+                            @group.Key.CountryName
+                            @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                            {
+                                <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
+                            }
+                            )
+                        </small>
+                    }
+
+                    <small class="text-muted ms-2">#@group.Key.LeagueId</small>
                 </div>
                 <div class="list-group">
                     @foreach (var r in group)
@@ -205,7 +220,7 @@
                             <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
                                 <span class="me-2">@r.Home — @r.Away</span>
 
-                                @* Risultato se disponibile *@
+                                @* Risultato se disponibile / altrimenti - : - *@
                                 @{
                                     var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
                                     var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
@@ -215,11 +230,7 @@
                                 <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
 
                                 <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
-
-                                @if (!string.IsNullOrWhiteSpace(r.CountryName))
-                                {
-                                    <span class="badge bg-light text-dark">@r.CountryName</span>
-                                }
+                                @* Country rimosso qui *@
                             </a>
 
 
