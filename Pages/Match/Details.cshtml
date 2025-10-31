@@ -108,6 +108,21 @@
                 Analisi Media Corner
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cards" type="button" role="tab">
+                Analisi Media Cartellini
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-fouls" type="button" role="tab">
+                Analisi Media Falli
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-offsides" type="button" role="tab">
+                Analisi Media Fuorigioco
+            </button>
+        </li>
 
 </ul>
 
@@ -415,6 +430,90 @@
                         </thead>
                         <tbody>
                             @foreach (var kv in Model.Data.Corners.Metrics)
+                            {
+                                <tr>
+                                    <td>@kv.Key</td>
+                                    <td class="text-end">@kv.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        <div class="tab-pane fade" id="tab-cards" role="tabpanel">
+            @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi cartellini disponibile.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width:50%;">Metrica</th>
+                                <th class="text-end">Valore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kv in Model.Data.Cards.Metrics)
+                            {
+                                <tr>
+                                    <td>@kv.Key</td>
+                                    <td class="text-end">@kv.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        <div class="tab-pane fade" id="tab-fouls" role="tabpanel">
+            @if (Model.Data.Fouls is null || Model.Data.Fouls.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi falli disponibile.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width:50%;">Metrica</th>
+                                <th class="text-end">Valore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kv in Model.Data.Fouls.Metrics)
+                            {
+                                <tr>
+                                    <td>@kv.Key</td>
+                                    <td class="text-end">@kv.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        <div class="tab-pane fade" id="tab-offsides" role="tabpanel">
+            @if (Model.Data.Offsides is null || Model.Data.Offsides.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi fuorigioco disponibile.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width:50%;">Metrica</th>
+                                <th class="text-end">Valore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kv in Model.Data.Offsides.Metrics)
                             {
                                 <tr>
                                     <td>@kv.Key</td>

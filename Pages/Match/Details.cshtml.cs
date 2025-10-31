@@ -52,24 +52,22 @@ namespace NextStakeWebApp.Pages.Match
 
             public List<StandRow> Standings { get; set; } = new();
 
-            // H2H (tutte le stagioni)
             public List<H2HRow> HeadToHead { get; set; } = new();
 
             public PredictionRow? Prediction { get; set; }
             public ExchangePredictionRow? Exchange { get; set; }
 
-            // Analisi Goal (NextMatchGoals_Analyses)
-            public GoalsAnalysisRow? Goals { get; set; }
-
-            // Analisi Tiri (NextMatchShots_Analyses)
-            public ShotsAnalysisRow? Shots { get; set; }
+            // Analisi varie
+            public GoalsAnalysisRow? Goals { get; set; }          // NextMatchGoals_Analyses
+            public ShotsAnalysisRow? Shots { get; set; }          // NextMatchShots_Analyses
+            public CornersAnalysisRow? Corners { get; set; }      // NextMatchCorners_Analyses
+            public CardsAnalysisRow? Cards { get; set; }          // NextMatchCards_Analyses
+            public FoulsAnalysisRow? Fouls { get; set; }          // NextMatchFouls_Analyses
+            public OffsidesAnalysisRow? Offsides { get; set; }    // NextMatchOffsides_Analyses
 
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
             public string? StatusShort { get; set; }
-
-            public CornersAnalysisRow? Corners { get; set; }
-
         }
 
         public class FormRow
@@ -107,21 +105,13 @@ namespace NextStakeWebApp.Pages.Match
             public int Diff { get; set; }
         }
 
-        // Contenitore generico delle metriche della vista NextMatchGoals_Analyses
-        public class GoalsAnalysisRow
-        {
-            public Dictionary<string, string> Metrics { get; set; } = new();
-        }
-
-        // Contenitore generico delle metriche della vista NextMatchShots_Analyses
-        public class ShotsAnalysisRow
-        {
-            public Dictionary<string, string> Metrics { get; set; } = new();
-        }
-        public class CornersAnalysisRow
-        {
-            public Dictionary<string, string> Metrics { get; set; } = new();
-        }
+        // Contenitori generici per ogni vista Analyses (chiave/valore)
+        public class GoalsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
+        public class ShotsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
+        public class CornersAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
+        public class CardsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
+        public class FoulsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
+        public class OffsidesAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
 
         public async Task<IActionResult> OnGetAsync(long id)
         {
@@ -253,127 +243,30 @@ namespace NextStakeWebApp.Pages.Match
                     };
                 }
             }
-            // --- Corners / Analisi Media Corner (NextMatchCorners_Analyses) ---
-            CornersAnalysisRow? corners = null;
-            var cornersScript = await _read.Analyses
-                .Where(a => a.ViewName == "NextMatchCorners_Analyses")
-                .Select(a => a.ViewValue)
-                .AsNoTracking()
-                .FirstOrDefaultAsync();
 
-            if (!string.IsNullOrWhiteSpace(cornersScript))
-            {
-                var cs = _read.Database.GetConnectionString();
-                await using var connC = new NpgsqlConnection(cs);
-                await connC.OpenAsync();
+            // --- Goals (NextMatchGoals_Analyses) ---
+            GoalsAnalysisRow? goals = await RunGenericAnalysisAsync<GoalsAnalysisRow>(
+                "NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-                await using var cmdC = new NpgsqlCommand(cornersScript, connC);
-                // Parametri richiesti dalla query
-                cmdC.Parameters.AddWithValue("@MatchId", (int)id);
-                cmdC.Parameters.AddWithValue("@Season", dto.Season);
-                cmdC.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
+            // --- Shots (NextMatchShots_Analyses) ---
+            ShotsAnalysisRow? shots = await RunGenericAnalysisAsync<ShotsAnalysisRow>(
+                "NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-                await using var rdC = await cmdC.ExecuteReaderAsync();
-                if (await rdC.ReadAsync())
-                {
-                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 0; i < rdC.FieldCount; i++)
-                    {
-                        var colName = rdC.GetName(i);
+            // --- Corners (NextMatchCorners_Analyses) ---
+            CornersAnalysisRow? corners = await RunGenericAnalysisAsync<CornersAnalysisRow>(
+                "NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
-                            continue;
+            // --- Cards (NextMatchCards_Analyses) ---
+            CardsAnalysisRow? cards = await RunGenericAnalysisAsync<CardsAnalysisRow>(
+                "NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-                        string displayName = PrettyLabel(colName);
-                        string value = rdC.IsDBNull(i) ? "—" : Convert.ToString(rdC.GetValue(i)) ?? "—";
-                        metrics[displayName] = value;
-                    }
+            // --- Fouls (NextMatchFouls_Analyses) ---
+            FoulsAnalysisRow? fouls = await RunGenericAnalysisAsync<FoulsAnalysisRow>(
+                "NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-                    corners = new CornersAnalysisRow { Metrics = metrics };
-                }
-            }
-
-            // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
-            GoalsAnalysisRow? goals = null;
-            var goalsScript = await _read.Analyses
-                .Where(a => a.ViewName == "NextMatchGoals_Analyses")
-                .Select(a => a.ViewValue)
-                .AsNoTracking()
-                .FirstOrDefaultAsync();
-
-            if (!string.IsNullOrWhiteSpace(goalsScript))
-            {
-                var cs = _read.Database.GetConnectionString();
-                await using var connG = new NpgsqlConnection(cs);
-                await connG.OpenAsync();
-
-                await using var cmdG = new NpgsqlCommand(goalsScript, connG);
-                cmdG.Parameters.AddWithValue("@MatchId", (int)id);
-                cmdG.Parameters.AddWithValue("@Season", dto.Season);
-                cmdG.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
-
-                await using var rdG = await cmdG.ExecuteReaderAsync();
-                if (await rdG.ReadAsync())
-                {
-                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 0; i < rdG.FieldCount; i++)
-                    {
-                        var colName = rdG.GetName(i);
-
-                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        string displayName = PrettyLabel(colName);
-                        string value = rdG.IsDBNull(i) ? "—" : Convert.ToString(rdG.GetValue(i)) ?? "—";
-                        metrics[displayName] = value;
-                    }
-
-                    goals = new GoalsAnalysisRow { Metrics = metrics };
-                }
-            }
-
-            // --- Shots / Medie Tiri (NextMatchShots_Analyses) ---
-            ShotsAnalysisRow? shots = null;
-            var shotsScript = await _read.Analyses
-                .Where(a => a.ViewName == "NextMatchShots_Analyses")
-                .Select(a => a.ViewValue)
-                .AsNoTracking()
-                .FirstOrDefaultAsync();
-
-            if (!string.IsNullOrWhiteSpace(shotsScript))
-            {
-                var cs = _read.Database.GetConnectionString();
-                await using var connS = new NpgsqlConnection(cs);
-                await connS.OpenAsync();
-
-                await using var cmdS = new NpgsqlCommand(shotsScript, connS);
-                // Passiamo gli stessi parametri: molti script tiri usano gli stessi tre
-                cmdS.Parameters.AddWithValue("@MatchId", (int)id);
-                cmdS.Parameters.AddWithValue("@Season", dto.Season);
-                cmdS.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
-
-                await using var rdS = await cmdS.ExecuteReaderAsync();
-                if (await rdS.ReadAsync())
-                {
-                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    for (int i = 0; i < rdS.FieldCount; i++)
-                    {
-                        var colName = rdS.GetName(i);
-
-                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        string displayName = PrettyLabel(colName);
-                        string value = rdS.IsDBNull(i) ? "—" : Convert.ToString(rdS.GetValue(i)) ?? "—";
-                        metrics[displayName] = value;
-                    }
-
-                    shots = new ShotsAnalysisRow { Metrics = metrics };
-                }
-            }
+            // --- Offsides (NextMatchOffsides_Analyses) ---
+            OffsidesAnalysisRow? offsides = await RunGenericAnalysisAsync<OffsidesAnalysisRow>(
+                "NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
 
             // --- H2H (tutte le stagioni, solo partite terminate) ---
             var finished = new[] { "FT", "AET", "PEN" };
@@ -424,8 +317,11 @@ namespace NextStakeWebApp.Pages.Match
                 Exchange = exchange,
                 Goals = goals,
                 Shots = shots,
-                HeadToHead = h2h,
-                Corners = corners
+                Corners = corners,
+                Cards = cards,
+                Fouls = fouls,
+                Offsides = offsides,
+                HeadToHead = h2h
             };
 
             return Page();
@@ -506,34 +402,82 @@ namespace NextStakeWebApp.Pages.Match
             catch { return (T)val; }
         }
 
-        // Helper per rendere "presentabili" le etichette delle colonne della vista
+        // Esegue uno script in Analyses e ritorna un dizionario chiave/valore delle colonne
+        private async Task<T?> RunGenericAnalysisAsync<T>(string viewName, int leagueId, int season, int matchId)
+            where T : class, new()
+        {
+            var script = await _read.Analyses
+                .Where(a => a.ViewName == viewName)
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(script)) return null;
+
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(script, conn);
+            cmd.Parameters.AddWithValue("@MatchId", matchId);
+            cmd.Parameters.AddWithValue("@Season", season);
+            cmd.Parameters.AddWithValue("@LeagueId", leagueId);
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync()) return null;
+
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < rd.FieldCount; i++)
+            {
+                var colName = rd.GetName(i);
+
+                if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string displayName = PrettyLabel(colName);
+                string value = rd.IsDBNull(i) ? "—" : Convert.ToString(rd.GetValue(i)) ?? "—";
+                dict[displayName] = value;
+            }
+
+            var result = new T();
+            // tutte le nostre *Row hanno la proprietà Metrics
+            var prop = typeof(T).GetProperty("Metrics");
+            prop?.SetValue(result, dict);
+            return result;
+        }
+
+        // Normalizza le etichette
         private static string PrettyLabel(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
 
-            // 1) underscore -> spazio
             var s = raw.Replace('_', ' ');
-
-            // 2) separa PascalCase/camelCase (ExpectedGoalsHome -> Expected Goals Home)
             s = Regex.Replace(s, "([a-z])([A-Z])", "$1 $2");
-
-            // 3) normalizza spazi
             s = Regex.Replace(s, @"\s+", " ").Trim();
 
-            // 4) mappature comuni per l'italiano
+            // Mappature comuni (IT)
             s = s.Replace("Home", "Casa", StringComparison.OrdinalIgnoreCase)
                  .Replace("Away", "Ospite", StringComparison.OrdinalIgnoreCase)
                  .Replace("Expected Goals", "Goal attesi", StringComparison.OrdinalIgnoreCase)
                  .Replace("Expected Goal", "Goal attesi", StringComparison.OrdinalIgnoreCase)
                  .Replace("Avg", "Media", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Average", "Media", StringComparison.OrdinalIgnoreCase)
                  .Replace("Total", "Totale", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Per Match", "per partita", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Per Game", "per partita", StringComparison.OrdinalIgnoreCase)
                  .Replace("Shots On Goal", "Tiri in porta", StringComparison.OrdinalIgnoreCase)
                  .Replace("Shots Off Goal", "Tiri fuori", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Total Shots", "Tiri totali", StringComparison.OrdinalIgnoreCase);
+                 .Replace("Total Shots", "Tiri totali", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Shots", "Tiri", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Corners", "Corner", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Cards", "Cartellini", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Yellow Cards", "Ammonizioni", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Red Cards", "Espulsioni", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Fouls", "Falli", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Offsides", "Fuorigioco", StringComparison.OrdinalIgnoreCase);
 
-            // 5) capitalizza iniziale
             if (s.Length > 1) s = char.ToUpperInvariant(s[0]) + s[1..];
-
             return s;
         }
     }
