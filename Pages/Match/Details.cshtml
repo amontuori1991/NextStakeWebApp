@@ -24,40 +24,30 @@
         </div>
     </div>
 
-    <!-- Testata squadre + risultato -->
+    <!-- Match Widget (API-SPORTS) -->
+    <!-- Match Widget (API-SPORTS) -->
     <div class="card mb-3">
-        <div class="card-body d-flex align-items-center justify-content-between">
-            <div class="d-flex align-items-center gap-2">
-                @if (!string.IsNullOrWhiteSpace(Model.Data.HomeLogo))
-                {
-                    <img src="@Model.Data.HomeLogo" alt="home" style="height:38px;width:auto;" />
-                }
-                <strong>@Model.Data.Home</strong>
-            </div>
+        <div class="card-body">
+            @* TODO: spostare la key in appsettings e leggerla dal Model (già predisposto) *@
+            <api-sports-widget data-type="config"
+                               data-key="9146b11baf44d94af6e14d347213d63a"
+                               data-sport="football"
+                               data-lang="it"
+                               data-theme="grey"
+                               data-show-logos="true">
+            </api-sports-widget>
 
-            <div class="text-center">
-                @if (Model.Data.StatusShort is "FT" or "AET" or "PEN")
-                {
-                    <div class="h4 mb-0">
-                        @Model.Data.HomeGoal - @Model.Data.AwayGoal
-                    </div>
-                }
-                else
-                {
-                    <div class="h4 mb-0">— : —</div>
-                }
-                <small class="text-muted">risultato</small>
-            </div>
+            <api-sports-widget data-type="game"
+                               data-game-id="@Model.Data.MatchId"
+                               data-show-logos="true">
+            </api-sports-widget>
 
-            <div class="d-flex align-items-center gap-2">
-                <strong>@Model.Data.Away</strong>
-                @if (!string.IsNullOrWhiteSpace(Model.Data.AwayLogo))
-                {
-                    <img src="@Model.Data.AwayLogo" alt="away" style="height:38px;width:auto;" />
-                }
-            </div>
+            <noscript class="text-muted">
+                Abilita JavaScript per visualizzare il widget della partita.
+            </noscript>
         </div>
     </div>
+
 
     <!-- Azioni -->
     <div class="mb-3 d-flex gap-2">
@@ -691,4 +681,9 @@
             document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
         })();
     </script>
+
+    @section Scripts {
+        <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
+    }
+
 </div>
