@@ -68,63 +68,74 @@
         </form>
         <a class="btn btn-outline-secondary" href="/Events">← Torna agli eventi</a>
     </div>
+
+    <div class="btn-group mb-3" role="group" aria-label="Selettore gruppi tab">
+        <button id="btnGroupPron" type="button" class="btn btn-primary">Pronostici</button>
+        <button id="btnGroupAnal" type="button" class="btn btn-outline-primary">Analisi</button>
+    </div>
+
 <!-- Tabs contenuti -->
-<ul class="nav nav-tabs" id="matchTabs" role="tablist">
-    <li class="nav-item">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-picks" type="button" role="tab">
-            Pronostici consigliati
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-h2h" type="button" role="tab">
-            Stato di forma (ultime 5)
-        </button>
-    </li>
-    <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-table" type="button" role="tab">
-            Classifica
-        </button>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-exchange-tab" data-bs-toggle="tab" data-bs-target="#tab-exchange" type="button" role="tab">Exchange</button>
-    </li>
-        <li class="nav-item">
+    <ul class="nav nav-tabs" id="matchTabs" role="tablist">
+        <!-- Gruppo: PRONOSTICI -->
+        <li class="nav-item group-pron">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-picks" type="button" role="tab">
+                Pronostici consigliati
+            </button>
+        </li>
+        <li class="nav-item group-pron">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-h2h" type="button" role="tab">
+                Stato di forma (ultime 5)
+            </button>
+        </li>
+        <li class="nav-item group-pron">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-table" type="button" role="tab">
+                Classifica
+            </button>
+        </li>
+        <li class="nav-item group-pron">
+            <button class="nav-link" id="tab-exchange-tab" data-bs-toggle="tab" data-bs-target="#tab-exchange" type="button" role="tab">
+                Exchange
+            </button>
+        </li>
+        <li class="nav-item group-pron">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-h2h-all" type="button" role="tab">
                 H2H
             </button>
         </li>
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-goals" type="button" role="tab">
-                Analisi Goal
-            </button>
-        </li>
-        <li class="nav-item">
+
+        <!-- Gruppo: ANALISI -->
+        <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-shots" type="button" role="tab">
-                Analisi Media Tiri
+                Tiri &amp; Medie
             </button>
         </li>
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-corners" type="button" role="tab">
-                Analisi Media Corner
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cards" type="button" role="tab">
-                Analisi Media Cartellini
-            </button>
-        </li>
-        <li class="nav-item">
+        <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-fouls" type="button" role="tab">
                 Analisi Media Falli
             </button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item group-anal">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cards" type="button" role="tab">
+                Analisi Media Cartellini
+            </button>
+        </li>
+        <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-offsides" type="button" role="tab">
                 Analisi Media Fuorigioco
             </button>
         </li>
+        <li class="nav-item group-anal">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-goals" type="button" role="tab">
+                Goal Attesi
+            </button>
+        </li>
+        <li class="nav-item group-anal">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-corners" type="button" role="tab">
+                Analisi Media Corner
+            </button>
+        </li>
+    </ul>
 
-</ul>
 
 <div class="tab-content border-start border-end border-bottom p-3">
     <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
@@ -551,5 +562,48 @@
             </ul>
         }
     </div>
+        <script>
+            (function () {
+                const btnPron = document.getElementById('btnGroupPron');
+                const btnAnal = document.getElementById('btnGroupAnal');
+                const tabsUl  = document.getElementById('matchTabs');
+
+                function showGroup(group) {
+                    // mostra/nasconde i tab headers
+                    tabsUl.querySelectorAll('.group-pron').forEach(li => li.classList.toggle('d-none', group !== 'pron'));
+                    tabsUl.querySelectorAll('.group-anal').forEach(li => li.classList.toggle('d-none', group !== 'anal'));
+
+                    // aggiorna lo stato dei bottoni
+                    if (group === 'pron') {
+                        btnPron.classList.add('btn-primary');
+                        btnPron.classList.remove('btn-outline-primary');
+                        btnAnal.classList.add('btn-outline-primary');
+                        btnAnal.classList.remove('btn-primary');
+                    } else {
+                        btnAnal.classList.add('btn-primary');
+                        btnAnal.classList.remove('btn-outline-primary');
+                        btnPron.classList.add('btn-outline-primary');
+                        btnPron.classList.remove('btn-primary');
+                    }
+
+                    // se il tab attivo non è visibile, attiva il primo visibile del gruppo
+                    const activeBtn = tabsUl.querySelector('.nav-link.active');
+                    const activeLi  = activeBtn ? activeBtn.closest('li') : null;
+                    const activeIsInGroup = activeLi && !activeLi.classList.contains('d-none');
+
+                    if (!activeIsInGroup) {
+                        const firstVisible = tabsUl.querySelector(group === 'pron' ? '.group-pron .nav-link' : '.group-anal .nav-link');
+                        if (firstVisible) firstVisible.click();
+                    }
+                }
+
+                // eventi click
+                btnPron?.addEventListener('click', () => showGroup('pron'));
+                btnAnal?.addEventListener('click', () => showGroup('anal'));
+
+                // stato iniziale: mostra PRONOSTICI
+                document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
+            })();
+        </script>
 
 </div>
