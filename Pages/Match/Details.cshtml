@@ -24,7 +24,7 @@
         </div>
     </div>
 
-    <!-- Testata squadre + risultato (placeholder) -->
+    <!-- Testata squadre + risultato -->
     <div class="card mb-3">
         <div class="card-body d-flex align-items-center justify-content-between">
             <div class="d-flex align-items-center gap-2">
@@ -49,7 +49,6 @@
                 <small class="text-muted">risultato</small>
             </div>
 
-
             <div class="d-flex align-items-center gap-2">
                 <strong>@Model.Data.Away</strong>
                 @if (!string.IsNullOrWhiteSpace(Model.Data.AwayLogo))
@@ -69,12 +68,13 @@
         <a class="btn btn-outline-secondary" href="/Events">← Torna agli eventi</a>
     </div>
 
+    <!-- Selettore gruppi -->
     <div class="btn-group mb-3" role="group" aria-label="Selettore gruppi tab">
         <button id="btnGroupPron" type="button" class="btn btn-primary">Pronostici</button>
         <button id="btnGroupAnal" type="button" class="btn btn-outline-primary">Analisi</button>
     </div>
 
-<!-- Tabs contenuti -->
+    <!-- Tabs contenuti -->
     <ul class="nav nav-tabs" id="matchTabs" role="tablist">
         <!-- Gruppo: PRONOSTICI -->
         <li class="nav-item group-pron">
@@ -106,22 +106,22 @@
         <!-- Gruppo: ANALISI -->
         <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-shots" type="button" role="tab">
-                Tiri &amp; Medie
+                Tiri
             </button>
         </li>
         <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-fouls" type="button" role="tab">
-                Analisi Media Falli
+                Falli
             </button>
         </li>
         <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cards" type="button" role="tab">
-                Analisi Media Cartellini
+                Cartellini
             </button>
         </li>
         <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-offsides" type="button" role="tab">
-                Analisi Media Fuorigioco
+                Fuorigioco
             </button>
         </li>
         <li class="nav-item group-anal">
@@ -131,64 +131,48 @@
         </li>
         <li class="nav-item group-anal">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-corners" type="button" role="tab">
-                Analisi Media Corner
+                Corner
             </button>
         </li>
     </ul>
 
+    <div class="tab-content border-start border-end border-bottom p-3">
+        <!-- PRONOSTICI: Pronostici consigliati -->
+        <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
+            @if (Model.Data.Prediction is null)
+            {
+                <div class="text-muted">Nessun pronostico disponibile.</div>
+            }
+            else
+            {
+                var p = Model.Data.Prediction;
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span><strong>Goal simulati</strong></span>
+                                <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
+                        </ul>
+                    </div>
+                </div>
+            }
+        </div>
 
-<div class="tab-content border-start border-end border-bottom p-3">
-    <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
-        @if (Model.Data.Prediction is null)
-        {
-            <div class="text-muted">Nessun pronostico disponibile.</div>
-        }
-        else
-        {
-            var p = Model.Data.Prediction;
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Esito</strong></span><span>@p.Esito</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>GG/NG</strong></span><span>@p.GG_NG</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Combo</strong></span><span>@p.ComboFinale</span>
-                        </li>
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Goal simulati</strong></span>
-                            <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        }
-    </div>
+        <!-- PRONOSTICI: H2H (tutti) -->
         <div class="tab-pane fade" id="tab-h2h-all" role="tabpanel">
             @if (Model.Data.HeadToHead.Count == 0)
             {
@@ -213,13 +197,9 @@
                                 <tr>
                                     <td>@r.DateUtc.ToLocalTime().ToString("dd/MM/yyyy")</td>
                                     <td>@r.LeagueName</td>
-                                    <td>
-                                        <strong>@r.HomeName</strong> – <strong>@r.AwayName</strong>
-                                    </td>
+                                    <td><strong>@r.HomeName</strong> – <strong>@r.AwayName</strong></td>
                                     <td class="text-center">@r.Score</td>
-                                    <td class="text-end">
-                                        <a class="btn btn-sm btn-outline-primary" href="/Match/Details?id=@r.MatchId">Apri</a>
-                                    </td>
+                                    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/Match/Details?id=@r.MatchId">Apri</a></td>
                                 </tr>
                             }
                         </tbody>
@@ -227,6 +207,8 @@
                 </div>
             }
         </div>
+
+        <!-- ANALISI: Goal Attesi (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-goals" role="tabpanel">
             @if (Model.Data.Goals is null || Model.Data.Goals.Metrics.Count == 0)
             {
@@ -234,172 +216,123 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var kv in Model.Data.Goals.Metrics)
-                            {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var metrics = Model.Data.Goals.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                var orderedKeys = groups.Keys.OrderBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                        <span>Casa</span><span class="fw-bold">@row.Casa</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                        <span>Ospite</span><span class="fw-bold">@row.Ospite</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
 
-    <div class="tab-pane fade" id="tab-h2h" role="tabpanel">
-        <div class="row g-3">
-            <div class="col-md-6">
-                <h6 class="mb-2">Forma @Model.Data.Home</h6>
-                @if (Model.Data.HomeForm.Count == 0)
-                {
-                    <div class="text-muted">Nessun dato.</div>
-                }
-                else
-                {
-                    <div class="list-group">
-                        @foreach (var m in Model.Data.HomeForm)
-                        {
+
+        <!-- PRONOSTICI: Stato di forma -->
+        <div class="tab-pane fade" id="tab-h2h" role="tabpanel">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <h6 class="mb-2">Forma @Model.Data.Home</h6>
+                    @if (Model.Data.HomeForm.Count == 0)
+                    {
+                        <div class="text-muted">Nessun dato.</div>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var m in Model.Data.HomeForm)
+                            {
                                 <a asp-page="/Match/Details" asp-route-id="@m.MatchId" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
+                                        <span class="ms-2">@m.Opponent</span>
+                                        <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span>@m.Score</span>
+                                        @if (m.Result == "W") { <span class="badge bg-success">W</span>; }
+                                        else if (m.Result == "D") { <span class="badge bg-secondary">D</span>; }
+                                        else { <span class="badge bg-danger">L</span>; }
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
 
-                                <div>
-                                    <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
-                                    <span class="ms-2">@m.Opponent</span>
-                                    <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span>@m.Score</span>
-                                    @if (m.Result == "W")
-                                    {
-                                        <span class="badge bg-success">W</span>
-                                        ;
-                                    }
-                                    else if (m.Result == "D")
-                                    {
-
-                                        <span class="badge bg-secondary">D</span>
-                                        ;
-                                    }
-                                    else
-                                    {
-
-                                        <span class="badge bg-danger">L</span>
-                                        ;
-                                    }
-                                </div>
-                            </a>
-                        }
-                    </div>
-                }
-            </div>
-
-            <div class="col-md-6">
-                <h6 class="mb-2">Forma @Model.Data.Away</h6>
-                @if (Model.Data.AwayForm.Count == 0)
-                {
-                    <div class="text-muted">Nessun dato.</div>
-                }
-                else
-                {
-                    <div class="list-group">
-                        @foreach (var m in Model.Data.AwayForm)
-                        {
-                                <a asp-page="/Match/Details" asp-route-id="@m.MatchId"
-                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                                <div>
-                                    <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
-                                    <span class="ms-2">@m.Opponent</span>
-                                    <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span>@m.Score</span>
-                                    @if (m.Result == "W")
-                                    {
-                                        <span class="badge bg-success">W</span>
-                                        ;
-                                    }
-                                    else if (m.Result == "D")
-                                    {
-
-                                        <span class="badge bg-secondary">D</span>
-                                        ;
-                                    }
-                                    else
-                                    {
-
-                                        <span class="badge bg-danger">L</span>
-                                        ;
-                                    }
-                                </div>
-                            </a>
-                        }
-                    </div>
-                }
+                <div class="col-md-6">
+                    <h6 class="mb-2">Forma @Model.Data.Away</h6>
+                    @if (Model.Data.AwayForm.Count == 0)
+                    {
+                        <div class="text-muted">Nessun dato.</div>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var m in Model.Data.AwayForm)
+                            {
+                                <a asp-page="/Match/Details" asp-route-id="@m.MatchId" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
+                                        <span class="ms-2">@m.Opponent</span>
+                                        <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span>@m.Score</span>
+                                        @if (m.Result == "W") { <span class="badge bg-success">W</span>; }
+                                        else if (m.Result == "D") { <span class="badge bg-secondary">D</span>; }
+                                        else { <span class="badge bg-danger">L</span>; }
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="tab-pane fade" id="tab-table" role="tabpanel">
-        @if (Model.Data.Standings.Count == 0)
-        {
-            <div class="text-muted">Classifica non disponibile per questa lega/stagione.</div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Squadra</th>
-                            <th class="text-center">Punti</th>
-                            <th class="text-center">G</th>
-                            <th class="text-center">V</th>
-                            <th class="text-center">N</th>
-                            <th class="text-center">P</th>
-                            <th class="text-center">GF</th>
-                            <th class="text-center">GA</th>
-                            <th class="text-center">Diff</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var s in Model.Data.Standings)
-                        {
-                            var isHome = s.TeamId == Model.Data.HomeId;
-                            var isAway = s.TeamId == Model.Data.AwayId;
-                            var rowClass = isHome ? "table-success" : (isAway ? "table-danger" : "");
-
-                            <tr class="@rowClass">
-                                <td>@s.Rank</td>
-                                <td>@s.TeamName</td>
-                                <td class="text-center fw-bold">@s.Points</td>
-                                <td class="text-center">@s.Played</td>
-                                <td class="text-center">@s.Win</td>
-                                <td class="text-center">@s.Draw</td>
-                                <td class="text-center">@s.Lose</td>
-                                <td class="text-center">@s.GF</td>
-                                <td class="text-center">@s.GA</td>
-                                <td class="text-center">@s.Diff</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </div>
-        <div class="tab-pane fade" id="tab-shots" role="tabpanel">
-            @if (Model.Data.Shots is null || Model.Data.Shots.Metrics.Count == 0)
+        <!-- PRONOSTICI: Classifica -->
+        <div class="tab-pane fade" id="tab-table" role="tabpanel">
+            @if (Model.Data.Standings.Count == 0)
             {
-                <div class="text-muted">Nessuna analisi tiri disponibile.</div>
+                <div class="text-muted">Classifica non disponibile per questa lega/stagione.</div>
             }
             else
             {
@@ -407,16 +340,34 @@
                     <table class="table table-sm table-striped align-middle">
                         <thead>
                             <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
+                                <th>#</th><th>Squadra</th>
+                                <th class="text-center">Punti</th>
+                                <th class="text-center">G</th>
+                                <th class="text-center">V</th>
+                                <th class="text-center">N</th>
+                                <th class="text-center">P</th>
+                                <th class="text-center">GF</th>
+                                <th class="text-center">GA</th>
+                                <th class="text-center">Diff</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var kv in Model.Data.Shots.Metrics)
+                            @foreach (var s in Model.Data.Standings)
                             {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
+                                var isHome = s.TeamId == Model.Data.HomeId;
+                                var isAway = s.TeamId == Model.Data.AwayId;
+                                var rowClass = isHome ? "table-success" : (isAway ? "table-danger" : "");
+                                <tr class="@rowClass">
+                                    <td>@s.Rank</td>
+                                    <td>@s.TeamName</td>
+                                    <td class="text-center fw-bold">@s.Points</td>
+                                    <td class="text-center">@s.Played</td>
+                                    <td class="text-center">@s.Win</td>
+                                    <td class="text-center">@s.Draw</td>
+                                    <td class="text-center">@s.Lose</td>
+                                    <td class="text-center">@s.GF</td>
+                                    <td class="text-center">@s.GA</td>
+                                    <td class="text-center">@s.Diff</td>
                                 </tr>
                             }
                         </tbody>
@@ -424,6 +375,8 @@
                 </div>
             }
         </div>
+
+        <!-- ANALISI: Corner (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-corners" role="tabpanel">
             @if (Model.Data.Corners is null || Model.Data.Corners.Metrics.Count == 0)
             {
@@ -431,27 +384,48 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var kv in Model.Data.Corners.Metrics)
-                            {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var metrics = Model.Data.Corners.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                var orderedKeys = groups.Keys.OrderBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
+
+
+        <!-- ANALISI: Cartellini (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-cards" role="tabpanel">
             @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
             {
@@ -459,27 +433,48 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var kv in Model.Data.Cards.Metrics)
-                            {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var metrics = Model.Data.Cards.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                var orderedKeys = groups.Keys.OrderBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
+
+
+        <!-- ANALISI: Falli (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-fouls" role="tabpanel">
             @if (Model.Data.Fouls is null || Model.Data.Fouls.Metrics.Count == 0)
             {
@@ -487,27 +482,48 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var kv in Model.Data.Fouls.Metrics)
-                            {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var metrics = Model.Data.Fouls.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                var orderedKeys = groups.Keys.OrderBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
+
+
+        <!-- ANALISI: Fuorigioco (SEZIONI Casa/Ospite) -->
         <div class="tab-pane fade" id="tab-offsides" role="tabpanel">
             @if (Model.Data.Offsides is null || Model.Data.Offsides.Metrics.Count == 0)
             {
@@ -515,95 +531,164 @@
             }
             else
             {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:50%;">Metrica</th>
-                                <th class="text-end">Valore</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var kv in Model.Data.Offsides.Metrics)
-                            {
-                                <tr>
-                                    <td>@kv.Key</td>
-                                    <td class="text-end">@kv.Value</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                var metrics = Model.Data.Offsides.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                var orderedKeys = groups.Keys.OrderBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
+                                <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
 
-    <div class="tab-pane fade" id="tab-exchange" role="tabpanel">
-        @if (Model.Data.Exchange is null)
-        {
-            <div class="text-muted">Nessun dato Exchange disponibile.</div>
-        }
-        else
-        {
-            var e = Model.Data.Exchange;
-            <ul class="list-group">
-                <li class="list-group-item d-flex justify-content-between">
-                    <span><strong>Bancata consigliata</strong></span><span>@e.BancataConsigliata</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between">
-                    <span>Banca 1 – Affidabilità</span><span>@e.Banca1Affidabilita%</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between">
-                    <span>Banca X – Affidabilità</span><span>@e.BancaXAffidabilita%</span>
-                </li>
-                <li class="list-group-item d-flex justify-content-between">
-                    <span>Banca 2 – Affidabilità</span><span>@e.Banca2Affidabilita%</span>
-                </li>
-                <li class="list-group-item"><strong>Top lay risultati esatti:</strong> @e.BancaRisultato1, @e.BancaRisultato2, @e.BancaRisultato3</li>
-            </ul>
-        }
+
+        <!-- ANALISI: Tiri (SEZIONI Casa/Ospite) -->
+        <div class="tab-pane fade" id="tab-shots" role="tabpanel">
+            @if (Model.Data.Shots is null || Model.Data.Shots.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi tiri disponibile.</div>
+            }
+            else
+            {
+                var metrics = Model.Data.Shots.Metrics;
+
+                var groups = metrics
+                .Select(kv =>
+                {
+                    var key = kv.Key?.Trim() ?? "";
+                    var lastDash = key.LastIndexOf('-');
+                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                    return new { baseName, side, value = kv.Value };
+                })
+                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                    Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                },
+                StringComparer.OrdinalIgnoreCase
+                );
+
+                string[] desiredOrder = new[] {
+                        "Effettuati", "Subiti", "In Casa", "Fuoricasa",
+                        "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse"
+                        };
+
+                var orderedKeys = groups.Keys
+                .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                .ThenBy(k => k);
+
+                <div class="vstack gap-3">
+                    @foreach (var key in orderedKeys)
+                    {
+                        var row = groups[key];
+                        <div class="mb-2">
+                            <div class="fw-semibold border-bottom pb-1">@key</div>
+                            <div class="row g-2 pt-2">
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                        <span>Casa</span><span class="fw-bold">@row.Casa</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                        <span>Ospite</span><span class="fw-bold">@row.Ospite</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+
+        <!-- PRONOSTICI: Exchange -->
+        <div class="tab-pane fade" id="tab-exchange" role="tabpanel">
+            @if (Model.Data.Exchange is null)
+            {
+                <div class="text-muted">Nessun dato Exchange disponibile.</div>
+            }
+            else
+            {
+                var e = Model.Data.Exchange;
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Bancata consigliata</strong></span><span>@e.BancataConsigliata</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Banca 1 – Affidabilità</span><span>@e.Banca1Affidabilita%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Banca X – Affidabilità</span><span>@e.BancaXAffidabilita%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span>Banca 2 – Affidabilità</span><span>@e.Banca2Affidabilita%</span></li>
+                    <li class="list-group-item"><strong>Top lay risultati esatti:</strong> @e.BancaRisultato1, @e.BancaRisultato2, @e.BancaRisultato3</li>
+                </ul>
+            }
+        </div>
     </div>
-        <script>
-            (function () {
-                const btnPron = document.getElementById('btnGroupPron');
-                const btnAnal = document.getElementById('btnGroupAnal');
-                const tabsUl  = document.getElementById('matchTabs');
 
-                function showGroup(group) {
-                    // mostra/nasconde i tab headers
-                    tabsUl.querySelectorAll('.group-pron').forEach(li => li.classList.toggle('d-none', group !== 'pron'));
-                    tabsUl.querySelectorAll('.group-anal').forEach(li => li.classList.toggle('d-none', group !== 'anal'));
+    <!-- Script per gruppi -->
+    <script>
+        (function () {
+            const btnPron = document.getElementById('btnGroupPron');
+            const btnAnal = document.getElementById('btnGroupAnal');
+            const tabsUl  = document.getElementById('matchTabs');
 
-                    // aggiorna lo stato dei bottoni
-                    if (group === 'pron') {
-                        btnPron.classList.add('btn-primary');
-                        btnPron.classList.remove('btn-outline-primary');
-                        btnAnal.classList.add('btn-outline-primary');
-                        btnAnal.classList.remove('btn-primary');
-                    } else {
-                        btnAnal.classList.add('btn-primary');
-                        btnAnal.classList.remove('btn-outline-primary');
-                        btnPron.classList.add('btn-outline-primary');
-                        btnPron.classList.remove('btn-primary');
-                    }
+            function showGroup(group) {
+                tabsUl.querySelectorAll('.group-pron').forEach(li => li.classList.toggle('d-none', group !== 'pron'));
+                tabsUl.querySelectorAll('.group-anal').forEach(li => li.classList.toggle('d-none', group !== 'anal'));
 
-                    // se il tab attivo non è visibile, attiva il primo visibile del gruppo
-                    const activeBtn = tabsUl.querySelector('.nav-link.active');
-                    const activeLi  = activeBtn ? activeBtn.closest('li') : null;
-                    const activeIsInGroup = activeLi && !activeLi.classList.contains('d-none');
-
-                    if (!activeIsInGroup) {
-                        const firstVisible = tabsUl.querySelector(group === 'pron' ? '.group-pron .nav-link' : '.group-anal .nav-link');
-                        if (firstVisible) firstVisible.click();
-                    }
+                if (group === 'pron') {
+                    btnPron.classList.add('btn-primary'); btnPron.classList.remove('btn-outline-primary');
+                    btnAnal.classList.add('btn-outline-primary'); btnAnal.classList.remove('btn-primary');
+                } else {
+                    btnAnal.classList.add('btn-primary'); btnAnal.classList.remove('btn-outline-primary');
+                    btnPron.classList.add('btn-outline-primary'); btnPron.classList.remove('btn-primary');
                 }
 
-                // eventi click
-                btnPron?.addEventListener('click', () => showGroup('pron'));
-                btnAnal?.addEventListener('click', () => showGroup('anal'));
+                const activeBtn = tabsUl.querySelector('.nav-link.active');
+                const activeLi  = activeBtn ? activeBtn.closest('li') : null;
+                const activeIsInGroup = activeLi && !activeLi.classList.contains('d-none');
 
-                // stato iniziale: mostra PRONOSTICI
-                document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
-            })();
-        </script>
+                if (!activeIsInGroup) {
+                    const firstVisible = tabsUl.querySelector(group === 'pron' ? '.group-pron .nav-link' : '.group-anal .nav-link');
+                    if (firstVisible) firstVisible.click();
+                }
+            }
 
+            btnPron?.addEventListener('click', () => showGroup('pron'));
+            btnAnal?.addEventListener('click', () => showGroup('anal'));
+
+            document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
+        })();
+    </script>
 </div>
