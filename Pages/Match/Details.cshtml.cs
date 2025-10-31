@@ -67,6 +67,9 @@ namespace NextStakeWebApp.Pages.Match
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
             public string? StatusShort { get; set; }
+
+            public CornersAnalysisRow? Corners { get; set; }
+
         }
 
         public class FormRow
@@ -112,6 +115,10 @@ namespace NextStakeWebApp.Pages.Match
 
         // Contenitore generico delle metriche della vista NextMatchShots_Analyses
         public class ShotsAnalysisRow
+        {
+            public Dictionary<string, string> Metrics { get; set; } = new();
+        }
+        public class CornersAnalysisRow
         {
             public Dictionary<string, string> Metrics { get; set; } = new();
         }
@@ -246,6 +253,46 @@ namespace NextStakeWebApp.Pages.Match
                     };
                 }
             }
+            // --- Corners / Analisi Media Corner (NextMatchCorners_Analyses) ---
+            CornersAnalysisRow? corners = null;
+            var cornersScript = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatchCorners_Analyses")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(cornersScript))
+            {
+                var cs = _read.Database.GetConnectionString();
+                await using var connC = new NpgsqlConnection(cs);
+                await connC.OpenAsync();
+
+                await using var cmdC = new NpgsqlCommand(cornersScript, connC);
+                // Parametri richiesti dalla query
+                cmdC.Parameters.AddWithValue("@MatchId", (int)id);
+                cmdC.Parameters.AddWithValue("@Season", dto.Season);
+                cmdC.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
+
+                await using var rdC = await cmdC.ExecuteReaderAsync();
+                if (await rdC.ReadAsync())
+                {
+                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < rdC.FieldCount; i++)
+                    {
+                        var colName = rdC.GetName(i);
+
+                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string displayName = PrettyLabel(colName);
+                        string value = rdC.IsDBNull(i) ? "—" : Convert.ToString(rdC.GetValue(i)) ?? "—";
+                        metrics[displayName] = value;
+                    }
+
+                    corners = new CornersAnalysisRow { Metrics = metrics };
+                }
+            }
 
             // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
             GoalsAnalysisRow? goals = null;
@@ -377,7 +424,8 @@ namespace NextStakeWebApp.Pages.Match
                 Exchange = exchange,
                 Goals = goals,
                 Shots = shots,
-                HeadToHead = h2h
+                HeadToHead = h2h,
+                Corners = corners
             };
 
             return Page();
