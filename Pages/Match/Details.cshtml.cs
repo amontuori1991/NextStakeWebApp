@@ -58,8 +58,11 @@ namespace NextStakeWebApp.Pages.Match
             public PredictionRow? Prediction { get; set; }
             public ExchangePredictionRow? Exchange { get; set; }
 
-            // Nuovo: Analisi Goal (NextMatchGoals_Analyses)
+            // Analisi Goal (NextMatchGoals_Analyses)
             public GoalsAnalysisRow? Goals { get; set; }
+
+            // Analisi Tiri (NextMatchShots_Analyses)
+            public ShotsAnalysisRow? Shots { get; set; }
 
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
@@ -101,8 +104,14 @@ namespace NextStakeWebApp.Pages.Match
             public int Diff { get; set; }
         }
 
-        // Nuovo: contenitore generico delle metriche della vista NextMatchGoals_Analyses
+        // Contenitore generico delle metriche della vista NextMatchGoals_Analyses
         public class GoalsAnalysisRow
+        {
+            public Dictionary<string, string> Metrics { get; set; } = new();
+        }
+
+        // Contenitore generico delle metriche della vista NextMatchShots_Analyses
+        public class ShotsAnalysisRow
         {
             public Dictionary<string, string> Metrics { get; set; } = new();
         }
@@ -175,8 +184,8 @@ namespace NextStakeWebApp.Pages.Match
 
             if (!string.IsNullOrWhiteSpace(script))
             {
-                var cs = _read.Database.GetConnectionString();   // <-- prendi la connection string
-                await using var conn = new NpgsqlConnection(cs); // <-- connessione *separata*
+                var cs = _read.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
                 await conn.OpenAsync();
 
                 await using var cmd = new NpgsqlCommand(script, conn);
@@ -239,7 +248,6 @@ namespace NextStakeWebApp.Pages.Match
             }
 
             // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
-            // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
             GoalsAnalysisRow? goals = null;
             var goalsScript = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatchGoals_Analyses")
@@ -254,8 +262,6 @@ namespace NextStakeWebApp.Pages.Match
                 await connG.OpenAsync();
 
                 await using var cmdG = new NpgsqlCommand(goalsScript, connG);
-
-                // ✨ Parametri richiesti dalla query
                 cmdG.Parameters.AddWithValue("@MatchId", (int)id);
                 cmdG.Parameters.AddWithValue("@Season", dto.Season);
                 cmdG.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
@@ -281,6 +287,46 @@ namespace NextStakeWebApp.Pages.Match
                 }
             }
 
+            // --- Shots / Medie Tiri (NextMatchShots_Analyses) ---
+            ShotsAnalysisRow? shots = null;
+            var shotsScript = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatchShots_Analyses")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(shotsScript))
+            {
+                var cs = _read.Database.GetConnectionString();
+                await using var connS = new NpgsqlConnection(cs);
+                await connS.OpenAsync();
+
+                await using var cmdS = new NpgsqlCommand(shotsScript, connS);
+                // Passiamo gli stessi parametri: molti script tiri usano gli stessi tre
+                cmdS.Parameters.AddWithValue("@MatchId", (int)id);
+                cmdS.Parameters.AddWithValue("@Season", dto.Season);
+                cmdS.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
+
+                await using var rdS = await cmdS.ExecuteReaderAsync();
+                if (await rdS.ReadAsync())
+                {
+                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < rdS.FieldCount; i++)
+                    {
+                        var colName = rdS.GetName(i);
+
+                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string displayName = PrettyLabel(colName);
+                        string value = rdS.IsDBNull(i) ? "—" : Convert.ToString(rdS.GetValue(i)) ?? "—";
+                        metrics[displayName] = value;
+                    }
+
+                    shots = new ShotsAnalysisRow { Metrics = metrics };
+                }
+            }
 
             // --- H2H (tutte le stagioni, solo partite terminate) ---
             var finished = new[] { "FT", "AET", "PEN" };
@@ -330,6 +376,7 @@ namespace NextStakeWebApp.Pages.Match
                 Prediction = prediction,
                 Exchange = exchange,
                 Goals = goals,
+                Shots = shots,
                 HeadToHead = h2h
             };
 
@@ -431,7 +478,10 @@ namespace NextStakeWebApp.Pages.Match
                  .Replace("Expected Goals", "Goal attesi", StringComparison.OrdinalIgnoreCase)
                  .Replace("Expected Goal", "Goal attesi", StringComparison.OrdinalIgnoreCase)
                  .Replace("Avg", "Media", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Total", "Totale", StringComparison.OrdinalIgnoreCase);
+                 .Replace("Total", "Totale", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Shots On Goal", "Tiri in porta", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Shots Off Goal", "Tiri fuori", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Total Shots", "Tiri totali", StringComparison.OrdinalIgnoreCase);
 
             // 5) capitalizza iniziale
             if (s.Length > 1) s = char.ToUpperInvariant(s[0]) + s[1..];
