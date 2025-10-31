@@ -46,6 +46,7 @@ namespace NextStakeWebApp.Pages.Match
 
             public DateTime KickoffUtc { get; set; }
             public bool IsFavorite { get; set; }
+            public int RemainingMatches { get; set; }
 
             public List<FormRow> HomeForm { get; set; } = new();
             public List<FormRow> AwayForm { get; set; } = new();
@@ -291,6 +292,16 @@ namespace NextStakeWebApp.Pages.Match
                 }
             ).AsNoTracking().ToListAsync();
 
+            // --- Partite mancanti (lega+stagione, non terminate) ---
+            // Partite mancanti per STESSA LEGA e STESSA STAGIONE (non finite: StatusShort != 'FT')
+            int remainingMatches = await _read.Matches
+               .Where(m => m.LeagueId == dto.LeagueId
+                        && m.Season == dto.Season
+                        && (m.StatusShort == null || m.StatusShort != "FT"))
+               .Select(m => m.MatchRound)           // <-- se la proprietà EF si chiama diversamente (es. Matchround), adegua qui
+               .Distinct()
+               .CountAsync();
+
             Data = new VM
             {
                 MatchId = dto.MatchId,
@@ -321,7 +332,8 @@ namespace NextStakeWebApp.Pages.Match
                 Cards = cards,
                 Fouls = fouls,
                 Offsides = offsides,
-                HeadToHead = h2h
+                HeadToHead = h2h,
+                RemainingMatches = remainingMatches
             };
 
             return Page();
