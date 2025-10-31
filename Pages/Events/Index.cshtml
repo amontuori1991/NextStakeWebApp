@@ -34,9 +34,11 @@
 
         <!-- Collega al best=1 per mostrare i migliori pronostici -->
         <a class="btn btn-success"
-           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1">
+           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
+           data-loading="best">
             Migliori pronostici
         </a>
+
 
         @if (Model.ShowBest)
         {
@@ -227,3 +229,58 @@
         }
     }
 </div>
+
+<style>
+    .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(255,255,255,0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        backdrop-filter: blur(2px);
+    }
+
+    .loading-panel {
+        background: #fff;
+        border-radius: .75rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,.12);
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        max-width: 90vw;
+    }
+</style>
+
+<div id="loadingOverlay" class="loading-overlay d-none" aria-hidden="true">
+    <div class="loading-panel">
+        <div class="spinner-border" role="status" aria-label="Caricamento"></div>
+        <div class="fw-semibold">Carico i migliori pronostici…</div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const overlay = document.getElementById('loadingOverlay');
+
+        function showOverlay() {
+            if (overlay) overlay.classList.remove('d-none');
+        }
+
+        // Mostra overlay quando si clicca sul bottone "Migliori pronostici"
+        document.addEventListener('click', function (e) {
+            const a = e.target.closest('a[data-loading="best"]');
+            if (a) {
+                showOverlay();
+                // non preveniamo la navigazione: vogliamo solo feedback immediato
+            }
+        });
+
+        // In caso la pagina tornasse dal bfcache o simili, assicurati che l’overlay sia nascosto
+        window.addEventListener('pageshow', () => {
+            if (overlay) overlay.classList.add('d-none');
+        });
+    })();
+</script>
