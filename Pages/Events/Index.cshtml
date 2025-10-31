@@ -189,67 +189,82 @@
     {
         @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
         {
-            <div class="mb-4">
-                <div class="d-flex align-items-center gap-2 fw-semibold mb-2">
-                    @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
-                    {
-                        <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
-                    }
-                    <span>@group.Key.LeagueName</span>
+            var groupId = $"lg-{group.Key.LeagueId}";
 
-                    @* Country + bandiera accanto alla lega *@
-                    @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                    {
-                        <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
-                            (
-                            @group.Key.CountryName
-                            @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                            {
-                                <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
-                            }
-                            )
-                        </small>
-                    }
+            <div class="mb-3 border rounded">
+                <!-- Barra cliccabile a tutta larghezza -->
+                <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@groupId"
+                        aria-expanded="true"
+                        aria-controls="@groupId">
+                    <div class="d-flex align-items-center gap-2 py-2 px-3">
+                        <span class="toggle-caret">▾</span>
 
-                    <small class="text-muted ms-2">#@group.Key.LeagueId</small>
-                </div>
-                <div class="list-group">
-                    @foreach (var r in group)
-                    {
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
-                                <span class="me-2">@r.Home — @r.Away</span>
+                        @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
+                        {
+                            <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
+                        }
 
-                                @* Risultato se disponibile / altrimenti - : - *@
-                                @{
-                                    var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
-                                    var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
-                                    ? $"{r.HomeGoal} : {r.AwayGoal}"
-                                    : "- : -";
+                        <span class="fw-semibold">@group.Key.LeagueName</span>
+
+                        @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                        {
+                            <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                                (
+                                @group.Key.CountryName
+                                @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                                {
+                                    <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
                                 }
-                                <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
+                                )
+                            </small>
+                        }
 
-                                <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
-                                @* Country rimosso qui *@
-                            </a>
+                        <small class="text-muted ms-2">#@group.Key.LeagueId</small>
+                    </div>
+                </button>
 
+                <!-- Contenuto collassabile (aperto di default) -->
+                <div id="@groupId" class="collapse show">
+                    <div class="list-group list-group-flush">
+                        @foreach (var r in group)
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <a href="/Match/Details?id=@r.MatchId" class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
+                                    <span class="me-2">@r.Home — @r.Away</span>
 
-                            <!-- ⭐ Toggle preferito -->
-                            <form method="post"
-                                  action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
-                                  class="ms-3">
-                                @Html.AntiForgeryToken()
-                                <button type="submit"
-                                        class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
-                                        title="Aggiungi/rimuovi dai preferiti">
-                                    ⭐
-                                </button>
-                            </form>
-                        </div>
-                    }
+                                    @{
+                                        var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
+                                        var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
+                                        ? $"{r.HomeGoal} : {r.AwayGoal}"
+                                        : "- : -";
+                                    }
+                                    <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
+
+                                    <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
+                                </a>
+
+                                <!-- ⭐ Toggle preferito -->
+                                <form method="post"
+                                      action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
+                                      class="ms-3">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit"
+                                            class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
+                                            title="Aggiungi/rimuovi dai preferiti">
+                                        ⭐
+                                    </button>
+                                </form>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
         }
+
+
     }
 </div>
 
@@ -307,3 +322,33 @@
         });
     })();
 </script>
+
+<style>
+    .league-toggle-btn {
+        background-color: #f7f7f7;
+        transition: background-color .2s ease;
+        border-top-left-radius: .25rem;
+        border-top-right-radius: .25rem;
+        width: 100%;
+    }
+
+        .league-toggle-btn:hover {
+            background-color: #e9ecef;
+        }
+
+    .toggle-caret {
+        transition: transform .2s ease;
+        display: inline-block;
+        font-size: 1.1rem;
+    }
+
+    [data-bs-toggle="collapse"][aria-expanded="false"] .toggle-caret {
+        transform: rotate(-90deg);
+    }
+
+    .list-group-item {
+        border-left: none;
+        border-right: none;
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
