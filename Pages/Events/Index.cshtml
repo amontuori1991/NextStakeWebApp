@@ -206,12 +206,13 @@
                                 <span class="me-2">@r.Home — @r.Away</span>
 
                                 @* Risultato se disponibile *@
-                                @if (r.HomeGoal.HasValue && r.AwayGoal.HasValue)
-                                {
-                                    <span class="badge bg-light text-dark fw-semibold me-2">
-                                        @r.HomeGoal — @r.AwayGoal
-                                    </span>
+                                @{
+                                    var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
+                                    var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
+                                    ? $"{r.HomeGoal} : {r.AwayGoal}"
+                                    : "- : -";
                                 }
+                                <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
 
                                 <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
 
