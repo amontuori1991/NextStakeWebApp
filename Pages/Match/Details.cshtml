@@ -93,6 +93,11 @@
                 H2H
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-goals" type="button" role="tab">
+                Goal Attesi
+            </button>
+        </li>
 
 </ul>
 
@@ -179,6 +184,34 @@
                                     <td class="text-end">
                                         <a class="btn btn-sm btn-outline-primary" href="/Match/Details?id=@r.MatchId">Apri</a>
                                     </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        <div class="tab-pane fade" id="tab-goals" role="tabpanel">
+            @if (Model.Data.Goals is null || Model.Data.Goals.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi goal disponibile.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width:50%;">Metrica</th>
+                                <th class="text-end">Valore</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kv in Model.Data.Goals.Metrics)
+                            {
+                                <tr>
+                                    <td>@kv.Key</td>
+                                    <td class="text-end">@kv.Value</td>
                                 </tr>
                             }
                         </tbody>

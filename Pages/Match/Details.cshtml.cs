@@ -7,6 +7,7 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using Npgsql;
 using System.Data;
+using System.Text.RegularExpressions;
 
 namespace NextStakeWebApp.Pages.Match
 {
@@ -17,14 +18,12 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
 
-
         public DetailsModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager)
         {
             _read = read;
             _write = write;
             _userManager = userManager;
         }
-
 
         public VM Data { get; private set; } = new();
 
@@ -53,16 +52,18 @@ namespace NextStakeWebApp.Pages.Match
 
             public List<StandRow> Standings { get; set; } = new();
 
-            // Nuovo: testa-a-testa
+            // H2H (tutte le stagioni)
             public List<H2HRow> HeadToHead { get; set; } = new();
 
             public PredictionRow? Prediction { get; set; }
             public ExchangePredictionRow? Exchange { get; set; }
 
+            // Nuovo: Analisi Goal (NextMatchGoals_Analyses)
+            public GoalsAnalysisRow? Goals { get; set; }
+
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
             public string? StatusShort { get; set; }
-
         }
 
         public class FormRow
@@ -100,6 +101,12 @@ namespace NextStakeWebApp.Pages.Match
             public int Diff { get; set; }
         }
 
+        // Nuovo: contenitore generico delle metriche della vista NextMatchGoals_Analyses
+        public class GoalsAnalysisRow
+        {
+            public Dictionary<string, string> Metrics { get; set; } = new();
+        }
+
         public async Task<IActionResult> OnGetAsync(long id)
         {
             var dto = await (
@@ -128,7 +135,6 @@ namespace NextStakeWebApp.Pages.Match
                     StatusShort = mm.StatusShort
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
-
 
             if (dto == null) return NotFound();
 
@@ -159,8 +165,6 @@ namespace NextStakeWebApp.Pages.Match
                 }
             ).AsNoTracking().ToListAsync();
 
-            // --- Prediction ---
-            // --- Prediction ---
             // --- Prediction ---
             PredictionRow? prediction = null;
             var script = await _read.Analyses
@@ -200,8 +204,6 @@ namespace NextStakeWebApp.Pages.Match
                 }
             }
 
-
-            // --- Exchange ---
             // --- Exchange ---
             ExchangePredictionRow? exchange = null;
             var exchangeScript = await _read.Analyses
@@ -233,6 +235,49 @@ namespace NextStakeWebApp.Pages.Match
                         BancaRisultato2 = GetField<string>(rd2, "Banca Risultato 2"),
                         BancaRisultato3 = GetField<string>(rd2, "Banca Risultato 3"),
                     };
+                }
+            }
+
+            // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
+            // --- Goals / Goal Attesi (NextMatchGoals_Analyses) ---
+            GoalsAnalysisRow? goals = null;
+            var goalsScript = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatchGoals_Analyses")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(goalsScript))
+            {
+                var cs = _read.Database.GetConnectionString();
+                await using var connG = new NpgsqlConnection(cs);
+                await connG.OpenAsync();
+
+                await using var cmdG = new NpgsqlCommand(goalsScript, connG);
+
+                // ✨ Parametri richiesti dalla query
+                cmdG.Parameters.AddWithValue("@MatchId", (int)id);
+                cmdG.Parameters.AddWithValue("@Season", dto.Season);
+                cmdG.Parameters.AddWithValue("@LeagueId", dto.LeagueId);
+
+                await using var rdG = await cmdG.ExecuteReaderAsync();
+                if (await rdG.ReadAsync())
+                {
+                    var metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < rdG.FieldCount; i++)
+                    {
+                        var colName = rdG.GetName(i);
+
+                        if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string displayName = PrettyLabel(colName);
+                        string value = rdG.IsDBNull(i) ? "—" : Convert.ToString(rdG.GetValue(i)) ?? "—";
+                        metrics[displayName] = value;
+                    }
+
+                    goals = new GoalsAnalysisRow { Metrics = metrics };
                 }
             }
 
@@ -284,6 +329,7 @@ namespace NextStakeWebApp.Pages.Match
                 Standings = standings,
                 Prediction = prediction,
                 Exchange = exchange,
+                Goals = goals,
                 HeadToHead = h2h
             };
 
@@ -363,6 +409,34 @@ namespace NextStakeWebApp.Pages.Match
                 return (T)Convert.ChangeType(val, targetType);
             }
             catch { return (T)val; }
+        }
+
+        // Helper per rendere "presentabili" le etichette delle colonne della vista
+        private static string PrettyLabel(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
+
+            // 1) underscore -> spazio
+            var s = raw.Replace('_', ' ');
+
+            // 2) separa PascalCase/camelCase (ExpectedGoalsHome -> Expected Goals Home)
+            s = Regex.Replace(s, "([a-z])([A-Z])", "$1 $2");
+
+            // 3) normalizza spazi
+            s = Regex.Replace(s, @"\s+", " ").Trim();
+
+            // 4) mappature comuni per l'italiano
+            s = s.Replace("Home", "Casa", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Away", "Ospite", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Expected Goals", "Goal attesi", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Expected Goal", "Goal attesi", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Avg", "Media", StringComparison.OrdinalIgnoreCase)
+                 .Replace("Total", "Totale", StringComparison.OrdinalIgnoreCase);
+
+            // 5) capitalizza iniziale
+            if (s.Length > 1) s = char.ToUpperInvariant(s[0]) + s[1..];
+
+            return s;
         }
     }
 }
