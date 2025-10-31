@@ -52,8 +52,8 @@
     {
         <div class="card mb-4">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <div class="fw-semibold">Migliori pronostici</div>
-                <small class="text-muted">Fonte: analyses (Partite in Pronostico)</small>
+                <div class="fw-semibold">🔥 Migliori pronostici</div>
+                <small class="text-muted">Ordinati per data/ora</small>
             </div>
             <div class="card-body">
                 @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
@@ -61,59 +61,90 @@
                     <div class="alert alert-info mb-3">@Model.BestMessage</div>
                 }
 
-                @if (Model.BestPicks.Count > 0)
+                @if (Model.BestPicks?.Count > 0)
                 {
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr>
-                                    <th>Data Evento</th>
-                                    <th>Competizione</th>
-                                    <th>Partita</th>
-                                    <th class="text-end">GS Casa</th>
-                                    <th class="text-end">GS Ospite</th>
-                                    <th class="text-end">Totale GS</th>
-                                    <th>Esito</th>
-                                    <th>Over/Under</th>
-                                    <th class="text-end">Over 1.5</th>
-                                    <th class="text-end">Over 2.5</th>
-                                    <th class="text-end">Over 3.5</th>
-                                    <th>GG/NG</th>
-                                    <th>Multigoal Casa</th>
-                                    <th>Multigoal Ospite</th>
-                                    <th>Combo</th>
+                                    <th style="width:120px;">Data</th>
+                                    <th>Evento</th>
+                                    <th style="width:120px;">Azione</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
                                 {
+                                    Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
+
+                                    // Split "Home - Away" per inserire i loghi accanto ai nomi
+                                    var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
+                                    var homeName = parts.Length > 0 ? parts[0] : r.Match;
+                                    var awayName = parts.Length > 1 ? parts[1] : "";
+
                                     <tr>
                                         <td>@r.EventDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
-                                        <td>@r.Competition</td>
                                         <td>
-                                            <a href="/Match/Details?id=@r.Id" class="text-decoration-none">@r.Match</a>
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                <!-- Home -->
+                                                <div class="d-flex align-items-center gap-1">
+                                                    @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
+                                                    {
+                                                        <img src="@assets.HomeLogo" alt="home" style="height:18px;width:auto;" />
+                                                    }
+                                                    <span class="fw-semibold">@homeName</span>
+                                                </div>
+
+                                                <span class="mx-1">—</span>
+
+                                                <!-- Away -->
+                                                <div class="d-flex align-items-center gap-1">
+                                                    @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
+                                                    {
+                                                        <img src="@assets.AwayLogo" alt="away" style="height:18px;width:auto;" />
+                                                    }
+                                                    <span class="fw-semibold">@awayName</span>
+                                                </div>
+
+                                                <!-- Parentesi finali con country code + bandiera + competizione + logo lega -->
+                                                <small class="text-muted ms-2" style="white-space:nowrap;">
+                                                    (
+                                                    @if (!string.IsNullOrWhiteSpace(assets?.LeagueFlag))
+                                                    {
+                                                        <img src="@assets.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;margin-right:4px;" />
+                                                    }
+                                                    @r.Competition
+                                                    @if (!string.IsNullOrWhiteSpace(assets?.LeagueLogo))
+                                                    {
+                                                        <img src="@assets.LeagueLogo" alt="league" style="height:16px;width:auto;vertical-align:middle;margin-left:6px;" />
+                                                    }
+                                                    )
+                                                </small>
+
+                                            </div>
                                         </td>
-                                        <td class="text-end">@r.GoalSimulatiCasa</td>
-                                        <td class="text-end">@r.GoalSimulatiOspite</td>
-                                        <td class="text-end fw-semibold">@r.TotaleGoalSimulati</td>
-                                        <td>@r.Esito</td>
-                                        <td>@r.OverUnderRange</td>
-                                        <td class="text-end">@r.Over15</td>
-                                        <td class="text-end">@r.Over25</td>
-                                        <td class="text-end">@r.Over35</td>
-                                        <td>@r.GG_NG</td>
-                                        <td>@r.MultigoalCasa</td>
-                                        <td>@r.MultigoalOspite</td>
-                                        <td class="fw-semibold">@r.ComboFinale</td>
+                                        <td>
+                                            <a href="/Match/Details?id=@r.Id"
+                                               target="_blank" rel="noopener"
+                                               class="btn btn-sm btn-outline-primary">
+                                                Apri evento ↗
+                                            </a>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
                 }
+                else
+                {
+                    <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
+                }
             </div>
         </div>
     }
+
+
 
     <!-- Filtri: Nazione + Ricerca -->
     <form method="get" action="/Events" class="mb-3 row g-2 align-items-end">

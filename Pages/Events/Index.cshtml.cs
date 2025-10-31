@@ -37,6 +37,18 @@ namespace NextStakeWebApp.Pages.Events
         public List<NextStakeWebApp.Models.BestPickRow> BestPicks { get; private set; } = new();
         public string? BestMessage { get; private set; }
 
+        // === Asset per i Best, indicizzati per MatchId ===
+        public Dictionary<long, MatchAssets> AssetsByMatchId { get; private set; } = new();
+
+        public class MatchAssets
+        {
+            public string? LeagueLogo { get; set; }
+            public string? LeagueFlag { get; set; }
+            public string? HomeLogo { get; set; }
+            public string? AwayLogo { get; set; }
+            public string? CountryCode { get; set; }
+        }
+
         public class EventRow
         {
             public long MatchId { get; set; }
@@ -56,7 +68,7 @@ namespace NextStakeWebApp.Pages.Events
             public string Name { get; set; } = "";
         }
 
-         public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null)
+        public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null)
         {
             if (!string.IsNullOrWhiteSpace(d) && DateOnly.TryParse(d, out var parsed))
                 SelectedDate = parsed;
@@ -157,7 +169,7 @@ namespace NextStakeWebApp.Pages.Events
 
         private async Task LoadBestPicksAsync()
         {
-            // Legge dalla replica/DB di sola lettura
+            // Legge definizione query dalla tabella analyses
             var analysis = await _read.Analyses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.ViewName == ".." && a.Description == "Partite in Pronostico");
@@ -166,6 +178,7 @@ namespace NextStakeWebApp.Pages.Events
             {
                 BestMessage = "Nessuna analisi trovata con viewname='..' e description='Partite in Pronostico'.";
                 BestPicks = new();
+                AssetsByMatchId = new();
                 return;
             }
 
@@ -174,6 +187,7 @@ namespace NextStakeWebApp.Pages.Events
             {
                 BestMessage = "La query (viewvalue) risulta vuota.";
                 BestPicks = new();
+                AssetsByMatchId = new();
                 return;
             }
 
@@ -185,15 +199,56 @@ namespace NextStakeWebApp.Pages.Events
                     .ToListAsync();
 
                 if (BestPicks.Count == 0)
+                {
                     BestMessage = "Nessun pronostico disponibile al momento.";
+                    AssetsByMatchId = new();
+                    return;
+                }
+
+                // ===== Enrichment: prendi asset (logo squadra home/away, logo lega, flag) per i match nei Best =====
+                var matchIds = BestPicks.Select(b => b.Id).Distinct().ToList();
+
+                var assets = await (
+                    from m in _read.Matches
+                    join lg in _read.Leagues on m.LeagueId equals lg.Id
+                    join th in _read.Teams on m.HomeId equals th.Id
+                    join ta in _read.Teams on m.AwayId equals ta.Id
+                    where matchIds.Contains(m.Id)
+                    select new
+                    {
+                        m.Id,
+                        LeagueLogo = lg.Logo,
+                        LeagueFlag = lg.Flag,
+                        CountryCode = lg.CountryCode,   // <-- AGGIUNTO
+                        HomeLogo = th.Logo,
+                        AwayLogo = ta.Logo
+                    }
+                )
+                .AsNoTracking()
+                .ToListAsync();
+
+                AssetsByMatchId = assets.ToDictionary(
+                    k => (long)k.Id,
+                    v => new MatchAssets
+                    {
+                        LeagueLogo = v.LeagueLogo,
+                        LeagueFlag = v.LeagueFlag,
+                        HomeLogo = v.HomeLogo,
+                        AwayLogo = v.AwayLogo,
+                        CountryCode = v.CountryCode
+                    }
+                );
+
+                // ================================================================================================
+
             }
             catch (Exception ex)
             {
                 BestMessage = $"Errore nell'esecuzione della query dei pronostici: {ex.Message}";
                 BestPicks = new();
+                AssetsByMatchId = new();
             }
         }
-
 
         public async Task<IActionResult> OnPostToggleFavoriteAsync(long matchId, string? d = null, int? fav = null, string? country = null, string? q = null)
         {
