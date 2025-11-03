@@ -138,60 +138,61 @@
     </ul>
 
     <div class="tab-content border-start border-end border-bottom p-3">
- <!-- PRONOSTICI: Pronostici consigliati -->
-<div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
-    @if (Model.Data.Prediction is null)
-    {
-        <div class="text-muted">Nessun pronostico disponibile.</div>
-    }
-    else
-    {
-        var p = Model.Data.Prediction;
-        <div class="row g-3">
-            <div class="col-md-6">
-                <ul class="list-group">
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
-                </ul>
-            </div>
-            <div class="col-md-6">
-                <ul class="list-group">
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span><strong>Goal simulati</strong></span>
-                        <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
-                    </li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
-                    <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
-                </ul>
-            </div>
+        <!-- PRONOSTICI: Pronostici consigliati -->
+        <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
+            @if (Model.Data.Prediction is null)
+            {
+                <div class="text-muted">Nessun pronostico disponibile.</div>
+            }
+            else
+            {
+                var p = Model.Data.Prediction;
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span><strong>Goal simulati</strong></span>
+                                <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
+                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                @* INVIO SU TELEGRAM (solo Admin) *@
+                @if (User.IsInRole("Admin"))
+                {
+                    <form method="post" asp-page-handler="SendPrediction" class="mt-3">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                        <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-8">
+                                <label class="form-label">Pronostico Consigliato (modificabile prima dell'invio)</label>
+                                <input name="customPick" class="form-control" value="@Model.Data.Prediction?.ComboFinale" />
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button type="submit" class="btn btn-success w-100">🚀 Invia su Telegram</button>
+                            </div>
+                        </div>
+                    </form>
+                }
+            }
         </div>
 
-        <!-- INVIO SU TELEGRAM -->
-        <form method="post" asp-page-handler="SendPrediction" class="mt-3">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-            <!-- Topic predefinito; cambialo se vuoi un altro topic -->
-            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
-
-            <div class="row g-2 align-items-end">
-                <div class="col-md-8">
-                    <label class="form-label">Pronostico Consigliato (modificabile prima dell'invio)</label>
-                    <input name="customPick" class="form-control" value="@Model.Data.Prediction?.ComboFinale" />
-                </div>
-                <div class="col-md-4 text-end">
-                    <button type="submit" class="btn btn-success w-100">
-                        🚀 Invia su Telegram
-                    </button>
-                </div>
-            </div>
-        </form>
-    }
-</div>
 
 
         <!-- PRONOSTICI: H2H (tutti) -->

@@ -353,8 +353,13 @@ namespace NextStakeWebApp.Pages.Match
             return RedirectToPage(new { id });
         }
 
-        public async Task<IActionResult> OnPostSendPredictionAsync(long id)
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> OnPostSendPredictionAsync(long id, string? topicName, string? customPick)
         {
+            // Difesa extra lato server
+            if (!User.IsInRole("Admin"))
+                return Forbid();
+
             // Dati minimi per il messaggio + CountryCode
             var dto = await (
                from mm in _read.Matches
@@ -366,20 +371,19 @@ namespace NextStakeWebApp.Pages.Match
                {
                    MatchId = mm.Id,
                    LeagueName = lg.Name,
-                   LeagueLogo = lg.Logo,
                    CountryName = lg.CountryName,
-                   CountryCode = lg.CountryCode,   // <-- serve per la bandiera
+                   CountryCode = lg.CountryCode,   // per la bandiera
                    KickoffUtc = mm.Date,
                    Home = th.Name ?? "",
                    Away = ta.Name ?? "",
                    LeagueId = mm.LeagueId,
                    Season = mm.Season
                }
-           ).AsNoTracking().FirstOrDefaultAsync();
+            ).AsNoTracking().FirstOrDefaultAsync();
 
             if (dto is null) return NotFound();
 
-            // Pronostico
+            // Recupera il pronostico
             var script = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatch_Prediction_New")
                 .Select(a => a.ViewValue)
@@ -418,16 +422,21 @@ namespace NextStakeWebApp.Pages.Match
                 }
             }
 
-            // BANDIERA SOLO DAVANTI AL NOME LEGA
-            string flag = FlagFromCountryCode(dto.CountryCode);
+            // Se dal form abbiamo un pick personalizzato, usalo
+            if (p is not null && !string.IsNullOrWhiteSpace(customPick))
+                p.ComboFinale = customPick.Trim();
 
+            // Flag dal CountryCode
+            var flag = FlagFromCountryCode(dto.CountryCode);
+
+            // Header + una sola riga vuota tra intestazione e blocco pronostici
             string header =
                 $"{flag} <b>{dto.LeagueName}</b>  🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
                 $"⚽️ {dto.Home} - {dto.Away}";
 
             string body = p is null
                 ? "\nNessun pronostico disponibile."
-                : $"\n🧠 <b>Pronostici:</b>\n" +
+                : "\n🧠 <b>Pronostici:</b>\n" +
                   $"  Esito: {p.Esito}\n" +
                   $"  U/O: {p.OverUnderRange}\n" +
                   $"  GG/NG: {p.GG_NG}\n" +
@@ -435,19 +444,21 @@ namespace NextStakeWebApp.Pages.Match
                   $"  MG Ospite: {p.MultigoalOspite}\n\n" +
                   $"<b>Pronostico Consigliato:</b>\n{p.ComboFinale}";
 
+            var caption = header + "\n" + body;
 
-            string caption = header + "\n" + body;
+            // Scelta topic da appsettings (default: PronosticiDaPubblicare)
+            var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var topicKey = string.IsNullOrWhiteSpace(topicName) ? "PronosticiDaPubblicare" : topicName!;
+            var topicIdStr = cfg[$"Telegram:Topics:{topicKey}"];
+            long.TryParse(topicIdStr, out var topicId);
 
-            // Topic: Pronostici da pubblicare (appsettings)
-            var topicIdStr = HttpContext.RequestServices
-                .GetRequiredService<IConfiguration>()["Telegram:Topics:PronosticiDaPubblicare"];
-            long.TryParse(topicIdStr, out long topicId);
-
+            // Invia solo testo (niente immagine logo)
             await _telegram.SendMessageAsync(topicId, caption);
 
             TempData["StatusMessage"] = "Pronostico inviato su Telegram.";
             return RedirectToPage(new { id });
         }
+
 
         private static string FlagFromCountryCode(string? countryCode)
         {

@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System;
+using System.Linq;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
@@ -13,7 +15,7 @@ static string GetConn(IConfiguration cfg, string key1, string key2, string? apps
     var c =
         cfg[key1] ??
         cfg[key2] ??
-        // 2) ENV “puro” (se proprio)
+        // 2) ENV “puro”
         Environment.GetEnvironmentVariable(key1) ??
         Environment.GetEnvironmentVariable(key2) ??
         // 3) fallback ConnectionStrings
@@ -55,6 +57,7 @@ builder.Services.AddDbContextPool<ReadDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+
 builder.Services.AddHttpClient();
 builder.Services.Configure<NextStakeWebApp.Services.TelegramOptions>(
     builder.Configuration.GetSection("Telegram"));
@@ -117,30 +120,56 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Npgsql.NpgsqlException ex)
         {
-            // Se la connessione viene chiusa a metà, logga e lascia partire l'app.
             Console.WriteLine($"[MIGRATE][WARN] transient error: {ex.Message}");
-            // Se preferisci forzare il fallimento, rilancia l'eccezione.
-            // throw;
+            // throw; // se vuoi fallire duro in caso di errore, decommenta
         }
     });
 
-    // --- seed ruoli/utente di servizio come già fai sotto ---
+    // --- SEED RUOLI + SUPERADMIN ---
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
     var config = sp.GetRequiredService<IConfiguration>();
+
     const string superRole = "SuperAdmin";
+    const string adminRole = "Admin";
+
     if (!await roleManager.RoleExistsAsync(superRole))
         await roleManager.CreateAsync(new IdentityRole(superRole));
-    var superEmail = config["SuperAdmin:Email"];
-    if (!string.IsNullOrWhiteSpace(superEmail))
+    if (!await roleManager.RoleExistsAsync(adminRole))
+        await roleManager.CreateAsync(new IdentityRole(adminRole));
+
+    var email = config["SuperAdmin:Email"];          // es. nextstakeai@gmail.com
+    var userName = config["SuperAdmin:UserName"] ?? email;
+    var password = config["SuperAdmin:Password"] ?? "Admin#12345"; // fallback se non impostata
+
+    if (!string.IsNullOrWhiteSpace(email))
     {
-        var user = await userManager.FindByEmailAsync(superEmail);
-        if (user != null && !await userManager.IsInRoleAsync(user, superRole))
-            await userManager.AddToRoleAsync(user, superRole);
+        var user = await userManager.FindByEmailAsync(email);
+        if (user == null)
+        {
+            user = new ApplicationUser
+            {
+                Email = email,
+                UserName = userName,
+                EmailConfirmed = true
+            };
+            var createRes = await userManager.CreateAsync(user, password);
+            if (!createRes.Succeeded)
+            {
+                Console.WriteLine("[SEED][ERROR] SuperAdmin creation failed: " +
+                                  string.Join("; ", createRes.Errors.Select(e => $"{e.Code}:{e.Description}")));
+            }
+        }
+
+        if (user != null)
+        {
+            if (!await userManager.IsInRoleAsync(user, superRole))
+                await userManager.AddToRoleAsync(user, superRole);
+            if (!await userManager.IsInRoleAsync(user, adminRole))
+                await userManager.AddToRoleAsync(user, adminRole);
+        }
     }
 }
-
-
 
 if (!app.Environment.IsDevelopment())
 {
