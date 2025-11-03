@@ -55,6 +55,10 @@ builder.Services.AddDbContextPool<ReadDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+builder.Services.AddHttpClient();
+builder.Services.Configure<NextStakeWebApp.Services.TelegramOptions>(
+    builder.Configuration.GetSection("Telegram"));
+builder.Services.AddSingleton<NextStakeWebApp.Services.ITelegramService, NextStakeWebApp.Services.TelegramService>();
 
 // Identity
 builder.Services

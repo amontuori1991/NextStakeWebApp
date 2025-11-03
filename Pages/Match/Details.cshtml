@@ -25,7 +25,6 @@
     </div>
 
     <!-- Match Widget (API-SPORTS) -->
-    <!-- Match Widget (API-SPORTS) -->
     <div class="card mb-3">
         <div class="card-body">
             @* TODO: spostare la key in appsettings e leggerla dal Model (già predisposto) *@
@@ -130,43 +129,70 @@
                 Corner
             </button>
         </li>
+        <li class="nav-item group-pron">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-club" type="button" role="tab">
+                Statistiche Club
+            </button>
+        </li>
+
     </ul>
 
     <div class="tab-content border-start border-end border-bottom p-3">
-        <!-- PRONOSTICI: Pronostici consigliati -->
-        <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
-            @if (Model.Data.Prediction is null)
-            {
-                <div class="text-muted">Nessun pronostico disponibile.</div>
-            }
-            else
-            {
-                var p = Model.Data.Prediction;
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <ul class="list-group">
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <ul class="list-group">
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span><strong>Goal simulati</strong></span>
-                                <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
-                        </ul>
-                    </div>
-                </div>
-            }
+ <!-- PRONOSTICI: Pronostici consigliati -->
+<div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
+    @if (Model.Data.Prediction is null)
+    {
+        <div class="text-muted">Nessun pronostico disponibile.</div>
+    }
+    else
+    {
+        var p = Model.Data.Prediction;
+        <div class="row g-3">
+            <div class="col-md-6">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span><strong>Goal simulati</strong></span>
+                        <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
+                </ul>
+            </div>
         </div>
+
+        <!-- INVIO SU TELEGRAM -->
+        <form method="post" asp-page-handler="SendPrediction" class="mt-3">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+            <!-- Topic predefinito; cambialo se vuoi un altro topic -->
+            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label">Pronostico Consigliato (modificabile prima dell'invio)</label>
+                    <input name="customPick" class="form-control" value="@Model.Data.Prediction?.ComboFinale" />
+                </div>
+                <div class="col-md-4 text-end">
+                    <button type="submit" class="btn btn-success w-100">
+                        🚀 Invia su Telegram
+                    </button>
+                </div>
+            </div>
+        </form>
+    }
+</div>
+
 
         <!-- PRONOSTICI: H2H (tutti) -->
         <!-- TAB: H2H (Widget API-SPORTS) -->
@@ -187,6 +213,47 @@
 
                 <noscript class="text-muted">
                     Abilita JavaScript per visualizzare il widget H2H.
+                </noscript>
+            </div>
+        </div>
+
+        <!-- TAB: Statistiche Club (API-SPORTS - dettagli squadra) -->
+        <div class="tab-pane fade" id="tab-club" role="tabpanel">
+            <div class="card card-body">
+
+                <!-- Config una sola volta -->
+                <api-sports-widget data-type="config"
+                                   data-key="9146b11baf44d94af6e14d347213d63a"
+                                   data-sport="football"
+                                   data-lang="it"
+                                   data-theme="grey"
+                                   data-show-logos="true"
+                                   data-team-statistics="true">
+                </api-sports-widget>
+
+                <!-- Casa -->
+                <h5 class="text-center mt-3 mb-3 text-primary fw-bold">@Model.Data.Home</h5>
+                <api-sports-widget data-type="team"
+                                   data-team-id="@Model.Data.HomeId"
+  data-league="@Model.Data.LeagueId"
+  data-season="@Model.Data.Season"
+  data-team-tab="statistics">
+</api-sports-widget>
+
+                <hr class="my-4" />
+
+                <!-- Ospite -->
+                <h5 class="text-center mt-3 mb-3 text-danger fw-bold">@Model.Data.Away</h5>
+                <api-sports-widget data-type="team"
+                                   data-team-id="@Model.Data.AwayId"
+                                   data-league="@Model.Data.LeagueId"
+                                   data-season="@Model.Data.Season"
+                                   data-team-tab="statistics">
+                </api-sports-widget>
+
+
+                <noscript class="text-muted">
+                    Abilita JavaScript per visualizzare le informazioni dettagliate delle squadre.
                 </noscript>
             </div>
         </div>
@@ -681,3 +748,4 @@
     }
 
 </div>
+

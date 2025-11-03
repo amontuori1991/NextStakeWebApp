@@ -8,6 +8,7 @@ using NextStakeWebApp.Models;
 using Npgsql;
 using System.Data;
 using System.Text.RegularExpressions;
+using NextStakeWebApp.Services;
 
 namespace NextStakeWebApp.Pages.Match
 {
@@ -17,12 +18,18 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ITelegramService _telegram;
 
-        public DetailsModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager)
+        public DetailsModel(
+            ReadDbContext read,
+            ApplicationDbContext write,
+            UserManager<ApplicationUser> userManager,
+            ITelegramService telegram)
         {
             _read = read;
             _write = write;
             _userManager = userManager;
+            _telegram = telegram;
         }
 
         public VM Data { get; private set; } = new();
@@ -245,27 +252,22 @@ namespace NextStakeWebApp.Pages.Match
                 }
             }
 
-            // --- Goals (NextMatchGoals_Analyses) ---
+            // --- Analyses vari ---
             GoalsAnalysisRow? goals = await RunGenericAnalysisAsync<GoalsAnalysisRow>(
                 "NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-            // --- Shots (NextMatchShots_Analyses) ---
             ShotsAnalysisRow? shots = await RunGenericAnalysisAsync<ShotsAnalysisRow>(
                 "NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-            // --- Corners (NextMatchCorners_Analyses) ---
             CornersAnalysisRow? corners = await RunGenericAnalysisAsync<CornersAnalysisRow>(
                 "NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-            // --- Cards (NextMatchCards_Analyses) ---
             CardsAnalysisRow? cards = await RunGenericAnalysisAsync<CardsAnalysisRow>(
                 "NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-            // --- Fouls (NextMatchFouls_Analyses) ---
             FoulsAnalysisRow? fouls = await RunGenericAnalysisAsync<FoulsAnalysisRow>(
                 "NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
 
-            // --- Offsides (NextMatchOffsides_Analyses) ---
             OffsidesAnalysisRow? offsides = await RunGenericAnalysisAsync<OffsidesAnalysisRow>(
                 "NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
 
@@ -292,13 +294,12 @@ namespace NextStakeWebApp.Pages.Match
                 }
             ).AsNoTracking().ToListAsync();
 
-            // --- Partite mancanti (lega+stagione, non terminate) ---
-            // Partite mancanti per STESSA LEGA e STESSA STAGIONE (non finite: StatusShort != 'FT')
+            // --- Giornate mancanti (lega+stagione, non terminate) ---
             int remainingMatches = await _read.Matches
                .Where(m => m.LeagueId == dto.LeagueId
                         && m.Season == dto.Season
                         && (m.StatusShort == null || m.StatusShort != "FT"))
-               .Select(m => m.MatchRound)           // <-- se la proprietà EF si chiama diversamente (es. Matchround), adegua qui
+               .Select(m => m.MatchRound)
                .Distinct()
                .CountAsync();
 
@@ -350,6 +351,144 @@ namespace NextStakeWebApp.Pages.Match
 
             await _write.SaveChangesAsync();
             return RedirectToPage(new { id });
+        }
+
+        public async Task<IActionResult> OnPostSendPredictionAsync(long id)
+        {
+            // Dati minimi per il messaggio + CountryCode
+            var dto = await (
+               from mm in _read.Matches
+               join lg in _read.Leagues on mm.LeagueId equals lg.Id
+               join th in _read.Teams on mm.HomeId equals th.Id
+               join ta in _read.Teams on mm.AwayId equals ta.Id
+               where mm.Id == id
+               select new
+               {
+                   MatchId = mm.Id,
+                   LeagueName = lg.Name,
+                   LeagueLogo = lg.Logo,
+                   CountryName = lg.CountryName,
+                   CountryCode = lg.CountryCode,   // <-- serve per la bandiera
+                   KickoffUtc = mm.Date,
+                   Home = th.Name ?? "",
+                   Away = ta.Name ?? "",
+                   LeagueId = mm.LeagueId,
+                   Season = mm.Season
+               }
+           ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null) return NotFound();
+
+            // Pronostico
+            var script = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatch_Prediction_New")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            PredictionRow? p = null;
+            if (!string.IsNullOrWhiteSpace(script))
+            {
+                var cs = _read.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
+                await conn.OpenAsync();
+
+                await using var cmd = new NpgsqlCommand(script, conn);
+                cmd.Parameters.AddWithValue("@MatchId", (int)id);
+
+                await using var rd = await cmd.ExecuteReaderAsync();
+                if (await rd.ReadAsync())
+                {
+                    p = new PredictionRow
+                    {
+                        Id = GetField<int>(rd, "Id"),
+                        GoalSimulatoCasa = GetField<int>(rd, "Goal Simulati Casa"),
+                        GoalSimulatoOspite = GetField<int>(rd, "Goal Simulati Ospite"),
+                        TotaleGoalSimulati = GetField<int>(rd, "Totale Goal Simulati"),
+                        Esito = GetField<string>(rd, "Esito"),
+                        OverUnderRange = GetField<string>(rd, "OverUnderRange"),
+                        Over1_5 = GetField<decimal?>(rd, "Over1_5"),
+                        Over2_5 = GetField<decimal?>(rd, "Over2_5"),
+                        Over3_5 = GetField<decimal?>(rd, "Over3_5"),
+                        GG_NG = GetField<string>(rd, "GG_NG"),
+                        MultigoalCasa = GetField<string>(rd, "MultigoalCasa"),
+                        MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
+                        ComboFinale = GetField<string>(rd, "ComboFinale")
+                    };
+                }
+            }
+
+            // BANDIERA SOLO DAVANTI AL NOME LEGA
+            string flag = FlagFromCountryCode(dto.CountryCode);
+
+            string header =
+                $"{flag} <b>{dto.LeagueName}</b>  🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}";
+
+            string body = p is null
+                ? "\nNessun pronostico disponibile."
+                : $"\n🧠 <b>Pronostici:</b>\n" +
+                  $"  Esito: {p.Esito}\n" +
+                  $"  U/O: {p.OverUnderRange}\n" +
+                  $"  GG/NG: {p.GG_NG}\n" +
+                  $"  MG Casa: {p.MultigoalCasa}\n" +
+                  $"  MG Ospite: {p.MultigoalOspite}\n\n" +
+                  $"<b>Pronostico Consigliato:</b>\n{p.ComboFinale}";
+
+
+            string caption = header + "\n" + body;
+
+            // Topic: Pronostici da pubblicare (appsettings)
+            var topicIdStr = HttpContext.RequestServices
+                .GetRequiredService<IConfiguration>()["Telegram:Topics:PronosticiDaPubblicare"];
+            long.TryParse(topicIdStr, out long topicId);
+
+            await _telegram.SendMessageAsync(topicId, caption);
+
+            TempData["StatusMessage"] = "Pronostico inviato su Telegram.";
+            return RedirectToPage(new { id });
+        }
+
+        private static string FlagFromCountryCode(string? countryCode)
+        {
+            if (string.IsNullOrWhiteSpace(countryCode)) return "🌍";
+
+            var cc = countryCode.Trim().ToUpperInvariant();
+
+            // Sotto-codici UK più usati dalle leghe
+            switch (cc)
+            {
+                case "GB-ENG": return "🏴"; // Inghilterra
+                case "GB-SCT": return "🏴"; // Scozia
+                case "GB-WLS": return "🏴"; // Galles
+                case "GB-NIR": return "🇬🇧"; // NI: fallback Union Jack
+            }
+
+            // Se c'è un trattino (es. GB-ENG) prendiamo la parte principale (GB)
+            var main = cc.Contains('-') ? cc.Split('-')[0] : cc;
+
+            // Alcuni provider usano 3 lettere (USA, KOS...). Mapping rapido.
+            switch (main)
+            {
+                case "USA": return "🇺🇸";
+                case "KOS": return "🇽🇰";
+                case "UEFA": return "🇪🇺";
+                case "ENG": return "🏴";
+                case "SCO": return "🏴";
+                case "WAL": return "🏴";
+                case "NIR": return "🇬🇧";
+            }
+
+            // ISO-2 standard => Regional Indicator Symbols
+            if (main.Length == 2 && main.All(char.IsLetter))
+            {
+                int baseCode = 0x1F1E6; // 'A'
+                var r1 = char.ConvertFromUtf32(baseCode + (main[0] - 'A'));
+                var r2 = char.ConvertFromUtf32(baseCode + (main[1] - 'A'));
+                return r1 + r2;
+            }
+
+            return "🌍";
         }
 
         private async Task<List<FormRow>> GetLastFiveAsync(int teamId, int leagueId, int season)
@@ -458,6 +597,29 @@ namespace NextStakeWebApp.Pages.Match
             prop?.SetValue(result, dict);
             return result;
         }
+
+        private static string CountryNameToFlag(string? country)
+        {
+            if (string.IsNullOrWhiteSpace(country)) return "🌍";
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Italy"] = "🇮🇹",
+                ["Italia"] = "🇮🇹",
+                ["England"] = "🇬🇧",
+                ["United Kingdom"] = "🇬🇧",
+                ["Spain"] = "🇪🇸",
+                ["France"] = "🇫🇷",
+                ["Germany"] = "🇩🇪",
+                ["Portugal"] = "🇵🇹",
+                ["Netherlands"] = "🇳🇱",
+                ["Turkey"] = "🇹🇷",
+                ["Belgium"] = "🇧🇪"
+            };
+            return map.TryGetValue(country.Trim(), out var f) ? f : "🌍";
+        }
+
+        private static string HtmlEscape(string? s)
+            => string.IsNullOrEmpty(s) ? "" : System.Net.WebUtility.HtmlEncode(s);
 
         // Normalizza le etichette
         private static string PrettyLabel(string raw)
