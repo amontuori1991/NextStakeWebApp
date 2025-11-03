@@ -5,10 +5,9 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
+using NextStakeWebApp.Services;
 using Npgsql;
 using System.Data;
-using System.Text.RegularExpressions;
-using NextStakeWebApp.Services;
 
 namespace NextStakeWebApp.Pages.Match
 {
@@ -19,17 +18,20 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ITelegramService _telegram;
+        private readonly IConfiguration _config;
 
         public DetailsModel(
             ReadDbContext read,
             ApplicationDbContext write,
             UserManager<ApplicationUser> userManager,
-            ITelegramService telegram)
+            ITelegramService telegram,
+            IConfiguration config)
         {
             _read = read;
             _write = write;
             _userManager = userManager;
             _telegram = telegram;
+            _config = config;
         }
 
         public VM Data { get; private set; } = new();
@@ -52,53 +54,26 @@ namespace NextStakeWebApp.Pages.Match
             public string? AwayLogo { get; set; }
 
             public DateTime KickoffUtc { get; set; }
-            public bool IsFavorite { get; set; }
-            public int RemainingMatches { get; set; }
-
-            public List<FormRow> HomeForm { get; set; } = new();
-            public List<FormRow> AwayForm { get; set; } = new();
-
-            public List<StandRow> Standings { get; set; } = new();
-
-            public List<H2HRow> HeadToHead { get; set; } = new();
 
             public PredictionRow? Prediction { get; set; }
             public ExchangePredictionRow? Exchange { get; set; }
 
-            // Analisi varie
-            public GoalsAnalysisRow? Goals { get; set; }          // NextMatchGoals_Analyses
-            public ShotsAnalysisRow? Shots { get; set; }          // NextMatchShots_Analyses
-            public CornersAnalysisRow? Corners { get; set; }      // NextMatchCorners_Analyses
-            public CardsAnalysisRow? Cards { get; set; }          // NextMatchCards_Analyses
-            public FoulsAnalysisRow? Fouls { get; set; }          // NextMatchFouls_Analyses
-            public OffsidesAnalysisRow? Offsides { get; set; }    // NextMatchOffsides_Analyses
+            public bool IsFavorite { get; set; }
+            public int RemainingMatches { get; set; }
 
-            public int? HomeGoal { get; set; }
-            public int? AwayGoal { get; set; }
-            public string? StatusShort { get; set; }
+            public MetricGroup? Goals { get; set; }
+            public MetricGroup? Shots { get; set; }
+            public MetricGroup? Fouls { get; set; }
+            public MetricGroup? Cards { get; set; }
+            public MetricGroup? Corners { get; set; }
+            public MetricGroup? Offsides { get; set; }
+
+            public List<FormRow> HomeForm { get; set; } = new();
+            public List<FormRow> AwayForm { get; set; } = new();
+            public List<TableStandingRow> Standings { get; set; } = new();
+
         }
-
-        public class FormRow
-        {
-            public int MatchId { get; set; }
-            public DateTime DateUtc { get; set; }
-            public string Opponent { get; set; } = "";
-            public bool IsHome { get; set; }
-            public string Score { get; set; } = "";
-            public string Result { get; set; } = "";
-        }
-
-        public class H2HRow
-        {
-            public long MatchId { get; set; }
-            public DateTime DateUtc { get; set; }
-            public string LeagueName { get; set; } = "";
-            public string HomeName { get; set; } = "";
-            public string AwayName { get; set; } = "";
-            public string Score { get; set; } = "";
-        }
-
-        public class StandRow
+        public class TableStandingRow
         {
             public int Rank { get; set; }
             public long TeamId { get; set; }
@@ -113,14 +88,9 @@ namespace NextStakeWebApp.Pages.Match
             public int Diff { get; set; }
         }
 
-        // Contenitori generici per ogni vista Analyses (chiave/valore)
-        public class GoalsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-        public class ShotsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-        public class CornersAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-        public class CardsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-        public class FoulsAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-        public class OffsidesAnalysisRow { public Dictionary<string, string> Metrics { get; set; } = new(); }
-
+        // =======================
+        // GET: carica dati + analyses da Neon
+        // =======================
         public async Task<IActionResult> OnGetAsync(long id)
         {
             var dto = await (
@@ -137,213 +107,83 @@ namespace NextStakeWebApp.Pages.Match
                     LeagueName = lg.Name,
                     LeagueLogo = lg.Logo,
                     CountryName = lg.CountryName,
-                    Home = th.Name ?? "",
-                    Away = ta.Name ?? "",
+                    HomeId = th.Id,
+                    AwayId = ta.Id,
+                    Home = th.Name,
+                    Away = ta.Name,
                     HomeLogo = th.Logo,
                     AwayLogo = ta.Logo,
-                    HomeTeamId = th.Id,
-                    AwayTeamId = ta.Id,
-                    KickoffUtc = mm.Date,
-                    HomeGoal = mm.HomeGoal,
-                    AwayGoal = mm.AwayGoal,
-                    StatusShort = mm.StatusShort
+                    KickoffUtc = mm.Date
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
 
-            if (dto == null) return NotFound();
+            if (dto is null) return NotFound();
 
             var userId = _userManager.GetUserId(User)!;
             var isFav = await _write.FavoriteMatches.AnyAsync(f => f.UserId == userId && f.MatchId == id);
 
-            var homeForm = await GetLastFiveAsync((int)dto.HomeTeamId, dto.LeagueId, dto.Season);
-            var awayForm = await GetLastFiveAsync((int)dto.AwayTeamId, dto.LeagueId, dto.Season);
+            // Carichi accessori
+            var remaining = await GetRemainingMatchesAsync(dto.LeagueId, dto.Season);
+            var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
+            var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
+            var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
 
-            var standings = await (
-                from s in _read.Standings
-                join t in _read.Teams on s.TeamId equals t.Id
-                where s.LeagueId == dto.LeagueId && s.Season == dto.Season
-                orderby s.Rank
-                select new StandRow
-                {
-                    Rank = s.Rank ?? 0,
-                    TeamId = t.Id,
-                    TeamName = t.Name ?? "",
-                    Points = s.Points ?? 0,
-                    Played = s.AllPlayed ?? 0,
-                    Win = s.AllWin ?? 0,
-                    Draw = s.AllDraw ?? 0,
-                    Lose = s.AllLose ?? 0,
-                    GF = s.AllGoalFor ?? 0,
-                    GA = s.AllGoalAgainst ?? 0,
-                    Diff = s.GoalsDiff ?? 0
-                }
-            ).AsNoTracking().ToListAsync();
+            // Prediction & Exchange da Analyses
+            var prediction = await LoadPredictionAsync(id);
+            var exchange = await LoadExchangeAsync(id);
 
-            // --- Prediction ---
-            PredictionRow? prediction = null;
-            var script = await _read.Analyses
-                .Where(a => a.ViewName == "NextMatch_Prediction_New")
-                .Select(a => a.ViewValue)
-                .AsNoTracking()
-                .FirstOrDefaultAsync();
-
-            if (!string.IsNullOrWhiteSpace(script))
-            {
-                var cs = _read.Database.GetConnectionString();
-                await using var conn = new NpgsqlConnection(cs);
-                await conn.OpenAsync();
-
-                await using var cmd = new NpgsqlCommand(script, conn);
-                cmd.Parameters.AddWithValue("@MatchId", (int)id);
-
-                await using var rd = await cmd.ExecuteReaderAsync();
-                if (await rd.ReadAsync())
-                {
-                    prediction = new PredictionRow
-                    {
-                        Id = GetField<int>(rd, "Id"),
-                        GoalSimulatoCasa = GetField<int>(rd, "Goal Simulati Casa"),
-                        GoalSimulatoOspite = GetField<int>(rd, "Goal Simulati Ospite"),
-                        TotaleGoalSimulati = GetField<int>(rd, "Totale Goal Simulati"),
-                        Esito = GetField<string>(rd, "Esito"),
-                        OverUnderRange = GetField<string>(rd, "OverUnderRange"),
-                        Over1_5 = GetField<decimal?>(rd, "Over1_5"),
-                        Over2_5 = GetField<decimal?>(rd, "Over2_5"),
-                        Over3_5 = GetField<decimal?>(rd, "Over3_5"),
-                        GG_NG = GetField<string>(rd, "GG_NG"),
-                        MultigoalCasa = GetField<string>(rd, "MultigoalCasa"),
-                        MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
-                        ComboFinale = GetField<string>(rd, "ComboFinale")
-                    };
-                }
-            }
-
-            // --- Exchange ---
-            ExchangePredictionRow? exchange = null;
-            var exchangeScript = await _read.Analyses
-                .Where(a => a.ViewName == "NextMatch_Prediction_Exchange")
-                .Select(a => a.ViewValue)
-                .AsNoTracking()
-                .FirstOrDefaultAsync();
-
-            if (!string.IsNullOrWhiteSpace(exchangeScript))
-            {
-                var cs = _read.Database.GetConnectionString();
-                await using var conn2 = new NpgsqlConnection(cs);
-                await conn2.OpenAsync();
-
-                await using var cmd2 = new NpgsqlCommand(exchangeScript, conn2);
-                cmd2.Parameters.AddWithValue("@MatchId", (int)id);
-
-                await using var rd2 = await cmd2.ExecuteReaderAsync();
-                if (await rd2.ReadAsync())
-                {
-                    exchange = new ExchangePredictionRow
-                    {
-                        MatchId = GetField<long>(rd2, "MatchId"),
-                        Banca1Affidabilita = GetField<int?>(rd2, "Banca 1 - Affidabilità %"),
-                        BancaXAffidabilita = GetField<int?>(rd2, "Banca X - Affidabilità %"),
-                        Banca2Affidabilita = GetField<int?>(rd2, "Banca 2 - Affidabilità %"),
-                        BancataConsigliata = GetField<string>(rd2, "Bancata consigliata"),
-                        BancaRisultato1 = GetField<string>(rd2, "Banca Risultato 1"),
-                        BancaRisultato2 = GetField<string>(rd2, "Banca Risultato 2"),
-                        BancaRisultato3 = GetField<string>(rd2, "Banca Risultato 3"),
-                    };
-                }
-            }
-
-            // --- Analyses vari ---
-            GoalsAnalysisRow? goals = await RunGenericAnalysisAsync<GoalsAnalysisRow>(
-                "NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            ShotsAnalysisRow? shots = await RunGenericAnalysisAsync<ShotsAnalysisRow>(
-                "NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            CornersAnalysisRow? corners = await RunGenericAnalysisAsync<CornersAnalysisRow>(
-                "NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            CardsAnalysisRow? cards = await RunGenericAnalysisAsync<CardsAnalysisRow>(
-                "NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            FoulsAnalysisRow? fouls = await RunGenericAnalysisAsync<FoulsAnalysisRow>(
-                "NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            OffsidesAnalysisRow? offsides = await RunGenericAnalysisAsync<OffsidesAnalysisRow>(
-                "NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
-
-            // --- H2H (tutte le stagioni, solo partite terminate) ---
-            var finished = new[] { "FT", "AET", "PEN" };
-            var h2h = await (
-                from m in _read.Matches
-                join th in _read.Teams on m.HomeId equals th.Id
-                join ta in _read.Teams on m.AwayId equals ta.Id
-                join lg in _read.Leagues on m.LeagueId equals lg.Id
-                where finished.Contains(m.StatusShort!)
-                      && ((m.HomeId == dto.HomeTeamId && m.AwayId == dto.AwayTeamId)
-                       || (m.HomeId == dto.AwayTeamId && m.AwayId == dto.HomeTeamId))
-                      && m.Date <= DateTime.UtcNow
-                orderby m.Date descending
-                select new H2HRow
-                {
-                    MatchId = m.Id,
-                    DateUtc = m.Date,
-                    LeagueName = lg.Name ?? "",
-                    HomeName = th.Name ?? "",
-                    AwayName = ta.Name ?? "",
-                    Score = $"{(m.HomeGoal ?? 0)}-{(m.AwayGoal ?? 0)}"
-                }
-            ).AsNoTracking().ToListAsync();
-
-            // --- Giornate mancanti (lega+stagione, non terminate) ---
-            int remainingMatches = await _read.Matches
-               .Where(m => m.LeagueId == dto.LeagueId
-                        && m.Season == dto.Season
-                        && (m.StatusShort == null || m.StatusShort != "FT"))
-               .Select(m => m.MatchRound)
-               .Distinct()
-               .CountAsync();
+            // Analyses generiche (dizionari)
+            var goals = await RunAnalysisAsync("NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var shots = await RunAnalysisAsync("NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var corners = await RunAnalysisAsync("NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var cards = await RunAnalysisAsync("NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var fouls = await RunAnalysisAsync("NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var offsides = await RunAnalysisAsync("NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
 
             Data = new VM
             {
                 MatchId = dto.MatchId,
                 LeagueId = dto.LeagueId,
                 Season = dto.Season,
-                LeagueName = dto.LeagueName ?? "League",
+                LeagueName = dto.LeagueName ?? "",
                 LeagueLogo = dto.LeagueLogo,
                 CountryName = dto.CountryName,
-                Home = dto.Home,
-                Away = dto.Away,
+                HomeId = dto.HomeId,
+                AwayId = dto.AwayId,
+                Home = dto.Home ?? "",
+                Away = dto.Away ?? "",
                 HomeLogo = dto.HomeLogo,
                 AwayLogo = dto.AwayLogo,
-                HomeId = dto.HomeTeamId,
-                AwayId = dto.AwayTeamId,
                 KickoffUtc = dto.KickoffUtc,
-                HomeGoal = dto.HomeGoal,
-                AwayGoal = dto.AwayGoal,
-                StatusShort = dto.StatusShort,
                 IsFavorite = isFav,
-                HomeForm = homeForm,
-                AwayForm = awayForm,
-                Standings = standings,
+                RemainingMatches = remaining,
+
                 Prediction = prediction,
                 Exchange = exchange,
+
                 Goals = goals,
                 Shots = shots,
                 Corners = corners,
                 Cards = cards,
                 Fouls = fouls,
                 Offsides = offsides,
-                HeadToHead = h2h,
-                RemainingMatches = remainingMatches
+
+                HomeForm = homeForm,
+                AwayForm = awayForm,
+                Standings = standings
             };
 
             return Page();
         }
 
+        // =======================
+        // ⭐ Toggle preferito
+        // =======================
         public async Task<IActionResult> OnPostToggleFavoriteAsync(long id)
         {
             var userId = _userManager.GetUserId(User)!;
             var existing = await _write.FavoriteMatches.FirstOrDefaultAsync(f => f.UserId == userId && f.MatchId == id);
+
             if (existing == null)
                 _write.FavoriteMatches.Add(new FavoriteMatch { UserId = userId, MatchId = id });
             else
@@ -353,14 +193,17 @@ namespace NextStakeWebApp.Pages.Match
             return RedirectToPage(new { id });
         }
 
+        // =======================
+        // INVIO PRONOSTICI (topicName -> id da config)
+        // =======================
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> OnPostSendPredictionAsync(long id, string? topicName, string? customPick)
         {
-            // Difesa extra lato server
-            if (!User.IsInRole("Admin"))
-                return Forbid();
+            if (!User.IsInRole("Admin")) return Forbid();
 
-            // Dati minimi per il messaggio + CountryCode
+            var key = string.IsNullOrWhiteSpace(topicName) ? "PronosticiDaPubblicare" : topicName!;
+            long.TryParse(_config[$"Telegram:Topics:{key}"], out var topicId);
+
             var dto = await (
                from mm in _read.Matches
                join lg in _read.Leagues on mm.LeagueId equals lg.Id
@@ -369,204 +212,164 @@ namespace NextStakeWebApp.Pages.Match
                where mm.Id == id
                select new
                {
-                   MatchId = mm.Id,
                    LeagueName = lg.Name,
-                   CountryName = lg.CountryName,
-                   CountryCode = lg.CountryCode,   // per la bandiera
+                   CountryCode = lg.CountryCode,
                    KickoffUtc = mm.Date,
                    Home = th.Name ?? "",
-                   Away = ta.Name ?? "",
-                   LeagueId = mm.LeagueId,
-                   Season = mm.Season
+                   Away = ta.Name ?? ""
                }
             ).AsNoTracking().FirstOrDefaultAsync();
 
             if (dto is null) return NotFound();
 
-            // Recupera il pronostico
+            var p = await LoadPredictionAsync(id);
+            if (p is not null && !string.IsNullOrWhiteSpace(customPick))
+                p.ComboFinale = customPick.Trim();
+
+            var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
+
+            string message =
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}\n\n" +
+                $"🧠 <b>Pronostici:</b>\n" +
+                $"  Esito: {p?.Esito}\n" +
+                $"  U/O: {p?.OverUnderRange}\n" +
+                $"  GG/NG: {p?.GG_NG}\n" +
+                $"  MG Casa: {p?.MultigoalCasa}\n" +
+                $"  MG Ospite: {p?.MultigoalOspite}\n\n" +
+                $"<b>Pronostico Consigliato:</b>\n{p?.ComboFinale}";
+
+            await _telegram.SendMessageAsync(topicId, message);
+            TempData["StatusMessage"] = "✅ Pronostico inviato su Telegram.";
+            return RedirectToPage(new { id });
+        }
+
+        // =======================
+        // INVIO EXCHANGE (topicName -> id da config)
+        // =======================
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> OnPostSendExchangeAsync(long id, string customLay, string riskLevel, string? topicName)
+        {
+            if (!User.IsInRole("Admin")) return Forbid();
+
+            var key = string.IsNullOrWhiteSpace(topicName) ? "ExchangeDaPubblicare" : topicName!;
+            long.TryParse(_config[$"Telegram:Topics:{key}"], out var topicId);
+
+            var dto = await (
+                from mm in _read.Matches
+                join lg in _read.Leagues on mm.LeagueId equals lg.Id
+                join th in _read.Teams on mm.HomeId equals th.Id
+                join ta in _read.Teams on mm.AwayId equals ta.Id
+                where mm.Id == id
+                select new
+                {
+                    LeagueName = lg.Name,
+                    CountryCode = lg.CountryCode,
+                    KickoffUtc = mm.Date,
+                    Home = th.Name ?? "",
+                    Away = ta.Name ?? ""
+                }
+            ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null) return NotFound();
+
+            string flag = EmojiHelper.FromCountryCode(dto.CountryCode);
+            bool isScore = customLay.Contains('-');
+            string tipoBancata = isScore ? "Banca Risultato Esatto" : "Banca 1X2";
+
+            string message =
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}\n\n" +
+                $"🧠 <b>Bancate consigliate:</b>\n" +
+                $"♦️ {tipoBancata}: {customLay} ⚠️ Rischio: {riskLevel}";
+
+            await _telegram.SendMessageAsync(topicId, message);
+
+            TempData["MessageSent"] = "✅ Messaggio Exchange inviato con successo!";
+            return RedirectToPage(new { id });
+        }
+
+        // =======================
+        // Loader Prediction
+        // =======================
+        private async Task<PredictionRow?> LoadPredictionAsync(long matchId)
+        {
             var script = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatch_Prediction_New")
                 .Select(a => a.ViewValue)
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-            PredictionRow? p = null;
-            if (!string.IsNullOrWhiteSpace(script))
+            if (string.IsNullOrWhiteSpace(script)) return null;
+
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(script, conn);
+            cmd.Parameters.AddWithValue("@MatchId", (int)matchId);
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync()) return null;
+
+            return new PredictionRow
             {
-                var cs = _read.Database.GetConnectionString();
-                await using var conn = new NpgsqlConnection(cs);
-                await conn.OpenAsync();
-
-                await using var cmd = new NpgsqlCommand(script, conn);
-                cmd.Parameters.AddWithValue("@MatchId", (int)id);
-
-                await using var rd = await cmd.ExecuteReaderAsync();
-                if (await rd.ReadAsync())
-                {
-                    p = new PredictionRow
-                    {
-                        Id = GetField<int>(rd, "Id"),
-                        GoalSimulatoCasa = GetField<int>(rd, "Goal Simulati Casa"),
-                        GoalSimulatoOspite = GetField<int>(rd, "Goal Simulati Ospite"),
-                        TotaleGoalSimulati = GetField<int>(rd, "Totale Goal Simulati"),
-                        Esito = GetField<string>(rd, "Esito"),
-                        OverUnderRange = GetField<string>(rd, "OverUnderRange"),
-                        Over1_5 = GetField<decimal?>(rd, "Over1_5"),
-                        Over2_5 = GetField<decimal?>(rd, "Over2_5"),
-                        Over3_5 = GetField<decimal?>(rd, "Over3_5"),
-                        GG_NG = GetField<string>(rd, "GG_NG"),
-                        MultigoalCasa = GetField<string>(rd, "MultigoalCasa"),
-                        MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
-                        ComboFinale = GetField<string>(rd, "ComboFinale")
-                    };
-                }
-            }
-
-            // Se dal form abbiamo un pick personalizzato, usalo
-            if (p is not null && !string.IsNullOrWhiteSpace(customPick))
-                p.ComboFinale = customPick.Trim();
-
-            // Flag dal CountryCode
-            var flag = FlagFromCountryCode(dto.CountryCode);
-
-            // Header + una sola riga vuota tra intestazione e blocco pronostici
-            string header =
-                $"{flag} <b>{dto.LeagueName}</b>  🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
-                $"⚽️ {dto.Home} - {dto.Away}";
-
-            string body = p is null
-                ? "\nNessun pronostico disponibile."
-                : "\n🧠 <b>Pronostici:</b>\n" +
-                  $"  Esito: {p.Esito}\n" +
-                  $"  U/O: {p.OverUnderRange}\n" +
-                  $"  GG/NG: {p.GG_NG}\n" +
-                  $"  MG Casa: {p.MultigoalCasa}\n" +
-                  $"  MG Ospite: {p.MultigoalOspite}\n\n" +
-                  $"<b>Pronostico Consigliato:</b>\n{p.ComboFinale}";
-
-            var caption = header + "\n" + body;
-
-            // Scelta topic da appsettings (default: PronosticiDaPubblicare)
-            var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var topicKey = string.IsNullOrWhiteSpace(topicName) ? "PronosticiDaPubblicare" : topicName!;
-            var topicIdStr = cfg[$"Telegram:Topics:{topicKey}"];
-            long.TryParse(topicIdStr, out var topicId);
-
-            // Invia solo testo (niente immagine logo)
-            await _telegram.SendMessageAsync(topicId, caption);
-
-            TempData["StatusMessage"] = "Pronostico inviato su Telegram.";
-            return RedirectToPage(new { id });
+                Id = GetField<int>(rd, "Id"),
+                GoalSimulatoCasa = GetField<int>(rd, "Goal Simulati Casa"),
+                GoalSimulatoOspite = GetField<int>(rd, "Goal Simulati Ospite"),
+                TotaleGoalSimulati = GetField<int>(rd, "Totale Goal Simulati"),
+                Esito = GetField<string>(rd, "Esito"),
+                OverUnderRange = GetField<string>(rd, "OverUnderRange"),
+                Over1_5 = GetField<decimal?>(rd, "Over1_5"),
+                Over2_5 = GetField<decimal?>(rd, "Over2_5"),
+                Over3_5 = GetField<decimal?>(rd, "Over3_5"),
+                GG_NG = GetField<string>(rd, "GG_NG"),
+                MultigoalCasa = GetField<string>(rd, "MultigoalCasa"),
+                MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
+                ComboFinale = GetField<string>(rd, "ComboFinale")
+            };
         }
 
-
-        private static string FlagFromCountryCode(string? countryCode)
+        // =======================
+        // Loader Exchange
+        // =======================
+        private async Task<ExchangePredictionRow?> LoadExchangeAsync(long matchId)
         {
-            if (string.IsNullOrWhiteSpace(countryCode)) return "🌍";
+            var script = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatch_Prediction_Exchange")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
 
-            var cc = countryCode.Trim().ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(script)) return null;
 
-            // Sotto-codici UK più usati dalle leghe
-            switch (cc)
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using var cmd = new NpgsqlCommand(script, conn);
+            cmd.Parameters.AddWithValue("@MatchId", (int)matchId);
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync()) return null;
+
+            return new ExchangePredictionRow
             {
-                case "GB-ENG": return "🏴"; // Inghilterra
-                case "GB-SCT": return "🏴"; // Scozia
-                case "GB-WLS": return "🏴"; // Galles
-                case "GB-NIR": return "🇬🇧"; // NI: fallback Union Jack
-            }
-
-            // Se c'è un trattino (es. GB-ENG) prendiamo la parte principale (GB)
-            var main = cc.Contains('-') ? cc.Split('-')[0] : cc;
-
-            // Alcuni provider usano 3 lettere (USA, KOS...). Mapping rapido.
-            switch (main)
-            {
-                case "USA": return "🇺🇸";
-                case "KOS": return "🇽🇰";
-                case "UEFA": return "🇪🇺";
-                case "ENG": return "🏴";
-                case "SCO": return "🏴";
-                case "WAL": return "🏴";
-                case "NIR": return "🇬🇧";
-            }
-
-            // ISO-2 standard => Regional Indicator Symbols
-            if (main.Length == 2 && main.All(char.IsLetter))
-            {
-                int baseCode = 0x1F1E6; // 'A'
-                var r1 = char.ConvertFromUtf32(baseCode + (main[0] - 'A'));
-                var r2 = char.ConvertFromUtf32(baseCode + (main[1] - 'A'));
-                return r1 + r2;
-            }
-
-            return "🌍";
+                MatchId = GetField<long>(rd, "MatchId"),
+                Banca1Affidabilita = GetField<int?>(rd, "Banca 1 - Affidabilità %"),
+                BancaXAffidabilita = GetField<int?>(rd, "Banca X - Affidabilità %"),
+                Banca2Affidabilita = GetField<int?>(rd, "Banca 2 - Affidabilità %"),
+                BancataConsigliata = GetField<string>(rd, "Bancata consigliata"),
+                BancaRisultato1 = GetField<string>(rd, "Banca Risultato 1"),
+                BancaRisultato2 = GetField<string>(rd, "Banca Risultato 2"),
+                BancaRisultato3 = GetField<string>(rd, "Banca Risultato 3")
+            };
         }
 
-        private async Task<List<FormRow>> GetLastFiveAsync(int teamId, int leagueId, int season)
-        {
-            var finished = new[] { "FT", "AET", "PEN" };
-
-            var rows = await (
-                from m in _read.Matches
-                where m.LeagueId == leagueId && m.Season == season
-                      && finished.Contains(m.StatusShort!)
-                      && (m.HomeId == teamId || m.AwayId == teamId)
-                orderby m.Date descending
-                select new { m.Id, m.Date, m.HomeId, m.AwayId, m.HomeGoal, m.AwayGoal }
-            ).AsNoTracking().Take(5).ToListAsync();
-
-            var result = new List<FormRow>(rows.Count);
-            foreach (var r in rows)
-            {
-                bool wasHome = r.HomeId == teamId;
-                int opponentId = wasHome ? r.AwayId : r.HomeId;
-
-                var oppName = await _read.Teams.Where(t => t.Id == opponentId).Select(t => t.Name).FirstOrDefaultAsync() ?? "—";
-
-                int gf = wasHome ? (r.HomeGoal ?? 0) : (r.AwayGoal ?? 0);
-                int ga = wasHome ? (r.AwayGoal ?? 0) : (r.HomeGoal ?? 0);
-                string res = gf > ga ? "W" : (gf == ga ? "D" : "L");
-
-                result.Add(new FormRow
-                {
-                    MatchId = r.Id,
-                    DateUtc = r.Date,
-                    Opponent = oppName,
-                    IsHome = wasHome,
-                    Score = $"{r.HomeGoal ?? 0}-{r.AwayGoal ?? 0}",
-                    Result = res
-                });
-            }
-            return result;
-        }
-
-        private static T? GetField<T>(IDataRecord r, string name)
-        {
-            int ord = r.GetOrdinal(name);
-            if (r.IsDBNull(ord)) return default;
-            object val = r.GetValue(ord);
-            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-
-            try
-            {
-                if (targetType == typeof(long))
-                {
-                    if (val is long l) return (T)(object)l;
-                    if (val is int i) return (T)(object)(long)i;
-                }
-                else if (targetType == typeof(int))
-                {
-                    if (val is int i) return (T)(object)i;
-                    if (val is long l) return (T)(object)(int)l;
-                }
-                return (T)Convert.ChangeType(val, targetType);
-            }
-            catch { return (T)val; }
-        }
-
-        // Esegue uno script in Analyses e ritorna un dizionario chiave/valore delle colonne
-        private async Task<T?> RunGenericAnalysisAsync<T>(string viewName, int leagueId, int season, int matchId)
-            where T : class, new()
+        // =======================
+        // Analyses generiche (ritorna MetricGroup.Metrics)
+        // =======================
+        private async Task<MetricGroup?> RunAnalysisAsync(string viewName, int leagueId, int season, int matchId)
         {
             var script = await _read.Analyses
                 .Where(a => a.ViewName == viewName)
@@ -588,82 +391,126 @@ namespace NextStakeWebApp.Pages.Match
             await using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync()) return null;
 
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var mg = new MetricGroup { Metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) };
             for (int i = 0; i < rd.FieldCount; i++)
             {
-                var colName = rd.GetName(i);
-
-                if (string.Equals(colName, "Id", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(colName, "MatchId", StringComparison.OrdinalIgnoreCase))
+                var name = rd.GetName(i);
+                if (name.Equals("Id", StringComparison.OrdinalIgnoreCase) || name.Equals("MatchId", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                string displayName = PrettyLabel(colName);
-                string value = rd.IsDBNull(i) ? "—" : Convert.ToString(rd.GetValue(i)) ?? "—";
-                dict[displayName] = value;
+                var value = rd.IsDBNull(i) ? "—" : Convert.ToString(rd.GetValue(i)) ?? "—";
+                mg.Metrics[name] = value;
             }
+            return mg;
+        }
 
-            var result = new T();
-            // tutte le nostre *Row hanno la proprietà Metrics
-            var prop = typeof(T).GetProperty("Metrics");
-            prop?.SetValue(result, dict);
+        private async Task<int> GetRemainingMatchesAsync(int leagueId, int season)
+        {
+            return await _read.Matches
+               .Where(m => m.LeagueId == leagueId && m.Season == season && (m.StatusShort == null || m.StatusShort != "FT"))
+               .Select(m => m.MatchRound)
+               .Distinct()
+               .CountAsync();
+        }
+
+        private async Task<List<FormRow>> GetLastFiveAsync(long teamId, int leagueId, int season)
+        {
+            var finished = new[] { "FT", "AET", "PEN" };
+
+            var rows = await (
+                from m in _read.Matches
+                where m.LeagueId == leagueId && m.Season == season
+                      && finished.Contains(m.StatusShort!)
+                      && (m.HomeId == teamId || m.AwayId == teamId)
+                orderby m.Date descending
+                select new { m.Id, m.Date, m.HomeId, m.AwayId, m.HomeGoal, m.AwayGoal }
+            ).AsNoTracking().Take(5).ToListAsync();
+
+            var result = new List<FormRow>(rows.Count);
+            foreach (var r in rows)
+            {
+                bool wasHome = r.HomeId == teamId;
+                long opponentId = wasHome ? r.AwayId : r.HomeId;
+
+                var oppName = await _read.Teams.Where(t => t.Id == opponentId).Select(t => t.Name).FirstOrDefaultAsync() ?? "—";
+
+                int gf = wasHome ? (r.HomeGoal ?? 0) : (r.AwayGoal ?? 0);
+                int ga = wasHome ? (r.AwayGoal ?? 0) : (r.HomeGoal ?? 0);
+                string res = gf > ga ? "W" : (gf == ga ? "D" : "L");
+
+                result.Add(new FormRow
+                {
+                    MatchId = r.Id,
+                    DateUtc = r.Date,
+                    Opponent = oppName,
+                    IsHome = wasHome,
+                    Score = $"{r.HomeGoal ?? 0}-{r.AwayGoal ?? 0}",
+                    Result = res
+                });
+            }
             return result;
         }
 
-        private static string CountryNameToFlag(string? country)
+        private async Task<List<TableStandingRow>> GetStandingsAsync(int leagueId, int season)
         {
-            if (string.IsNullOrWhiteSpace(country)) return "🌍";
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Italy"] = "🇮🇹",
-                ["Italia"] = "🇮🇹",
-                ["England"] = "🇬🇧",
-                ["United Kingdom"] = "🇬🇧",
-                ["Spain"] = "🇪🇸",
-                ["France"] = "🇫🇷",
-                ["Germany"] = "🇩🇪",
-                ["Portugal"] = "🇵🇹",
-                ["Netherlands"] = "🇳🇱",
-                ["Turkey"] = "🇹🇷",
-                ["Belgium"] = "🇧🇪"
-            };
-            return map.TryGetValue(country.Trim(), out var f) ? f : "🌍";
+            return await (
+                from s in _read.Standings
+                join t in _read.Teams on s.TeamId equals t.Id
+                where s.LeagueId == leagueId && s.Season == season
+                orderby s.Rank
+                select new TableStandingRow
+                {
+                    Rank = s.Rank ?? 0,
+                    TeamId = t.Id,
+                    TeamName = t.Name ?? "",
+                    Points = s.Points ?? 0,
+                    Played = s.AllPlayed ?? 0,
+                    Win = s.AllWin ?? 0,
+                    Draw = s.AllDraw ?? 0,
+                    Lose = s.AllLose ?? 0,
+                    GF = s.AllGoalFor ?? 0,
+                    GA = s.AllGoalAgainst ?? 0,
+                    Diff = s.GoalsDiff ?? 0
+                }
+            ).AsNoTracking().ToListAsync();
         }
 
-        private static string HtmlEscape(string? s)
-            => string.IsNullOrEmpty(s) ? "" : System.Net.WebUtility.HtmlEncode(s);
 
-        // Normalizza le etichette
-        private static string PrettyLabel(string raw)
+        // Helper conversione field
+        private static T? GetField<T>(IDataRecord r, string name)
         {
-            if (string.IsNullOrWhiteSpace(raw)) return raw ?? "";
+            int ord = r.GetOrdinal(name);
+            if (r.IsDBNull(ord)) return default;
+            object val = r.GetValue(ord);
+            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            // compatibilità int/long
+            if (targetType == typeof(long) && val is int i) val = (long)i;
+            if (targetType == typeof(int) && val is long l) val = (int)l;
+            return (T)Convert.ChangeType(val, targetType);
+        }
+    }
 
-            var s = raw.Replace('_', ' ');
-            s = Regex.Replace(s, "([a-z])([A-Z])", "$1 $2");
-            s = Regex.Replace(s, @"\s+", " ").Trim();
+    // =======================
+    // EMOJI HELPER
+    // =======================
+    public static class EmojiHelper
+    {
+        public static string FromCountryCode(string? code)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+                return "🌍";
 
-            // Mappature comuni (IT)
-            s = s.Replace("Home", "Casa", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Away", "Ospite", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Expected Goals", "Goal attesi", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Expected Goal", "Goal attesi", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Avg", "Media", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Average", "Media", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Total", "Totale", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Per Match", "per partita", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Per Game", "per partita", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Shots On Goal", "Tiri in porta", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Shots Off Goal", "Tiri fuori", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Total Shots", "Tiri totali", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Shots", "Tiri", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Corners", "Corner", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Cards", "Cartellini", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Yellow Cards", "Ammonizioni", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Red Cards", "Espulsioni", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Fouls", "Falli", StringComparison.OrdinalIgnoreCase)
-                 .Replace("Offsides", "Fuorigioco", StringComparison.OrdinalIgnoreCase);
+            var cc = code.Length > 2 && code.Contains('-')
+                ? code.Split('-')[0]
+                : code;
+            cc = cc.Trim().ToUpperInvariant();
 
-            if (s.Length > 1) s = char.ToUpperInvariant(s[0]) + s[1..];
-            return s;
+            if (cc.Length != 2) return "🌍";
+            int offset = 0x1F1E6;
+            return string.Concat(
+                char.ConvertFromUtf32(offset + (cc[0] - 'A')),
+                char.ConvertFromUtf32(offset + (cc[1] - 'A'))
+            );
         }
     }
 }

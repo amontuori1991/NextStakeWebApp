@@ -64,6 +64,8 @@ namespace NextStakeWebApp.Pages.Events
             public int? AwayGoal { get; set; }
             public DateTime KickoffUtc { get; set; }
             public string? LeagueFlag { get; set; }
+            public string? HomeLogo { get; set; }
+            public string? AwayLogo { get; set; }
         }
 
         public class CountryOption
@@ -112,9 +114,12 @@ namespace NextStakeWebApp.Pages.Events
                     Flag = lg.Flag,
                     Home = th.Name,
                     Away = ta.Name,
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo,
                     m.Date,
                     m.StatusShort
-                };
+                }
+;
 
             // Filtri opzionali
             if (!string.IsNullOrWhiteSpace(SelectedCountryCode))
@@ -147,6 +152,8 @@ namespace NextStakeWebApp.Pages.Events
                 CountryCode = r.CountryCode,
                 Home = r.Home ?? "",
                 Away = r.Away ?? "",
+                HomeLogo = r.HomeLogo,
+                AwayLogo = r.AwayLogo,
                 StatusShort = r.StatusShort,
                 HomeGoal = r.HomeGoal,
                 AwayGoal = r.AwayGoal,
