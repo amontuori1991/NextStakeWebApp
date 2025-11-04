@@ -1,294 +1,361 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Events.IndexModel
+@using System.Globalization
+@{
+    // Cultura italiana per nomi dei giorni/mesi
+    var it = new CultureInfo("it-IT");
+
+    // Oggi (UTC -> poi ToLocalTime per le ore; qui ci basta il giorno)
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    // Giorno selezionato (già fornito dal Model)
+    var sel = Model.SelectedDate;
+
+    // Nome giorno selezionato con iniziale maiuscola (Domenica, Lunedì, ...)
+    var dayName = it.TextInfo.ToTitleCase(sel.ToDateTime(TimeOnly.MinValue).ToString("dddd", it));
+
+    // Calendario: limiti del mese corrente visualizzato (basato su SelectedDate)
+    var firstOfMonth = new DateOnly(sel.Year, sel.Month, 1);
+    var lastOfMonth = firstOfMonth.AddMonths(1).AddDays(-1);
+
+    // Inizio calendario: lunedì prima o uguale al primo del mese
+    var startCal = firstOfMonth;
+    while (startCal.DayOfWeek != DayOfWeek.Monday) startCal = startCal.AddDays(-1);
+
+    // Fine calendario: domenica dopo o uguale all'ultimo del mese
+    var endCal = lastOfMonth;
+    while (endCal.DayOfWeek != DayOfWeek.Sunday) endCal = endCal.AddDays(1);
+
+    // Parametri comuni da preservare nei link
+    var common = $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}" + (Model.ShowBest ? "&best=1" : "");
+}
+
+
 @{
     ViewData["Title"] = "Eventi";
 }
 
 <div class="container py-4">
-
-    <!-- Barra data + frecce + Oggi -->
-    <div class="d-flex align-items-center justify-content-between mb-3">
-        <div class="h5 mb-0">Data: @Model.SelectedDate.ToString("dd/MM/yyyy")</div>
-        <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary"
-               href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query"
-               aria-label="Giorno precedente">←</a>
-
-            <a class="btn btn-outline-primary"
-               href="/Events?d=@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
-                Oggi
-            </a>
-
-            <a class="btn btn-outline-secondary"
-               href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query"
-               aria-label="Giorno successivo">→</a>
-        </div>
-    </div>
-
-    <!-- Azioni globali -->
-    <div class="d-flex flex-wrap gap-2 mb-3">
-        <a class="btn @(Model.OnlyFavorites ? "btn-warning" : "btn-outline-warning")"
-           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 0 : 1)&country=@Model.SelectedCountryCode&q=@Model.Query">
-            ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
-        </a>
-
-        <!-- Collega al best=1 per mostrare i migliori pronostici -->
-        <a class="btn btn-success"
-           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
-           data-loading="best">
-            Migliori pronostici
-        </a>
-
-
-        @if (Model.ShowBest)
-        {
-            <a class="btn btn-outline-secondary"
-               href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
-                Nascondi pronostici
-            </a>
-        }
-    </div>
-
-    <!-- Sezione: Migliori pronostici -->
-    @if (Model.ShowBest)
-    {
-        <div class="card mb-4">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <div class="fw-semibold">🔥 Migliori pronostici</div>
-                <small class="text-muted">Ordinati per data/ora</small>
-            </div>
-            <div class="card-body">
-                @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
-                {
-                    <div class="alert alert-info mb-3">@Model.BestMessage</div>
-                }
-
-                @if (Model.BestPicks?.Count > 0)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="width:120px;">Data</th>
-                                    <th>Evento</th>
-                                    <th style="width:120px;">Azione</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
-                                {
-                                    Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
-
-                                    // Split "Home - Away" per inserire i loghi accanto ai nomi
-                                    var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
-                                    var homeName = parts.Length > 0 ? parts[0] : r.Match;
-                                    var awayName = parts.Length > 1 ? parts[1] : "";
-
-                                    <tr>
-                                        <td>@r.EventDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                <!-- Home -->
-                                                <div class="d-flex align-items-center gap-1">
-                                                    @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
-                                                    {
-                                                        <img src="@assets.HomeLogo" alt="home" style="height:18px;width:auto;" />
-                                                    }
-                                                    <span class="fw-semibold">@homeName</span>
-                                                </div>
-
-                                                <span class="mx-1">—</span>
-
-                                                <!-- Away -->
-                                                <div class="d-flex align-items-center gap-1">
-                                                    @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
-                                                    {
-                                                        <img src="@assets.AwayLogo" alt="away" style="height:18px;width:auto;" />
-                                                    }
-                                                    <span class="fw-semibold">@awayName</span>
-                                                </div>
-
-                                                <!-- Parentesi finali con country code + bandiera + competizione + logo lega -->
-                                                <small class="text-muted ms-2" style="white-space:nowrap;">
-                                                    (
-                                                    @if (!string.IsNullOrWhiteSpace(assets?.LeagueFlag))
-                                                    {
-                                                        <img src="@assets.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;margin-right:4px;" />
-                                                    }
-                                                    @r.Competition
-                                                    @if (!string.IsNullOrWhiteSpace(assets?.LeagueLogo))
-                                                    {
-                                                        <img src="@assets.LeagueLogo" alt="league" style="height:16px;width:auto;vertical-align:middle;margin-left:6px;" />
-                                                    }
-                                                    )
-                                                </small>
-
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <a href="/Match/Details?id=@r.Id"
-                                               target="_blank" rel="noopener"
-                                               class="btn btn-sm btn-outline-primary">
-                                                Apri evento ↗
-                                            </a>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+    <div class="row g-3">
+        <!-- SIDEBAR (mini calendario + azioni + filtri) -->
+        <aside class="col-12 col-lg-3">
+            <!-- Mini calendario in un riquadro compatto -->
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="/Events?d=@firstOfMonth.AddMonths(-1).ToString("yyyy-MM-dd")@common"
+                       aria-label="Mese precedente">←</a>
+                    <div class="fw-semibold small text-center">
+                        @it.TextInfo.ToTitleCase(firstOfMonth.ToDateTime(TimeOnly.MinValue).ToString("MMMM", it))
+                        @firstOfMonth.Year
                     </div>
-                }
-                else
-                {
-                    <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
-                }
-            </div>
-        </div>
-    }
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="/Events?d=@firstOfMonth.AddMonths(1).ToString("yyyy-MM-dd")@common"
+                       aria-label="Mese successivo">→</a>
+                </div>
 
-
-
-    <!-- Filtri: Nazione + Ricerca -->
-    <form method="get" action="/Events" class="mb-3 row g-2 align-items-end">
-        <div class="col-md-4">
-            <label class="form-label">Filtro Nazione</label>
-            <select class="form-select" name="country" onchange="this.form.submit()">
-                <option value="">— Mostra tutte —</option>
-                @foreach (var c in Model.AvailableCountries)
-                {
-                    <option value="@c.Code" selected="@(Model.SelectedCountryCode == c.Code)">
-                        @c.Name (@c.Code)
-                    </option>
-                }
-            </select>
-        </div>
-        <div class="col-md-4">
-            <label class="form-label">Cerca (squadra o competizione)</label>
-            <input class="form-control" type="text" name="q" value="@Model.Query" placeholder="Es: Serie A, Inter, Premier..." />
-        </div>
-
-        <!-- preserva data, preferiti e stato 'best' -->
-        <input type="hidden" name="d" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
-        <input type="hidden" name="fav" value="@(Model.OnlyFavorites ? 1 : 0)" />
-        @if (Model.ShowBest)
-        {
-            <input type="hidden" name="best" value="1" />
-        }
-
-        <div class="col-md-4">
-            <button type="submit" class="btn btn-primary">Filtra</button>
-        </div>
-    </form>
-
-    <!-- Lista partite raggruppate per competizione -->
-    @if (Model.Rows.Count == 0)
-    {
-        <p>Nessuna partita trovata per il giorno selezionato.</p>
-    }
-    else
-    {
-        @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
-        {
-            var groupId = $"lg-{group.Key.LeagueId}";
-
-            <div class="mb-3 border rounded">
-                <!-- Barra cliccabile a tutta larghezza -->
-                <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#@groupId"
-                        aria-expanded="true"
-                        aria-controls="@groupId">
-                    <div class="d-flex align-items-center gap-2 py-2 px-3">
-                        <span class="toggle-caret">▾</span>
-
-                        @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
-                        {
-                            <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
-                        }
-
-                        <span class="fw-semibold">@group.Key.LeagueName</span>
-
-                        @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                        {
-                            <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
-                                (
-                                @group.Key.CountryName
-                                @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                                {
-                                    <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
-                                }
-                                )
-                            </small>
-                        }
-
-                        <small class="text-muted ms-2">#@group.Key.LeagueId</small>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-muted">Lun</small>
+                        <small class="text-muted">Mar</small>
+                        <small class="text-muted">Mer</small>
+                        <small class="text-muted">Gio</small>
+                        <small class="text-muted">Ven</small>
+                        <small class="text-muted">Sab</small>
+                        <small class="text-muted">Dom</small>
                     </div>
-                </button>
 
-                <!-- Contenuto collassabile (aperto di default) -->
-                <div id="@groupId" class="collapse show">
-                    <div class="list-group list-group-flush">
-                        @foreach (var r in group)
-                        {
-                            <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <a href="/Match/Details?id=@r.MatchId"
-                                   class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
+                    <div class="mini-cal">
+                        @{
+                            var d = startCal;
+                            while (d <= endCal)
+                            {
+                                <div class="mini-cal-row">
+                                    @for (int i = 0; i < 7; i++)
+                                    {
+                                        var isOutside = d < firstOfMonth || d > lastOfMonth;
+                                        var isToday = d == today;
+                                        var isSelected = d == sel;
 
-                                    <div class="d-flex align-items-center gap-2 me-2">
-                                        <!-- Home -->
-                                        <span class="d-flex align-items-center gap-1">
-                                            @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
-                                            {
-                                                <img src="@r.HomeLogo" alt="home" style="height:18px;width:auto;" />
-                                            }
-                                            <span class="fw-semibold">@r.Home</span>
-                                        </span>
+                                        <a class="mini-cal-day @(isOutside ? "cal-outside" : "") @(isToday ? "is-today" : "") @(isSelected ? "is-selected" : "")"
+                                           href="/Events?d=@d.ToString("yyyy-MM-dd")@common">
+                                            @d.Day
+                                        </a>
+                                        ;
 
-                                        <span class="mx-1">—</span>
-
-                                        <!-- Away -->
-                                        <span class="d-flex align-items-center gap-1">
-                                            @if (!string.IsNullOrWhiteSpace(r.AwayLogo))
-                                            {
-                                                <img src="@r.AwayLogo" alt="away" style="height:18px;width:auto;" />
-                                            }
-                                            <span class="fw-semibold">@r.Away</span>
-                                        </span>
-                                    </div>
-
-                                    @{
-                                        var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
-                                        var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
-                                        ? $"{r.HomeGoal} : {r.AwayGoal}"
-                                        : "- : -";
+                                        d = d.AddDays(1);
                                     }
-                                    <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
-                                    <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
-                                </a>
-
-
-                                <!-- ⭐ Toggle preferito -->
-                                <form method="post"
-                                      action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
-                                      class="ms-3">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit"
-                                            class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
-                                            title="Aggiungi/rimuovi dai preferiti">
-                                        ⭐
-                                    </button>
-                                </form>
-                            </div>
+                                </div>
+                            }
                         }
+                    </div>
+
+                    <div class="d-grid mt-2">
+                        <!-- Spostato qui il tasto OGGI -->
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="/Events?d=@today.ToString("yyyy-MM-dd")@common">Oggi</a>
                     </div>
                 </div>
             </div>
-        }
 
+            <!-- Azioni globali (Preferiti / Migliori) -->
+            <div class="d-grid gap-2 mb-3">
+                <a class="btn @(Model.OnlyFavorites ? "btn-warning" : "btn-outline-warning")"
+                   href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 0 : 1)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                    ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
+                </a>
 
-    }
+                <a class="btn btn-success"
+                   href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
+                   data-loading="best">
+                    Migliori pronostici
+                </a>
+
+                @if (Model.ShowBest)
+                {
+                    <a class="btn btn-outline-secondary"
+                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                        Nascondi pronostici
+                    </a>
+                }
+            </div>
+
+            <!-- Filtri: Nazione + Ricerca -->
+            <form method="get" action="/Events" class="card p-3 mb-3">
+                <div class="mb-2">
+                    <label class="form-label">Filtro Nazione</label>
+                    <select class="form-select form-select-sm" name="country" onchange="this.form.submit()">
+                        <option value="">— Mostra tutte —</option>
+                        @foreach (var c in Model.AvailableCountries)
+                        {
+                            <option value="@c.Code" selected="@(Model.SelectedCountryCode == c.Code)">
+                                @c.Name (@c.Code)
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Cerca (squadra o competizione)</label>
+                    <input class="form-control form-control-sm" type="text" name="q" value="@Model.Query" placeholder="Es: Serie A, Inter, Premier..." />
+                </div>
+
+                <input type="hidden" name="d" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
+                <input type="hidden" name="fav" value="@(Model.OnlyFavorites ? 1 : 0)" />
+                @if (Model.ShowBest)
+                {
+                    <input type="hidden" name="best" value="1" />
+                }
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-sm">Filtra</button>
+                </div>
+            </form>
+        </aside>
+
+        <!-- MAIN -->
+        <main class="col-12 col-lg-9">
+            <!-- Barra data + frecce (senza OGGI) -->
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div class="h5 mb-0">
+                    @dayName @Model.SelectedDate.ToString("dd/MM/yyyy")
+                </div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-secondary"
+                       href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")@common"
+                       aria-label="Giorno precedente">←</a>
+
+                    <a class="btn btn-outline-secondary"
+                       href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")@common"
+                       aria-label="Giorno successivo">→</a>
+                </div>
+            </div>
+
+            <!-- Sezione: Migliori pronostici (immutata, solo spostata qui) -->
+            @if (Model.ShowBest)
+            {
+                <div class="card mb-4">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div class="fw-semibold">🔥 Migliori pronostici</div>
+                        <small class="text-muted">Ordinati per data/ora</small>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
+                        {
+                            <div class="alert alert-info mb-3">@Model.BestMessage</div>
+                        }
+
+                        @if (Model.BestPicks?.Count > 0)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:120px;">Data</th>
+                                            <th>Evento</th>
+                                            <th style="width:120px;">Azione</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
+                                        {
+                                            Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
+
+                                            var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
+                                            var homeName = parts.Length > 0 ? parts[0] : r.Match;
+                                            var awayName = parts.Length > 1 ? parts[1] : "";
+
+                                            <tr>
+                                                <td>@r.EventDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
+                                                            {
+                                                                <img src="@assets.HomeLogo" alt="home" style="height:18px;width:auto;" />
+                                                            }
+                                                            <span class="fw-semibold">@homeName</span>
+                                                        </div>
+                                                        <span class="mx-1">—</span>
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
+                                                            {
+                                                                <img src="@assets.AwayLogo" alt="away" style="height:18px;width:auto;" />
+                                                            }
+                                                            <span class="fw-semibold">@awayName</span>
+                                                        </div>
+                                                        <small class="text-muted ms-2" style="white-space:nowrap;">
+                                                            (
+                                                            @if (!string.IsNullOrWhiteSpace(assets?.LeagueFlag))
+                                                            {
+                                                                <img src="@assets.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;margin-right:4px;" />
+                                                            }
+                                                            @r.Competition
+                                                            @if (!string.IsNullOrWhiteSpace(assets?.LeagueLogo))
+                                                            {
+                                                                <img src="@assets.LeagueLogo" alt="league" style="height:16px;width:auto;vertical-align:middle;margin-left:6px;" />
+                                                            }
+                                                            )
+                                                        </small>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <a href="/Match/Details?id=@r.Id"
+                                                       target="_blank" rel="noopener"
+                                                       class="btn btn-sm btn-outline-primary">
+                                                        Apri evento ↗
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Lista partite raggruppate per competizione (immutata) -->
+            @if (Model.Rows.Count == 0)
+            {
+                <p>Nessuna partita trovata per il giorno selezionato.</p>
+            }
+            else
+            {
+                @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
+                {
+                    var groupId = $"lg-{group.Key.LeagueId}";
+
+                    <div class="mb-3 border rounded">
+                        <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                                type="button" data-bs-toggle="collapse" data-bs-target="#@groupId"
+                                aria-expanded="true" aria-controls="@groupId">
+                            <div class="d-flex align-items-center gap-2 py-2 px-3">
+                                <span class="toggle-caret">▾</span>
+
+                                @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
+                                {
+                                    <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
+                                }
+
+                                <span class="fw-semibold">@group.Key.LeagueName</span>
+
+                                @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                                {
+                                    <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                                        ( @group.Key.CountryName
+                                        @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                                        {
+                                            <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
+                                        }
+                                        )
+                                    </small>
+                                }
+
+                                <small class="text-muted ms-2">#@group.Key.LeagueId</small>
+                            </div>
+                        </button>
+
+                        <div id="@groupId" class="collapse show">
+                            <div class="list-group list-group-flush">
+                                @foreach (var r in group)
+                                {
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <a href="/Match/Details?id=@r.MatchId"
+                                           class="text-decoration-none flex-grow-1 d-flex align-items-center flex-wrap">
+                                            <div class="d-flex align-items-center gap-2 me-2">
+                                                <span class="d-flex align-items-center gap-1">
+                                                    @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
+                                                    {
+                                                        <img src="@r.HomeLogo" alt="home" style="height:18px;width:auto;" />
+                                                    }
+                                                    <span class="fw-semibold">@r.Home</span>
+                                                </span>
+                                                <span class="mx-1">—</span>
+                                                <span class="d-flex align-items-center gap-1">
+                                                    @if (!string.IsNullOrWhiteSpace(r.AwayLogo))
+                                                    {
+                                                        <img src="@r.AwayLogo" alt="away" style="height:18px;width:auto;" />
+                                                    }
+                                                    <span class="fw-semibold">@r.Away</span>
+                                                </span>
+                                            </div>
+
+                                            @{
+                                                var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
+                                                var scoreDisplay = matchEnded && r.HomeGoal.HasValue && r.AwayGoal.HasValue
+                                                ? $"{r.HomeGoal} : {r.AwayGoal}"
+                                                : "- : -";
+                                            }
+                                            <span class="badge bg-light text-dark fw-semibold me-2">@scoreDisplay</span>
+                                            <span class="text-muted me-2">@r.KickoffUtc.ToLocalTime().ToString("HH:mm")</span>
+                                        </a>
+
+                                        <form method="post"
+                                              action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
+                                              class="ms-3">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit"
+                                                    class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
+                                                    title="Aggiungi/rimuovi dai preferiti">
+                                                ⭐
+                                            </button>
+                                        </form>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </main>
+    </div>
 </div>
+
 
 <style>
     .loading-overlay {
@@ -346,6 +413,81 @@
 </script>
 
 <style>
+    .league-toggle-btn {
+        background-color: #f7f7f7;
+        transition: background-color .2s ease;
+        border-top-left-radius: .25rem;
+        border-top-right-radius: .25rem;
+        width: 100%;
+    }
+
+        .league-toggle-btn:hover {
+            background-color: #e9ecef;
+        }
+
+    .toggle-caret {
+        transition: transform .2s ease;
+        display: inline-block;
+        font-size: 1.1rem;
+    }
+
+    [data-bs-toggle="collapse"][aria-expanded="false"] .toggle-caret {
+        transform: rotate(-90deg);
+    }
+
+    .list-group-item {
+        border-left: none;
+        border-right: none;
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
+<style>
+    /* Mini calendario compatto in sidebar */
+    .mini-cal {
+        display: grid;
+        gap: .25rem;
+    }
+
+    .mini-cal-row {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: .25rem;
+    }
+
+    .mini-cal-day {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border: 1px solid rgba(0,0,0,.08);
+        border-radius: .375rem;
+        padding: .35rem 0;
+        font-size: .9rem;
+        line-height: 1;
+        min-height: 2rem;
+        background: #fff;
+    }
+
+        .mini-cal-day:hover {
+            background: #f6f6f6;
+            text-decoration: none;
+        }
+
+    .cal-outside {
+        opacity: .45;
+    }
+
+    .is-today {
+        outline: 2px solid rgba(13,110,253,.4);
+        outline-offset: -2px;
+    }
+
+    .is-selected {
+        background: #0d6efd;
+        color: #fff;
+    }
+
+    /* Pulsanti toggle gruppi leghe (già presenti, solo ordine) */
     .league-toggle-btn {
         background-color: #f7f7f7;
         transition: background-color .2s ease;
