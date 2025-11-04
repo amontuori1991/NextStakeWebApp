@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
+using NextStakeWebApp.Services;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,6 +53,8 @@ builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 
 // Live scores: cache + HTTP client per API-FOOTBALL
 builder.Services.AddMemoryCache();

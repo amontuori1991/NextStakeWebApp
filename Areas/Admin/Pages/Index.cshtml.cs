@@ -1,7 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Configuration;
 using NextStakeWebApp.Services;
+using System.ComponentModel.DataAnnotations;
+using System.Threading.Tasks;
 
 namespace NextStakeWebApp.Areas.Admin.Pages
 {
@@ -9,56 +13,126 @@ namespace NextStakeWebApp.Areas.Admin.Pages
     public class IndexModel : PageModel
     {
         private readonly ITelegramService _telegram;
-        private readonly IConfiguration _config;
+        private readonly IOpenAIService _openai;
+        private readonly IConfiguration _cfg;
 
-        public IndexModel(ITelegramService telegram, IConfiguration config)
+        public IndexModel(ITelegramService telegram, IOpenAIService openai, IConfiguration cfg)
         {
             _telegram = telegram;
-            _config = config;
-        }
+            _openai = openai;
+            _cfg = cfg;
 
-        // Mostro a video quale topicId sto usando
-        public long TopicIdeeId { get; private set; }
-
-        // Messaggi di esito
-        [TempData] public string? StatusMessage { get; set; }
-        [TempData] public string? ErrorMessage { get; set; }
-
-        public void OnGet()
-        {
-            long.TryParse(_config["Telegram:Topics:Idee"], out var tId);
-            TopicIdeeId = tId;
-        }
-
-        public async Task<IActionResult> OnPostSendIdeeAsync(string text)
-        {
-            // Ricarico TopicIdeeId anche in POST per visualizzazione eventuale
-            long.TryParse(_config["Telegram:Topics:Idee"], out var topicId);
-            TopicIdeeId = topicId;
-
-            if (string.IsNullOrWhiteSpace(text))
+            ToneOptions = new SelectList(new[]
             {
-                ErrorMessage = "Il messaggio non può essere vuoto.";
-                return RedirectToPage();
+                new { Value = "Neutro",         Text = "Neutro" },
+                new { Value = "Informale",      Text = "Informale" },
+                new { Value = "Professionale",  Text = "Professionale" },
+                new { Value = "Motivazionale",  Text = "Motivazionale" },
+            }, "Value", "Text");
+
+            LengthOptions = new SelectList(new[]
+            {
+                new { Value = "Breve",  Text = "Breve" },
+                new { Value = "Media",  Text = "Media" },
+                new { Value = "Lunga",  Text = "Lunga" },
+            }, "Value", "Text");
+        }
+
+        [BindProperty]
+        public FormInput Input { get; set; } = new();
+
+        public string? Preview { get; private set; }
+        public string? StatusMessage { get; private set; }
+
+        public SelectList ToneOptions { get; }
+        public SelectList LengthOptions { get; }
+
+        public void OnGet() { }
+
+        // ===== Anteprima (con o senza AI) =====
+        public async Task<IActionResult> OnPostPreviewAsync()
+        {
+            ModelState.Remove("Input.Tone");
+            ModelState.Remove("Input.Length");
+
+            if (!ModelState.IsValid)
+            {
+                StatusMessage = "Compila correttamente il messaggio.";
+                return Page();
             }
+
+            var text = await BuildTextAsync(Input);
+            Preview = text;
+            StatusMessage = "✅ Anteprima generata.";
+            return Page();
+        }
+
+        // ===== Invio a Telegram (topic 'Idee') =====
+        public async Task<IActionResult> OnPostSendAsync()
+        {
+            ModelState.Remove("Input.Tone");
+            ModelState.Remove("Input.Length");
+
+            if (!ModelState.IsValid)
+            {
+                StatusMessage = "Compila correttamente il messaggio.";
+                return Page();
+            }
+
+            // 1) testo finale (con o senza AI)
+            var text = await BuildTextAsync(Input);
+
+            // 2) topicId da config (Telegram__Topics__Idee)
+            long.TryParse(_cfg["Telegram:Topics:Idee"], out var topicId);
             if (topicId <= 0)
             {
-                ErrorMessage = "Configurazione mancante o non valida: Telegram:Topics:Idee.";
-                return RedirectToPage();
+                StatusMessage = "❌ Topic 'Idee' non configurato (Telegram:Topics:Idee).";
+                Preview = text;
+                return Page();
             }
+            Console.WriteLine($"[ADMIN] Send topic={topicId}, useAI={Input.UseAI}, tone={Input.Tone}, len={Input.Length}");
 
-            try
-            {
-                // Invia nel forum (usa ChatId di default + message_thread_id = topic)
-                await _telegram.SendMessageAsync(topicId, text.Trim());
-                StatusMessage = "✅ Messaggio inviato correttamente al topic 'Idee'.";
-            }
-            catch (Exception ex)
-            {
-                ErrorMessage = "Errore durante l'invio: " + ex.Message;
-            }
+            // 3) invia
+            await _telegram.SendMessageAsync(topicId, text);
 
-            return RedirectToPage();
+            StatusMessage = "✅ Messaggio inviato al canale (topic Idee).";
+            Preview = text;
+            return Page();
+        }
+
+        // ----- Helpers -----
+        private async Task<string> BuildTextAsync(FormInput input)
+        {
+            var baseText = (input.Message ?? "").Trim();
+
+            if (!input.UseAI || string.IsNullOrWhiteSpace(baseText))
+                return baseText;
+
+            // fallback sicuri se i select sono disabilitati e quindi non postano
+            var tone = string.IsNullOrWhiteSpace(input.Tone) ? "Neutro" : input.Tone!;
+            var length = string.IsNullOrWhiteSpace(input.Length) ? "Media" : input.Length!;
+
+            var prompt =
+                $"Riscrivi e migliora il seguente testo per un canale Telegram su analisi calcistiche. " +
+                $"Tono: {tone}. Lunghezza: {length}. " +
+                $"Mantieni l'italiano e NON aggiungere hashtag o emoji extra a meno che siano utili.\n\n" +
+                $"Testo:\n\"\"\"\n{baseText}\n\"\"\"";
+
+            var improved = await _openai.AskAsync(prompt);
+            return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
+        }
+
+        public class FormInput
+        {
+            [Required, MinLength(3)]
+            public string Message { get; set; } = "";
+
+            // di default NO AI
+            public bool UseAI { get; set; } = false;
+
+            // opzionali: vengono normalizzati in BuildTextAsync
+            public string? Tone { get; set; } = "Neutro";
+            public string? Length { get; set; } = "Media";
         }
     }
 }

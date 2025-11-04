@@ -5,37 +5,104 @@
 }
 
 <h1 class="mb-3">Dashboard SuperAdmin</h1>
-<p class="text-muted">Accesso riservato ai SuperAdmin. Qui inseriremo la gestione utenti/piani.</p>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
-    <div class="alert alert-success">@Model.StatusMessage</div>
-}
-@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-{
-    <div class="alert alert-danger">@Model.ErrorMessage</div>
+    <div class="alert alert-info">@Model.StatusMessage</div>
 }
 
 <div class="card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <div class="fw-semibold">Invia messaggio al topic <code>Idee</code></div>
-        <small class="text-muted">topicId: @Model.TopicIdeeId</small>
+    <div class="card-header">
+        <strong>Invia messaggio al canale Telegram</strong>
+        <span class="text-muted ms-2">(Topic: <code>Idee</code>)</span>
     </div>
     <div class="card-body">
-        <form method="post" asp-page-handler="SendIdee">
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+        <form method="post">
             @Html.AntiForgeryToken()
 
             <div class="mb-3">
-                <label class="form-label">Messaggio (HTML abilitato)</label>
-                <textarea name="text" class="form-control" rows="5" placeholder="Scrivi qui il messaggio da inviare al topic Idee..." required></textarea>
-                <div class="form-text">
-                    Il messaggio verrà inviato al forum collegato a <strong>Telegram__ChatId</strong> usando il <strong>topicId</strong> configurato (<code>Telegram:Topics:Idee</code>).
-                </div>
+                <label class="form-label">Testo da inviare</label>
+                <textarea class="form-control" rows="6" asp-for="Input.Message" placeholder="Scrivi qui il messaggio…"></textarea>
+                <span asp-validation-for="Input.Message" class="text-danger"></span>
+
             </div>
 
-            <div class="d-flex justify-content-end gap-2">
-                <button type="submit" class="btn btn-primary">🚀 Invia</button>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" asp-for="Input.UseAI" id="useAiChk">
+                        <label class="form-check-label" for="useAiChk">
+                            Migliora/riscrivi con A.I. (OpenAI)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Stile</label>
+                    <select class="form-select" asp-for="Input.Tone" asp-items="Model.ToneOptions"></select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Lunghezza</label>
+                    <select class="form-select" asp-for="Input.Length" asp-items="Model.LengthOptions"></select>
+                </div>
+
+                <input type="hidden" name="Input.Tone" id="ToneHidden" value="@Model.Input.Tone" />
+                <input type="hidden" name="Input.Length" id="LengthHidden" value="@Model.Input.Length" />
+
+            </div>
+
+            <hr />
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-outline-primary" formaction="?handler=Preview">🧪 Genera anteprima</button>
+                <button type="submit" class="btn btn-success" formaction="?handler=Send">🚀 Invia su Telegram</button>
             </div>
         </form>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Preview))
+        {
+            <hr />
+            <div class="alert alert-secondary">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-info text-dark">Anteprima</span>
+                    <small class="text-muted">Questo è il testo che verrà inviato</small>
+                </div>
+                <div style="white-space:pre-wrap">@Model.Preview</div>
+            </div>
+        }
     </div>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function(){
+          const chk = document.getElementById('useAiChk');
+          const toneSel = document.getElementById('Input_Tone');
+          const lenSel  = document.getElementById('Input_Length');
+          const toneHid = document.getElementById('ToneHidden');
+          const lenHid  = document.getElementById('LengthHidden');
+
+          function syncDisabled(){
+            const on = !!(chk && chk.checked);
+            if (toneSel) toneSel.disabled = !on;
+            if (lenSel)  lenSel.disabled  = !on;
+          }
+          function syncHidden(){
+            if (toneSel && toneHid) toneHid.value = toneSel.value || 'Neutro';
+            if (lenSel  && lenHid)  lenHid.value  = lenSel.value  || 'Media';
+          }
+
+          chk?.addEventListener('change', () => { syncDisabled(); syncHidden(); });
+          toneSel?.addEventListener('change', syncHidden);
+          lenSel?.addEventListener('change',  syncHidden);
+
+          document.addEventListener('DOMContentLoaded', () => { syncDisabled(); syncHidden(); });
+        })();
+    </script>
+}
+
+
