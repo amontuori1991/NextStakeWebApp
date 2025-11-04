@@ -3,5 +3,39 @@
 @{
     ViewData["Title"] = "SuperAdmin";
 }
-<h1>Dashboard SuperAdmin</h1>
-<p>Accesso riservato ai SuperAdmin. Qui inseriremo la gestione utenti/piani.</p>
+
+<h1 class="mb-3">Dashboard SuperAdmin</h1>
+<p class="text-muted">Accesso riservato ai SuperAdmin. Qui inseriremo la gestione utenti/piani.</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="fw-semibold">Invia messaggio al topic <code>Idee</code></div>
+        <small class="text-muted">topicId: @Model.TopicIdeeId</small>
+    </div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="SendIdee">
+            @Html.AntiForgeryToken()
+
+            <div class="mb-3">
+                <label class="form-label">Messaggio (HTML abilitato)</label>
+                <textarea name="text" class="form-control" rows="5" placeholder="Scrivi qui il messaggio da inviare al topic Idee..." required></textarea>
+                <div class="form-text">
+                    Il messaggio verrà inviato al forum collegato a <strong>Telegram__ChatId</strong> usando il <strong>topicId</strong> configurato (<code>Telegram:Topics:Idee</code>).
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-primary">🚀 Invia</button>
+            </div>
+        </form>
+    </div>
+</div>
