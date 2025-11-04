@@ -404,52 +404,90 @@
 
         <!-- PRONOSTICI: Classifica -->
         <div class="tab-pane fade" id="tab-table" role="tabpanel">
-            @if (Model.Data.Standings.Count == 0)
-            {
-                <div class="text-muted">Classifica non disponibile per questa lega/stagione.</div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Squadra</th>
-                                <th class="text-center">Punti</th>
-                                <th class="text-center">G</th>
-                                <th class="text-center">V</th>
-                                <th class="text-center">N</th>
-                                <th class="text-center">P</th>
-                                <th class="text-center">GF</th>
-                                <th class="text-center">GA</th>
-                                <th class="text-center">Diff</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var s in Model.Data.Standings)
-                            {
-                                var isHome = s.TeamId == Model.Data.HomeId;
-                                var isAway = s.TeamId == Model.Data.AwayId;
-                                var rowClass = isHome ? "table-success" : (isAway ? "table-danger" : "");
-                                <tr class="@rowClass">
-                                    <td>@s.Rank</td>
-                                    <td>@s.TeamName</td>
-                                    <td class="text-center fw-bold">@s.Points</td>
-                                    <td class="text-center">@s.Played</td>
-                                    <td class="text-center">@s.Win</td>
-                                    <td class="text-center">@s.Draw</td>
-                                    <td class="text-center">@s.Lose</td>
-                                    <td class="text-center">@s.GF</td>
-                                    <td class="text-center">@s.GA</td>
-                                    <td class="text-center">@s.Diff</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+
+            <!-- Toggle vista -->
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div class="fw-semibold">Classifica</div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Vista classifica">
+                    <button id="btnStandingsNative" type="button" class="btn btn-primary">Nativa</button>
+                    <button id="btnStandingsWidget" type="button" class="btn btn-outline-primary">Widget</button>
                 </div>
-            }
+            </div>
+
+            <!-- Vista NATIVA (tua tabella esistente) -->
+            <div id="standings-native">
+                @if (Model.Data.Standings.Count == 0)
+                {
+                    <div class="text-muted">Classifica non disponibile per questa lega/stagione.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Squadra</th>
+                                    <th class="text-center">Punti</th>
+                                    <th class="text-center">G</th>
+                                    <th class="text-center">V</th>
+                                    <th class="text-center">N</th>
+                                    <th class="text-center">P</th>
+                                    <th class="text-center">GF</th>
+                                    <th class="text-center">GA</th>
+                                    <th class="text-center">Diff</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in Model.Data.Standings)
+                                {
+                                    var isHome = s.TeamId == Model.Data.HomeId;
+                                    var isAway = s.TeamId == Model.Data.AwayId;
+                                    var rowClass = isHome ? "table-success" : (isAway ? "table-danger" : "");
+                                    <tr class="@rowClass">
+                                        <td>@s.Rank</td>
+                                        <td>@s.TeamName</td>
+                                        <td class="text-center fw-bold">@s.Points</td>
+                                        <td class="text-center">@s.Played</td>
+                                        <td class="text-center">@s.Win</td>
+                                        <td class="text-center">@s.Draw</td>
+                                        <td class="text-center">@s.Lose</td>
+                                        <td class="text-center">@s.GF</td>
+                                        <td class="text-center">@s.GA</td>
+                                        <td class="text-center">@s.Diff</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            <!-- Vista WIDGET (API-SPORTS) -->
+            <div id="standings-widget" class="d-none">
+                <div class="card card-body">
+                    <!-- Config: puoi spostare la key su appsettings, qui lascio inline come negli altri widget -->
+                    <api-sports-widget data-type="config"
+                                       data-key="9146b11baf44d94af6e14d347213d63a"
+                                       data-sport="football"
+                                       data-lang="it"
+                                       data-theme="grey"
+                                       data-show-logos="true"
+                                       data-standings="true">
+                    </api-sports-widget>
+
+                    <api-sports-widget data-type="standings"
+                                       data-league="@Model.Data.LeagueId"
+                                       data-season="@Model.Data.Season">
+                    </api-sports-widget>
+
+                    <noscript class="text-muted">
+                        Abilita JavaScript per visualizzare la classifica del widget.
+                    </noscript>
+                </div>
+            </div>
         </div>
+
         <!-- PRONOSTICI: Quote (placeholder) -->
         <div class="tab-pane fade" id="tab-odds" role="tabpanel">
             <!-- Placeholder iniziale -->
@@ -876,6 +914,36 @@
             document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
         })();
     </script>
+        <script>
+            (function () {
+              const btnNative = document.getElementById('btnStandingsNative');
+              const btnWidget = document.getElementById('btnStandingsWidget');
+              const paneNative = document.getElementById('standings-native');
+              const paneWidget = document.getElementById('standings-widget');
+
+              function setMode(mode) {
+                const isWidget = mode === 'widget';
+
+                paneNative.classList.toggle('d-none',  isWidget);
+                paneWidget.classList.toggle('d-none', !isWidget);
+
+                btnNative.classList.toggle('btn-primary', !isWidget);
+                btnNative.classList.toggle('btn-outline-primary', isWidget);
+                btnWidget.classList.toggle('btn-primary', isWidget);
+                btnWidget.classList.toggle('btn-outline-primary', !isWidget);
+
+                try { localStorage.setItem('standingsView', mode); } catch {}
+              }
+
+              btnNative?.addEventListener('click', () => setMode('native'));
+              btnWidget?.addEventListener('click', () => setMode('widget'));
+
+              // Ripristina scelta utente
+              let saved = null;
+              try { saved = localStorage.getItem('standingsView'); } catch {}
+              setMode(saved === 'widget' ? 'widget' : 'native');
+            })();
+        </script>
 
     @section Scripts {
         <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
