@@ -20,6 +20,8 @@
         <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
         <form method="post">
+            <div asp-validation-summary="All" class="text-danger mb-2"></div>
+
             @Html.AntiForgeryToken()
 
             <div class="mb-3">
