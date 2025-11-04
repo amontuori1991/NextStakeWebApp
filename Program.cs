@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Linq;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using Npgsql;
@@ -50,6 +52,13 @@ builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+
+// Live scores: cache + HTTP client per API-FOOTBALL
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient("ApiSports", c =>
+{
+    c.BaseAddress = new Uri("https://v3.football.api-sports.io/");
+});
 
 builder.Services.AddDbContextPool<ReadDbContext>(opt =>
     opt.UseNpgsql(readConn, o =>
@@ -184,6 +193,48 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
 
+// --- Proxy minimal per Live Scores (API-FOOTBALL) ---
+app.MapGet("/api/livescores", async (
+    IHttpClientFactory httpFactory,
+    IConfiguration cfg,
+    Microsoft.Extensions.Caching.Memory.IMemoryCache cache,
+    string ids // "123,456,789"
+) =>
+{
+    if (string.IsNullOrWhiteSpace(ids)) return Results.BadRequest("ids required");
+
+    var key = cfg["ApiSports:Key"];
+    if (string.IsNullOrWhiteSpace(key)) return Results.Problem("Missing ApiSports:Key");
+
+    // cache 5s per batch ids
+    var cacheKey = $"livescores:{ids}";
+    if (cache.TryGetValue(cacheKey, out object? cached) && cached is not null)
+        return Results.Json(cached);
+
+    var http = httpFactory.CreateClient("ApiSports");
+    var req = new HttpRequestMessage(HttpMethod.Get, $"fixtures?ids={Uri.EscapeDataString(ids)}");
+    req.Headers.Add("x-apisports-key", key);
+
+    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+    if (!resp.IsSuccessStatusCode) return Results.StatusCode((int)resp.StatusCode);
+
+    var json = await resp.Content.ReadFromJsonAsync<ApiFootballFixturesResponse>();
+
+    var payload = json?.response?.Select(x => new
+    {
+        id = x.fixture?.id,
+        status = x.fixture?.status?.Short,
+        elapsed = x.fixture?.status?.Elapsed,
+        home = x.goals?.home,
+        away = x.goals?.away
+    }).Where(x => x.id.HasValue).ToList() ?? new();
+
+
+    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(5));
+    return Results.Json(payload);
+})
+.WithName("LiveScores");
+
 // Endpoint diagnostico minimale (opzionale)
 app.MapGet("/_debug/db", () => Results.Json(new
 {
@@ -192,3 +243,13 @@ app.MapGet("/_debug/db", () => Results.Json(new
 }));
 
 app.Run();
+
+// --- Records per deserializzazione API-FOOTBALL ---
+public record ApiFootballFixturesResponse(System.Collections.Generic.List<ApiFixtureItem> response);
+public record ApiFixtureItem(ApiFixture fixture, ApiGoals goals);
+public record ApiFixture(int id, ApiStatus status);
+public record ApiStatus(
+    [property: JsonPropertyName("short")] string? Short,
+    [property: JsonPropertyName("elapsed")] int? Elapsed
+);
+public record ApiGoals(int? home, int? away);

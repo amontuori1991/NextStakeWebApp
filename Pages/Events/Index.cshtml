@@ -327,6 +327,7 @@
                                                 <div class="center">
                                                     <span class="vs-pill">vs</span>
                                                     <small class="text-muted mt-1">Ora: @ko</small>
+                                                    <small class="live-minute d-none" data-fixture="@r.MatchId"></small>
                                                 </div>
                                                 <div class="team away">
                                                     <span class="team-name">@r.Away</span>
@@ -336,11 +337,10 @@
                                                     }
                                                 </div>
 
-
                                                 <!-- RIGA 2 (risultato sotto le rispettive squadre) -->
-                                                <div class="home-score">@homeScoreStr</div>
+                                                <div class="home-score" data-fixture="@r.MatchId" data-side="home">@homeScoreStr</div>
                                                 <div class="score-sep">:</div>
-                                                <div class="away-score">@awayScoreStr</div>
+                                                <div class="away-score" data-fixture="@r.MatchId" data-side="away">@awayScoreStr</div>
                                             </a>
 
                                             <!-- COLONNA DESTRA: preferito -->
@@ -356,8 +356,6 @@
                                             </form>
                                         </div>
                                     </div>
-
-
                                 }
                             </div>
                         </div>
@@ -602,6 +600,11 @@
         justify-self: center;
     }
 
+    .live-minute {
+        font-weight: 600;
+        line-height: 1;
+    }
+
     .away-score {
         grid-column: 3;
         justify-self: start;
@@ -626,4 +629,92 @@
         justify-self: end;
     }
 
+    /* opzionale: marker live senza alterare il layout */
+    .is-live::after {
+        content: ' •';
+    }
 </style>
+
+@section Scripts {
+    <script>
+        // Polling live scores (20s) via proxy backend /api/livescores
+        (function () {
+          const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
+          const ids = [...new Set([...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean))];
+          if (!ids.length) return;
+
+          const chunk = (arr, size) => arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
+          const batches = chunk(ids, 20); // prudente: 20 id per chiamata
+
+        async function tick() {
+          try {
+            const liveStatuses = ['1H','2H','ET','P','BT','LIVE','HT']; // considera HT come live per mostrare "HT"
+
+            for (const b of batches) {
+              const qs = encodeURIComponent(b.join(','));
+              const res = await fetch(`/api/livescores?ids=${qs}`, { cache: 'no-store' });
+              if (!res.ok) continue;
+
+              const data = await res.json();
+
+              for (const it of data) {
+                const id = String(it.id);
+
+                const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
+                const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
+                const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
+
+                // Aggiorna punteggi
+                if (homeEl) homeEl.textContent = (it.home ?? '–');
+                if (awayEl) awayEl.textContent = (it.away ?? '–');
+
+                // Stato live / non live
+                const isLive = it.status && liveStatuses.includes(it.status);
+
+                // Badge minutaggio (solo se live)
+                if (minuteEl) {
+                  if (isLive) {
+                    // elapsed può essere null per HT: in quel caso mostra "HT"
+                    let label = '';
+                    if (typeof it.elapsed === 'number' && it.elapsed >= 0) {
+                      label = `${it.elapsed}'`;
+                    } else if (it.status === 'HT') {
+                      label = 'HT';
+                    }
+
+                    if (label) {
+                      minuteEl.textContent = label;
+                      minuteEl.classList.remove('d-none');
+                    } else {
+                      minuteEl.classList.add('d-none');
+                    }
+                  } else {
+                    minuteEl.classList.add('d-none');
+                  }
+                }
+
+                // Evidenziazione live sui punteggi
+                const toggleLiveClass = el => {
+                  if (!el || !el.classList) return;
+                  if (isLive) el.classList.add('is-live');
+                  else el.classList.remove('is-live');
+                };
+                toggleLiveClass(homeEl);
+                toggleLiveClass(awayEl);
+              }
+            }
+          } catch (_) {
+            // no-op: non interrompere l'UI se una fetch fallisce
+          }
+        }
+
+
+          let h = null;
+          function start() { tick(); h = setInterval(tick, 20000); }
+          function stop()  { if (h) clearInterval(h); h = null; }
+
+          document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
+          start();
+        })();
+    </script>
+}
