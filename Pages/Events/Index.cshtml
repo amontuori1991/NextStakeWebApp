@@ -413,14 +413,14 @@
         // Click su "Migliori pronostici"
         const bestBtn = e.target.closest('a[data-loading="best"]');
         if (bestBtn) {
-          showOverlay('Carico i migliori pronostici…');
+          showOverlay('Caricamento migliori pronostici…');
           return;
         }
 
         // Click su un evento (card match)
         const matchLink = e.target.closest('a.match-grid');
         if (matchLink) {
-          showOverlay('Carico match in corso…');
+          showOverlay('Caricamento match in corso…');
           return;
         }
 
