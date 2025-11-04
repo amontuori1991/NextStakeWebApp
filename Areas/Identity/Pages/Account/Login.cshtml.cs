@@ -49,10 +49,21 @@ namespace NextStakeWebApp.Areas.Identity.Pages.Account
 
         public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
         {
-            ReturnUrl ??= Url.Content("~/");
+            // Destinazione di default: schermata Eventi
+            var defaultAfterLogin = Url.Page("/Events/Index") ?? Url.Content("~/Events");
+
+            // Prendi l’eventuale returnUrl passato dalla querystring o dal parametro
+            var provided = returnUrl ?? Request.Query["returnUrl"].ToString();
+
+            // Se il returnUrl è nullo o punta alla root "/", forza la destinazione agli Eventi
+            if (string.IsNullOrEmpty(provided) || provided == "/" || provided == Url.Content("~/"))
+                ReturnUrl = defaultAfterLogin;
+            else
+                ReturnUrl = provided;
 
             if (!ModelState.IsValid)
                 return Page();
+
 
             // Rileva se l'input è email o username
             ApplicationUser? user = null;
