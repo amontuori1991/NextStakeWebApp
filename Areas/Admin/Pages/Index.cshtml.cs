@@ -108,7 +108,6 @@ namespace NextStakeWebApp.Areas.Admin.Pages
             if (!input.UseAI || string.IsNullOrWhiteSpace(baseText))
                 return baseText;
 
-            // fallback sicuri se i select sono disabilitati e quindi non postano
             var tone = string.IsNullOrWhiteSpace(input.Tone) ? "Neutro" : input.Tone!;
             var length = string.IsNullOrWhiteSpace(input.Length) ? "Media" : input.Length!;
 
@@ -118,9 +117,22 @@ namespace NextStakeWebApp.Areas.Admin.Pages
                 $"Mantieni l'italiano e NON aggiungere hashtag o emoji extra a meno che siano utili.\n\n" +
                 $"Testo:\n\"\"\"\n{baseText}\n\"\"\"";
 
-            var improved = await _openai.AskAsync(prompt);
-            return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
+            try
+            {
+                var improved = await _openai.AskAsync(prompt);
+                return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
+            }
+            catch (Exception ex)
+            {
+                // Log opzionale se hai un ILogger<IndexModel>
+                // _logger.LogError(ex, "Errore OpenAI");
+
+                // Messaggio visibile in pagina (in alto)
+                StatusMessage = $"⚠️ AI non disponibile: {ex.Message}";
+                return baseText; // fallback: restituisco il testo originale
+            }
         }
+
 
         public class FormInput
         {

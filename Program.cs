@@ -8,6 +8,9 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
+using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -69,6 +72,23 @@ builder.Services.AddDbContextPool<ReadDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+builder.Services.AddHttpClient("OpenAI", c =>
+{
+    c.BaseAddress = new Uri("https://api.openai.com/v1/");
+});
+
+builder.Services.AddSingleton<NextStakeWebApp.Services.OpenAIOptions>(sp =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    return new NextStakeWebApp.Services.OpenAIOptions
+    {
+        ApiKey = cfg["OpenAI:ApiKey"] ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY"),
+        Model = cfg["OpenAI:Model"] ?? "gpt-4o-mini"
+    };
+});
+
+
+builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 
 builder.Services.AddHttpClient();
 builder.Services.Configure<NextStakeWebApp.Services.TelegramOptions>(
@@ -246,6 +266,15 @@ app.MapGet("/_debug/db", () => Results.Json(new
 }));
 
 app.Run();
+public class OpenAIOptions
+{
+    public string? ApiKey { get; set; }
+}
+
+public interface IAiService
+{
+    Task<string> BuildPredictionAsync(long matchId, string home, string away, string league, string? extraContext, CancellationToken ct = default);
+}
 
 // --- Records per deserializzazione API-FOOTBALL ---
 public record ApiFootballFixturesResponse(System.Collections.Generic.List<ApiFixtureItem> response);
