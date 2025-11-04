@@ -394,33 +394,50 @@
 <div id="loadingOverlay" class="loading-overlay d-none" aria-hidden="true">
     <div class="loading-panel">
         <div class="spinner-border" role="status" aria-label="Caricamento"></div>
-        <div class="fw-semibold">Carico i migliori pronostici…</div>
+        <div id="loadingMessage" class="fw-semibold">Caricamento…</div>
     </div>
 </div>
 
+
 <script>
     (function () {
-        const overlay = document.getElementById('loadingOverlay');
+      const overlay = document.getElementById('loadingOverlay');
+      const msgEl   = document.getElementById('loadingMessage');
 
-        function showOverlay() {
-            if (overlay) overlay.classList.remove('d-none');
+      function showOverlay(message) {
+        if (msgEl && message) msgEl.textContent = message;
+        if (overlay) overlay.classList.remove('d-none');
+      }
+
+      document.addEventListener('click', function (e) {
+        // Click su "Migliori pronostici"
+        const bestBtn = e.target.closest('a[data-loading="best"]');
+        if (bestBtn) {
+          showOverlay('Carico i migliori pronostici…');
+          return;
         }
 
-        // Mostra overlay quando si clicca sul bottone "Migliori pronostici"
-        document.addEventListener('click', function (e) {
-            const a = e.target.closest('a[data-loading="best"]');
-            if (a) {
-                showOverlay();
-                // non preveniamo la navigazione: vogliamo solo feedback immediato
-            }
-        });
+        // Click su un evento (card match)
+        const matchLink = e.target.closest('a.match-grid');
+        if (matchLink) {
+          showOverlay('Carico match in corso…');
+          return;
+        }
 
-        // In caso la pagina tornasse dal bfcache o simili, assicurati che l’overlay sia nascosto
-        window.addEventListener('pageshow', () => {
-            if (overlay) overlay.classList.add('d-none');
-        });
+        // Opzionale: link con messaggio personalizzato
+        const generic = e.target.closest('a[data-loading-message]');
+        if (generic) {
+          showOverlay(generic.getAttribute('data-loading-message') || 'Caricamento…');
+        }
+      });
+
+      // Se la pagina torna dal bfcache, nascondi l’overlay
+      window.addEventListener('pageshow', () => {
+        if (overlay) overlay.classList.add('d-none');
+      });
     })();
 </script>
+
 
 <style>
     .league-toggle-btn {
@@ -633,6 +650,70 @@
     .is-live::after {
         content: ' •';
     }
+
+    :root {
+        --live-color: #dc3545; /* rosso Bootstrap-ish */
+        --live-color-soft: #ff6b6b; /* variante più chiara per l'alternanza */
+    }
+
+    /* Animazione colore/leggera opacità (non sparisce mai) */
+    @@keyframes livePulse {
+        0%
+
+    {
+        color: var(--live-color);
+        opacity: 0.95;
+    }
+
+    100% {
+        color: var(--live-color-soft);
+        opacity: 1;
+    }
+
+    }
+
+    /* Puntino che “respira” */
+    @@keyframes blinkDot {
+        0%
+
+    {
+        opacity: .55;
+    }
+
+    100% {
+        opacity: 1;
+    }
+
+    }
+
+    /* Applica a punteggi live */
+    .is-live {
+        color: var(--live-color);
+        animation: livePulse 1.1s ease-in-out infinite alternate;
+    }
+
+    /* Badge minutaggio live */
+    .live-minute.is-live {
+        color: var(--live-color);
+        font-weight: 700;
+        animation: livePulse .9s ease-in-out infinite alternate;
+    }
+
+    /* Se vuoi mantenere il • sui punteggi live, animiamolo leggermente */
+    .is-live::after {
+        content: ' •';
+        animation: blinkDot 1s ease-in-out infinite alternate;
+    }
+
+    /* Accessibilità: se l’utente preferisce meno animazioni, disattivale */
+    @@media (prefers-reduced-motion: reduce) {
+        .is-live, .live-minute.is-live
+
+    {
+        animation: none !important;
+    }
+
+    }
 </style>
 
 @section Scripts {
@@ -648,7 +729,7 @@
 
         async function tick() {
           try {
-            const liveStatuses = ['1H','2H','ET','P','BT','LIVE','HT']; // considera HT come live per mostrare "HT"
+            const liveStatuses = ['1H','2H','ET','P','BT','LIVE','HT'];
 
             for (const b of batches) {
               const qs = encodeURIComponent(b.join(','));
@@ -659,54 +740,53 @@
 
               for (const it of data) {
                 const id = String(it.id);
-
                 const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
                 const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
                 const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
 
-                // Aggiorna punteggi
+                // Punteggi
                 if (homeEl) homeEl.textContent = (it.home ?? '–');
                 if (awayEl) awayEl.textContent = (it.away ?? '–');
 
-                // Stato live / non live
+                // Live?
                 const isLive = it.status && liveStatuses.includes(it.status);
 
-                // Badge minutaggio (solo se live)
+                // Minuto (solo live)
                 if (minuteEl) {
                   if (isLive) {
-                    // elapsed può essere null per HT: in quel caso mostra "HT"
                     let label = '';
                     if (typeof it.elapsed === 'number' && it.elapsed >= 0) {
                       label = `${it.elapsed}'`;
                     } else if (it.status === 'HT') {
                       label = 'HT';
                     }
-
                     if (label) {
                       minuteEl.textContent = label;
                       minuteEl.classList.remove('d-none');
                     } else {
                       minuteEl.classList.add('d-none');
                     }
+                    minuteEl.classList.add('is-live');
                   } else {
                     minuteEl.classList.add('d-none');
+                    minuteEl.classList.remove('is-live');
                   }
                 }
 
-                // Evidenziazione live sui punteggi
-                const toggleLiveClass = el => {
-                  if (!el || !el.classList) return;
+                // Evidenzia punteggi live in rosso + pulsazione
+                const apply = el => {
+                  if (!el) return;
                   if (isLive) el.classList.add('is-live');
                   else el.classList.remove('is-live');
                 };
-                toggleLiveClass(homeEl);
-                toggleLiveClass(awayEl);
+                apply(homeEl);
+                apply(awayEl);
               }
             }
-          } catch (_) {
-            // no-op: non interrompere l'UI se una fetch fallisce
-          }
+          } catch (_) { /* no-op */ }
         }
+
+        
 
 
           let h = null;
