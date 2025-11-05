@@ -95,21 +95,28 @@ namespace NextStakeWebApp.Areas.Admin.Pages
             var text = await BuildTextAsync(Input);
 
             // 2) topicId da config (Telegram__Topics__Idee)
+            // 1) prova con Idee
             long.TryParse(_cfg["Telegram:Topics:Idee"], out var topicId);
+
+            // 2) fallback: PronosticiDaPubblicare
+            if (topicId <= 0)
+                long.TryParse(_cfg["Telegram:Topics:PronosticiDaPubblicare"], out topicId);
+
+            // 3) se ancora non c'è, invia senza topic (se il tuo TelegramService lo consente)
             if (topicId <= 0)
             {
-                StatusMessage = "❌ Topic 'Idee' non configurato (Telegram:Topics:Idee).";
-                Preview = text;
-                return Page();
+                Console.WriteLine("[ADMIN] Topic non configurato: invio senza message_thread_id.");
+                await _telegram.SendMessageAsync(0, text); // NB: il tuo TelegramService deve interpretare 0 = senza topic
             }
-            Console.WriteLine($"[ADMIN] Send topic={topicId}, useAI={Input.UseAI}, mode={Input.Mode}, tone={Input.Tone}, len={Input.Length}");
+            else
+            {
+                await _telegram.SendMessageAsync(topicId, text);
+            }
 
-            // 3) invia
-            await _telegram.SendMessageAsync(topicId, text);
-
-            StatusMessage = "✅ Messaggio inviato al canale (topic Idee).";
+            StatusMessage = "✅ Messaggio inviato al canale.";
             Preview = text;
             return Page();
+
         }
 
         // ----- Helpers -----
@@ -167,8 +174,26 @@ namespace NextStakeWebApp.Areas.Admin.Pages
                     (string.IsNullOrWhiteSpace(extra) ? "(nessuna)" : extra);
             }
 
-            var improved = await _openai.AskAsync(prompt);
-            return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
+            var improved = baseText; // fallback
+            try
+            {
+                var ai = await _openai.AskAsync(prompt);
+                if (!string.IsNullOrWhiteSpace(ai))
+                    improved = ai.Trim();
+            }
+            catch (ApplicationException ex)
+            {
+                // Tipico per 429 o errori quota/limite
+                StatusMessage = "⚠️ L'AI è momentaneamente occupata o hai raggiunto il limite. Riprova tra poco.";
+                Console.WriteLine("[AI][WARN] " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = "⚠️ Errore AI inatteso. Riprova.";
+                Console.WriteLine("[AI][ERR] " + ex);
+            }
+
+            return improved;
         }
 
 

@@ -8,23 +8,19 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
-using Microsoft.Extensions.Options;
-using System.Net.Http.Headers;
 
+// NOTE: niente Microsoft.Extensions.Options qui: non lo usiamo
 
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Helper: legge da IConfiguration (UserSecrets/appsettings/ENV) con fallback a ConnectionStrings ---
 static string GetConn(IConfiguration cfg, string key1, string key2, string? appsettingsKey = null)
 {
-    // 1) chiavi dirette nella config (UserSecrets, appsettings, ENV provider)
     var c =
         cfg[key1] ??
         cfg[key2] ??
-        // 2) ENV “puro”
         Environment.GetEnvironmentVariable(key1) ??
         Environment.GetEnvironmentVariable(key2) ??
-        // 3) fallback ConnectionStrings
         (appsettingsKey != null ? cfg.GetConnectionString(appsettingsKey) : null);
 
     if (string.IsNullOrWhiteSpace(c))
@@ -56,8 +52,6 @@ builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
-builder.Services.AddHttpClient();
-builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 
 // Live scores: cache + HTTP client per API-FOOTBALL
 builder.Services.AddMemoryCache();
@@ -72,6 +66,9 @@ builder.Services.AddDbContextPool<ReadDbContext>(opt =>
         o.CommandTimeout(60);
         o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
     }));
+
+// === OpenAI ===
+// --- OpenAI ---
 builder.Services.AddHttpClient("OpenAI", c =>
 {
     c.BaseAddress = new Uri("https://api.openai.com/v1/");
@@ -82,18 +79,21 @@ builder.Services.AddSingleton<NextStakeWebApp.Services.OpenAIOptions>(sp =>
     var cfg = sp.GetRequiredService<IConfiguration>();
     return new NextStakeWebApp.Services.OpenAIOptions
     {
-        ApiKey = cfg["OpenAI:ApiKey"] ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY"),
+        ApiKey = cfg["OpenAI:ApiKey"]
+                 ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+                 ?? Environment.GetEnvironmentVariable("OpenAI__ApiKey"),
         Model = cfg["OpenAI:Model"] ?? "gpt-4o-mini"
     };
 });
 
+builder.Services.AddScoped<NextStakeWebApp.Services.IOpenAIService, NextStakeWebApp.Services.OpenAIService>();
+builder.Services.AddScoped<NextStakeWebApp.Services.IAiService, NextStakeWebApp.Services.AiService>();
 
-builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 
+// Telegram
 builder.Services.AddHttpClient();
-builder.Services.Configure<NextStakeWebApp.Services.TelegramOptions>(
-    builder.Configuration.GetSection("Telegram"));
-builder.Services.AddSingleton<NextStakeWebApp.Services.ITelegramService, NextStakeWebApp.Services.TelegramService>();
+builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.AddSingleton<ITelegramService, TelegramService>();
 
 // Identity
 builder.Services
@@ -126,13 +126,12 @@ builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// Migrazioni/seed SOLO sul DB WRITE (evita 42P01 in avvio su ambienti vuoti)
+// Migrazioni/seed SOLO sul DB WRITE
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
     var appDb = sp.GetRequiredService<ApplicationDbContext>();
 
-    // Esegue le migrazioni in modo resiliente (retry su errori transient)
     var strategy = appDb.Database.CreateExecutionStrategy();
     await strategy.ExecuteAsync(async () =>
     {
@@ -153,7 +152,6 @@ using (var scope = app.Services.CreateScope())
         catch (Npgsql.NpgsqlException ex)
         {
             Console.WriteLine($"[MIGRATE][WARN] transient error: {ex.Message}");
-            // throw; // se vuoi fallire duro in caso di errore, decommenta
         }
     });
 
@@ -170,9 +168,9 @@ using (var scope = app.Services.CreateScope())
     if (!await roleManager.RoleExistsAsync(adminRole))
         await roleManager.CreateAsync(new IdentityRole(adminRole));
 
-    var email = config["SuperAdmin:Email"];          // es. nextstakeai@gmail.com
+    var email = config["SuperAdmin:Email"];
     var userName = config["SuperAdmin:UserName"] ?? email;
-    var password = config["SuperAdmin:Password"] ?? "Admin#12345"; // fallback se non impostata
+    var password = config["SuperAdmin:Password"] ?? "Admin#12345";
 
     if (!string.IsNullOrWhiteSpace(email))
     {
@@ -220,7 +218,7 @@ app.MapRazorPages();
 app.MapGet("/api/livescores", async (
     IHttpClientFactory httpFactory,
     IConfiguration cfg,
-    Microsoft.Extensions.Caching.Memory.IMemoryCache cache,
+    IMemoryCache cache,
     string ids // "123,456,789"
 ) =>
 {
@@ -252,7 +250,6 @@ app.MapGet("/api/livescores", async (
         away = x.goals?.away
     }).Where(x => x.id.HasValue).ToList() ?? new();
 
-
     cache.Set(cacheKey, payload, TimeSpan.FromSeconds(5));
     return Results.Json(payload);
 })
@@ -266,15 +263,6 @@ app.MapGet("/_debug/db", () => Results.Json(new
 }));
 
 app.Run();
-public class OpenAIOptions
-{
-    public string? ApiKey { get; set; }
-}
-
-public interface IAiService
-{
-    Task<string> BuildPredictionAsync(long matchId, string home, string away, string league, string? extraContext, CancellationToken ct = default);
-}
 
 // --- Records per deserializzazione API-FOOTBALL ---
 public record ApiFootballFixturesResponse(System.Collections.Generic.List<ApiFixtureItem> response);
