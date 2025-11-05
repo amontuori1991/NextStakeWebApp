@@ -6,6 +6,14 @@
 }
 
 <div class="container py-4">
+    @* Messaggio di stato (TempData) *@
+    @if (TempData["StatusMessage"] is string sm && !string.IsNullOrWhiteSpace(sm))
+    {
+        <div class="alert alert-info d-flex align-items-center gap-2">
+            <span>ℹ️</span><span>@sm</span>
+        </div>
+    }
+
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div class="d-flex align-items-center gap-2">
             @if (!string.IsNullOrWhiteSpace(Model.Data.LeagueLogo))
@@ -52,8 +60,22 @@
             @Html.AntiForgeryToken()
             <button type="submit" class="btn @(Model.Data.IsFavorite ? "btn-warning" : "btn-outline-secondary")">⭐ Preferito</button>
         </form>
+
         <a class="btn btn-outline-secondary" href="/Events">← Torna agli eventi</a>
+
+        @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
+        @if (User.IsInRole("Admin") || User.IsInRole("SuperAdmin"))
+        {
+            <form method="post" asp-page-handler="GenerateAiPick" class="ms-auto">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                <button type="submit" class="btn btn-primary">
+                    🤖 Genera pronostico (AI)
+                </button>
+            </form>
+        }
     </div>
+
 
     <!-- Selettore gruppi -->
     <div class="d-flex justify-content-center">

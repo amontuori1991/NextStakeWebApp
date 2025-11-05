@@ -11,29 +11,35 @@ using System.Data;
 
 namespace NextStakeWebApp.Pages.Match
 {
-    [Authorize]
+    [Authorize(Roles = "User,Admin,SuperAdmin")]
     public class DetailsModel : PageModel
+
     {
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ITelegramService _telegram;
         private readonly IConfiguration _config;
+        private readonly IOpenAIService _openai;
+
 
         public DetailsModel(
             ReadDbContext read,
             ApplicationDbContext write,
             UserManager<ApplicationUser> userManager,
             ITelegramService telegram,
-            IConfiguration config)
+            IConfiguration config,
+            IOpenAIService openai) // <--- AGGIUNTO
         {
             _read = read;
             _write = write;
             _userManager = userManager;
             _telegram = telegram;
             _config = config;
+            _openai = openai; // <--- AGGIUNTO
         }
-
+        [TempData]
+        public string? StatusMessage { get; set; }
         public VM Data { get; private set; } = new();
 
         public class VM
@@ -86,6 +92,148 @@ namespace NextStakeWebApp.Pages.Match
             public int GF { get; set; }
             public int GA { get; set; }
             public int Diff { get; set; }
+        }
+
+        // Handler: genera con AI e invia su 'Idee'
+        // Handler: genera con AI e invia su 'Idee' (con integrazione dati Prediction)
+        public async Task<IActionResult> OnPostGenerateAiPickAsync(long id)
+        {
+            // Solo Admin o SuperAdmin
+            if (!(User.IsInRole("Admin") || User.IsInRole("SuperAdmin")))
+                return Forbid();
+
+            // Dati essenziali match
+            var dto = await (
+                from mm in _read.Matches
+                join lg in _read.Leagues on mm.LeagueId equals lg.Id
+                join th in _read.Teams on mm.HomeId equals th.Id
+                join ta in _read.Teams on mm.AwayId equals ta.Id
+                where mm.Id == id
+                select new
+                {
+                    LeagueName = lg.Name,
+                    CountryCode = lg.CountryCode,
+                    KickoffUtc = mm.Date,
+                    Home = th.Name ?? "",
+                    Away = ta.Name ?? "",
+                    LeagueId = lg.Id,
+                    Season = mm.Season,
+                    HomeId = th.Id,
+                    AwayId = ta.Id
+                }
+            ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null)
+                return NotFound();
+
+            // === 1) Carica indicatori proprietari + forma e classifica ===
+            var p = await LoadPredictionAsync(id);
+
+            var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
+            var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
+            var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
+
+            string ToFormSeq(List<FormRow> rows) => string.Join("", rows.Select(r => r.Result));
+            var homeFormSeq = homeForm.Count > 0 ? ToFormSeq(homeForm) : "—";
+            var awayFormSeq = awayForm.Count > 0 ? ToFormSeq(awayForm) : "—";
+
+            int? homeRank = standings.FirstOrDefault(s => s.TeamId == dto.HomeId)?.Rank;
+            int? awayRank = standings.FirstOrDefault(s => s.TeamId == dto.AwayId)?.Rank;
+
+            // Blocco sintetico dei dati da passare all'AI e da allegare su Telegram
+            string statsForAi, statsForTelegram;
+
+            if (p is null)
+            {
+                statsForAi =
+        $@"(nessun dato proprietario disponibile)
+- Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+- Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+                statsForTelegram =
+        $@"
+
+📊 <b>Indicatori interni</b>
+• Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+• Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+            }
+            else
+            {
+                statsForAi =
+        $@"- Esito: {p.Esito}
+- GG/NG: {p.GG_NG}
+- Over/Under: {p.OverUnderRange}
+- Multigoal Casa: {p.MultigoalCasa}
+- Multigoal Ospite: {p.MultigoalOspite}
+- Goal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})
+- Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+- Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+
+                statsForTelegram =
+        $@"
+
+📊 <b>Indicatori interni</b>
+• Esito: {p.Esito}
+• GG/NG: {p.GG_NG}
+• Over/Under: {p.OverUnderRange}
+• MG Casa: {p.MultigoalCasa}
+• MG Ospite: {p.MultigoalOspite}
+• Goal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})
+• Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+• Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+            }
+
+            // === 2) Prompt AI con i tuoi dati come contesto ===
+            var prompt =
+        $@"Sei un analista calcistico. Scrivi un post TELEGRAM conciso (max 4 righe) che contenga:
+- una combo consigliata CHIARA (senza garanzie; linguaggio probabilistico),
+- 1–2 bullet di motivazione (forma, equilibrio, trend gol, valore quota) SENZA inventare numeri non presenti,
+- chiusura con micro CTA: ""Tu come la vedi?"".
+
+Contesto:
+Lega: {dto.LeagueName}
+Match: {dto.Home} vs {dto.Away}
+Calcio d'inizio: {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}
+
+Dati proprietari (usali come spunto, NON inventare numeri diversi):
+{statsForAi}";
+
+            string aiText;
+            try
+            {
+                var raw = await _openai.AskAsync(prompt);
+                aiText = string.IsNullOrWhiteSpace(raw) ? "" : raw.Trim();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AI][ERR] " + ex);
+                StatusMessage = "⚠️ AI non disponibile. Riprova tra poco.";
+                return RedirectToPage(new { id });
+            }
+
+            if (string.IsNullOrWhiteSpace(aiText))
+            {
+                StatusMessage = "⚠️ Nessun testo generato dall'AI.";
+                return RedirectToPage(new { id });
+            }
+
+            // === 3) Costruisci messaggio Telegram
+            if (!long.TryParse(_config["Telegram:Topics:Idee"], out var topicId) || topicId <= 0)
+            {
+                StatusMessage = "❌ Topic 'Idee' non configurato (Telegram:Topics:Idee).";
+                return RedirectToPage(new { id });
+            }
+
+            var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
+            var header =
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}\n\n";
+
+            var finalMsg = header + aiText + (string.IsNullOrEmpty(statsForTelegram) ? "" : statsForTelegram);
+
+            await _telegram.SendMessageAsync(topicId, finalMsg);
+
+            StatusMessage = "✅ Pronostico AI generato con i tuoi dati e inviato su ‘Idee’.";
+            return RedirectToPage(new { id });
         }
 
         // =======================
@@ -175,6 +323,7 @@ namespace NextStakeWebApp.Pages.Match
 
             return Page();
         }
+       
 
         // =======================
         // ⭐ Toggle preferito
@@ -196,7 +345,7 @@ namespace NextStakeWebApp.Pages.Match
         // =======================
         // INVIO PRONOSTICI (topicName -> id da config)
         // =======================
-        [Authorize(Roles = "Admin")]
+        
         public async Task<IActionResult> OnPostSendPredictionAsync(long id, string? topicName, string? customPick)
         {
             if (!User.IsInRole("Admin")) return Forbid();
@@ -247,7 +396,7 @@ namespace NextStakeWebApp.Pages.Match
         // =======================
         // INVIO EXCHANGE (topicName -> id da config)
         // =======================
-        [Authorize(Roles = "Admin")]
+       
         public async Task<IActionResult> OnPostSendExchangeAsync(long id, string customLay, string riskLevel, string? topicName)
         {
             if (!User.IsInRole("Admin")) return Forbid();

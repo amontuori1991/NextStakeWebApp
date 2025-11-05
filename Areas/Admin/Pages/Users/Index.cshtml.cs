@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using NextStakeWebApp.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace NextStakeWebApp.Areas.Admin.Pages.Users
 {
@@ -18,20 +19,23 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
 
         public List<AdminUserViewModel> Users { get; set; } = new();
 
-        public async Task OnGetAsync()
-        {
-            var allUsers = _userManager.Users.ToList();
-            Users = allUsers.Select(u => new AdminUserViewModel
-            {
-                Id = u.Id,
-                Email = u.Email ?? "",
-                Plan = u.Plan.ToString(),
-                PlanExpiresAtUtc = u.PlanExpiresAtUtc,
-                IsApproved = u.IsApproved
-            }).ToList();
-        }
 
-        public async Task<IActionResult> OnPostToggleApprovalAsync(string id)
+
+public async Task OnGetAsync()
+    {
+        var allUsers = await _userManager.Users.ToListAsync(); // <-- await qui
+        Users = allUsers.Select(u => new AdminUserViewModel
+        {
+            Id = u.Id,
+            Email = u.Email ?? "",
+            Plan = u.Plan.ToString(),
+            PlanExpiresAtUtc = u.PlanExpiresAtUtc,
+            IsApproved = u.IsApproved
+        }).ToList();
+    }
+
+
+    public async Task<IActionResult> OnPostToggleApprovalAsync(string id)
         {
             if (string.IsNullOrWhiteSpace(id)) return BadRequest();
 
