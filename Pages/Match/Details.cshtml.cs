@@ -11,7 +11,7 @@ using System.Data;
 
 namespace NextStakeWebApp.Pages.Match
 {
-    [Authorize(Roles = "User,Admin,SuperAdmin")]
+    [Authorize] // basta essere autenticati
     public class DetailsModel : PageModel
 
     {
