@@ -166,8 +166,29 @@ namespace NextStakeWebApp.Pages.Match
             string proprietaryContext = p is null
                 ? $"(nessun pronostico interno disponibile)\nForma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}\nForma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}"
                 : $"Esito: {p.Esito}\nGG/NG: {p.GG_NG}\nOver/Under: {p.OverUnderRange}\nMG Casa: {p.MultigoalCasa}\nMG Ospite: {p.MultigoalOspite}\nGoal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})\nForma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}\nForma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+
+
             // 4.bis) Ricava anche le linee numeriche indicative dai blocchi analitici JSON
+            // Linee totali
             JsonObject? goalsObj = null, cornersObj = null, cardsObj = null, shotsObj = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(analysisPayload))
+                {
+                    var root = JsonNode.Parse(analysisPayload)!.AsObject();
+                    goalsObj = root.Where(kv => string.Equals(kv.Key, "goals", StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value as JsonObject).FirstOrDefault();
+                    cornersObj = root.Where(kv => string.Equals(kv.Key, "corners", StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value as JsonObject).FirstOrDefault();
+                    cardsObj = root.Where(kv => string.Equals(kv.Key, "cards", StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value as JsonObject).FirstOrDefault();
+                    shotsObj = root.Where(kv => string.Equals(kv.Key, "shots", StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value as JsonObject).FirstOrDefault();
+                }
+            }
+            catch { /* ok */ }
+
+            var totalLines = BuildIndicativeLines(goalsObj, cornersObj, cardsObj, shotsObj, p);
+            var teamLinesCandidates = BuildTeamCandidates(goalsObj, cornersObj, cardsObj, shotsObj, p, dto.Home, dto.Away);
+            var teamLines = BuildTeamLines(goalsObj, cornersObj, cardsObj, shotsObj, p);
+
+
             try
             {
                 if (!string.IsNullOrWhiteSpace(analysisPayload))
@@ -182,39 +203,63 @@ namespace NextStakeWebApp.Pages.Match
             catch { /* payload non essenziale per le linee */ }
 
             var lines = BuildIndicativeLines(goalsObj, cornersObj, cardsObj, shotsObj, p);
+            // 5-bis) Calcolo pesato linee indicative (totali + singola squadra)
+            var W = GetWeightsFromPrediction(p);
+            var linesTotal = BuildIndicativeLinesWeighted(W, goals: null, shots: null, corners: null, cards: null, fouls: null, offsides: null);
+
+            // Passa i tuoi gruppi reali (se li hai già caricati sopra in questo handler)
+            var goalsMg = await RunAnalysisAsync("NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var shotsMg = await RunAnalysisAsync("NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var cornersMg = await RunAnalysisAsync("NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var cardsMg = await RunAnalysisAsync("NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var foulsMg = await RunAnalysisAsync("NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
+            var offsMg = await RunAnalysisAsync("NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
+
+            linesTotal = BuildIndicativeLinesWeighted(W, goalsMg, shotsMg, cornersMg, cardsMg, foulsMg, offsMg);
+            var linesTeams = BuildTeamLinesWeighted(W, dto.Home, dto.Away, goalsMg, shotsMg, cornersMg);
 
             // 5) Prompt AI: niente numeri in output, analisi breve + mercati correlati
             var prompt = $@"
 Agisci come analista calcistico. Hai:
 - Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni) e stato di forma/rank.
-- Statistiche grezze (tiri, corner, falli, cartellini, fuorigioco, goal/over) per Casa e Ospite.
-- Linee numeriche indicative (da usare per Over/Under).
+- Statistiche grezze (tiri, corner, falli, cartellini, fuorigioco, goal/over) già parsate (NON citare numeri).
+- Linee indicative pesate (soglie da usare per Over/Under anche di singola squadra).
 
-OBIETTIVO OUTPUT (5–8 righe totali, niente elenchi lunghi):
-1) Breve analisi del match (1–3 frasi): stile atteso (ritmo, pressione, equilibrio), citando SOLO tendenze (NO numeri puntuali).
-2) Consigli:
-   - 1 combo principale COERENTE con i dati proprietari.
-   - 2–3 mercati correlati migliori tra: Over/Under Corner, Over/Under Cartellini, Over/Under Tiri Totali, GG/NG, Over/Under Gol.
-   - Per ciascun mercato scrivi Over/Under usando la LINEA indicativa fornita (es.: Over {lines.Goals:0.0}, Under {lines.Corners:0.0}, ecc.) e una micro-motivazione senza cifre.
-3) Niente promesse/certezze. Linguaggio probabilistico, pulito, concreto.
+OBIETTIVO OUTPUT (max 9–12 righe totali, NO elenco puntato secco):
+1️⃣ Breve analisi del match (1–3 frasi): ritmo, equilibrio e contesto tattico, facendo emergere *perché* il match potrebbe svilupparsi in un certo modo (pressing, spazi, atteggiamento difensivo, ecc.).
+
+2️⃣ Analisi dei mercati consigliati (scrivila come un mini commento tecnico, NON solo elenco):
+   - Inizia con la **combo principale**, spiegando brevemente perché è coerente con i dati (es. “la tendenza difensiva del Pisa e la forma offensiva della Cremonese rendono plausibile un 2 + Over 1.5”).
+   - Poi analizza **2–3 mercati correlati**, uno per volta, con **motivazione esplicita** (es. “l’atteggiamento aggressivo di entrambe spinge verso Over 5.5 Corner”, oppure “l’arbitraggio tende a limitare i cartellini”).
+   - Se emerge un segnale netto di SQUADRA (corner/tiri/gol), aggiungi anche **un mercato singolo squadra** e spiega la logica (es. “la Cremonese crea molto sugli esterni → Team Over 1.0 Gol”).
+
+3️⃣ Usa un linguaggio tecnico ma fluido, tono da analista sportivo (NO frasi generiche tipo 'si prevede una partita equilibrata' senza motivazione).  
+4️⃣ Le soglie vanno citate naturalmente come riferimento (es. “sopra la linea dei 2.5 gol”, “oltre i 5.5 corner”).  
+5️⃣ Evita numeri grezzi o percentuali, ma rendi chiaro il *ragionamento* dietro ogni scelta.
+
+⚠️ Importante:
+- Le motivazioni devono essere LOGICAMENTE coerenti con la combo proposta.
+- Se il pronostico indica che una squadra perderà o subirà gol, evita di definirla “solida difensivamente”.
+- Se i dati mostrano una difesa solida ma il pronostico è Over, spiega il perché (es. “difesa in calo”, “pressing alto che lascia spazi”).
+- Se i dati mostrano un attacco debole ma il pronostico è GG o Over, giustifica con il contesto (es. “forma in crescita”, “avversario più vulnerabile fuori casa”).
 
 CONTESTO MATCH
 Lega: {dto.LeagueName}
 Partita: {dto.Home} vs {dto.Away}
 Calcio d'inizio (locale): {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}
 
-DATI PROPRIETARI (ancoraggio):
+DATI PROPRIETARI:
 {proprietaryContext}
 
-LINEE INDICATIVE (usa queste per i mercati):
-- Gol Totali: {lines.Goals:0.0}
-- Corner Totali: {lines.Corners:0.0}
-- Cartellini Totali: {lines.Cards:0.0}
-- Tiri Totali: {lines.Shots:0.0}
+LINEE INDICATIVE (da usare per le soglie):
+{linesTotal}
+{linesTeams}
 
-STATISTICHE (solo per tuo ragionamento, NON riportare numeri):
+STATISTICHE (solo per ragionamento, NON riportare numeri):
 {analysisContext}
+
 ";
+
 
 
             // 6) Chiamata AI
@@ -802,6 +847,247 @@ STATISTICHE (solo per tuo ragionamento, NON riportare numeri):
             if (targetType == typeof(int) && val is long l) val = (int)l;
             return (T)Convert.ChangeType(val, targetType);
         }
+        // ------------------------ NUMERIC HELPERS ------------------------
+        private static decimal? TryParseDec(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            var t = s.Trim();
+
+            // togli % e simboli strani
+            t = t.Replace("%", "").Replace("−", "-");
+
+            // normalizza virgola/punto
+            t = t.Replace(',', '.');
+
+            // prendi solo numero (es. "5.20 (media)" -> "5.20")
+            var span = t.AsSpan();
+            int start = -1, end = -1;
+            for (int i = 0; i < span.Length; i++)
+            {
+                if (char.IsDigit(span[i]) || span[i] == '-' || span[i] == '+')
+                {
+                    start = i; break;
+                }
+            }
+            if (start == -1) return null;
+            end = start;
+            while (end < span.Length && (char.IsDigit(span[end]) || span[end] == '.')) end++;
+
+            var num = new string(span[start..end]);
+            if (decimal.TryParse(num, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return d;
+
+            return null;
+        }
+
+        private static decimal RoundToHalf(decimal x) => Math.Round(x * 2m, MidpointRounding.AwayFromZero) / 2m;
+        private static decimal Clamp(decimal v, decimal min, decimal max) => v < min ? min : (v > max ? max : v);
+
+        // ------------------------ METRIC LOOKUP ------------------------
+        // Cerca "BaseName - Casa/Ospite" accettando Casa/Ospite o Home/Away
+        private static (decimal? home, decimal? away) GetPair(MetricGroup? mg, string baseName)
+        {
+            if (mg?.Metrics is null || mg.Metrics.Count == 0) return (null, null);
+
+            decimal? H = null, A = null;
+            foreach (var kv in mg.Metrics)
+            {
+                var key = kv.Key?.Trim() ?? "";
+                var lastDash = key.LastIndexOf('-');
+                if (lastDash <= 0) continue;
+
+                var name = key.Substring(0, lastDash).Trim();
+                var side = key[(lastDash + 1)..].Trim();
+
+                if (!name.Equals(baseName, StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (side.Equals("Casa", StringComparison.OrdinalIgnoreCase) || side.Equals("Home", StringComparison.OrdinalIgnoreCase))
+                    H = TryParseDec(kv.Value);
+                else if (side.Equals("Ospite", StringComparison.OrdinalIgnoreCase) || side.Equals("Away", StringComparison.OrdinalIgnoreCase))
+                    A = TryParseDec(kv.Value);
+            }
+            return (H, A);
+        }
+
+        // Ritorna prima metrica utile tra più basi candidate (comodo per "Effettuati"/"Fatti")
+        private static (decimal? home, decimal? away) GetFirstAvailablePair(MetricGroup? mg, params string[] baseCandidates)
+        {
+            foreach (var b in baseCandidates)
+            {
+                var p = GetPair(mg, b);
+                if (p.home.HasValue || p.away.HasValue) return p;
+            }
+            return (null, null);
+        }
+
+        // Blend casa/trasferta con pesi
+        private static decimal? Blend((decimal? home, decimal? away) pair, decimal wHome, decimal wAway)
+        {
+            var (h, a) = pair;
+            if (h.HasValue && a.HasValue) return h.Value * wHome + a.Value * wAway;
+            if (h.HasValue) return h.Value * wHome;
+            if (a.HasValue) return a.Value * wAway;
+            return null;
+        }
+        // ------------------------ WEIGHTS FROM PREDICTION ------------------------
+        private sealed record Weights(decimal HomeW, decimal AwayW, decimal AttackBias, decimal DefenseBias, decimal PaceBias);
+
+        private static Weights GetWeightsFromPrediction(PredictionRow? p)
+        {
+            // default neutro
+            decimal wH = 0.5m, wA = 0.5m, att = 0.0m, def = 0.0m, pace = 0.0m;
+
+            if (p != null)
+            {
+                // Esito: sposta focus tra casa/trasferta
+                var esito = (p.Esito ?? "").ToUpperInvariant();
+                if (esito.Contains('1') && !esito.Contains('2')) { wH = 0.65m; wA = 0.35m; }
+                else if (esito.Contains('2') && !esito.Contains('1')) { wH = 0.35m; wA = 0.65m; }
+                else if (esito.Contains('X')) { wH = 0.5m; wA = 0.5m; }
+
+                // Over/Under: attacco vs difesa
+                var ou = (p.OverUnderRange ?? "").ToUpperInvariant();
+                if (ou.Contains("OVER")) { att += 0.20m; pace += 0.15m; }
+                if (ou.Contains("UNDER")) { def += 0.20m; pace -= 0.10m; }
+
+                // GG/NG
+                var gg = (p.GG_NG ?? "").ToUpperInvariant();
+                if (gg.Contains("GG")) { att += 0.10m; }
+                if (gg.Contains("NG")) { def += 0.10m; }
+
+                // Goal simulati totali
+                var tot = p.TotaleGoalSimulati;
+                if (tot >= 3) { att += 0.15m; pace += 0.10m; }
+                else if (tot <= 1) { def += 0.15m; pace -= 0.10m; }
+            }
+
+            // clamp & normalize
+            wH = Clamp(wH, 0.2m, 0.8m); wA = 1m - wH;
+            att = Clamp(att, -0.3m, 0.5m);
+            def = Clamp(def, -0.3m, 0.5m);
+            pace = Clamp(pace, -0.3m, 0.5m);
+
+            return new Weights(wH, wA, att, def, pace);
+        }
+        // ------------------------ LINES (TOTALI) ------------------------
+        private static string BuildIndicativeLinesWeighted(
+            Weights W,
+            MetricGroup? goals, MetricGroup? shots, MetricGroup? corners,
+            MetricGroup? cards, MetricGroup? fouls, MetricGroup? offsides)
+        {
+            // GOAL (usa Fatti/Subiti + split casa/trasferta se disponibili)
+            // idea: attacco -> più peso su "Fatti", difesa -> più peso su "Subiti"
+            var gF_casa = GetFirstAvailablePair(goals, "Fatti", "Goals Fatti", "Scored");
+            var gS_casa = GetFirstAvailablePair(goals, "Subiti", "Goals Subiti", "Conceded");
+
+            var gHomeHome = GetPair(goals, "Fatti in Casa");       // casa segna in casa
+            var gAwayAway = GetPair(goals, "Fatti in Trasferta");  // ospite segna fuori
+
+            var gHomeSubHome = GetPair(goals, "Subiti in Casa");       // casa subisce in casa
+            var gAwaySubAway = GetPair(goals, "Subiti in Trasferta");  // ospite subisce fuori
+
+            // expected goals totali ≈ media ponderata tra (segnati) e (concessi incrociati)
+            decimal? expG_H = Blend(gHomeHome, W.HomeW, 0m) ?? Blend(gF_casa, W.HomeW, 0m);
+            decimal? expG_A = Blend(gAwayAway, 0m, W.AwayW) ?? Blend(gF_casa, 0m, W.AwayW);
+
+            decimal? expG_H_fromAway = Blend(gAwaySubAway, 0m, W.AwayW) ?? Blend(gS_casa, 0m, W.AwayW);
+            decimal? expG_A_fromHome = Blend(gHomeSubHome, W.HomeW, 0m) ?? Blend(gS_casa, W.HomeW, 0m);
+
+            var expGoals = new[] { expG_H, expG_A, expG_H_fromAway, expG_A_fromHome }
+                .Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty(2.0m).Average();
+
+            expGoals = Clamp(expGoals + 0.5m * W.AttackBias - 0.4m * W.DefenseBias, 0.5m, 4.5m);
+            var lineGoals = RoundToHalf(expGoals);
+
+            // TIRI (total shots): usa "Effettuati"/"In Casa"/"Fuoricasa"
+            var shFor = GetFirstAvailablePair(shots, "Effettuati", "Tiri Effettuati", "Total Shots");
+            var shHome = GetPair(shots, "In Casa");
+            var shAway = GetPair(shots, "Fuoricasa");
+
+            var expShots = new[] {
+        Blend(shHome, W.HomeW, 0m),
+        Blend(shAway, 0m, W.AwayW),
+        Blend(shFor,  W.HomeW, W.AwayW)
+    }.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty(22m).Average();
+
+            expShots = Clamp(expShots + 6m * W.PaceBias, 10m, 40m);
+            var lineShots = RoundToHalf(expShots);
+
+            // CORNER: "In Casa" + "Fuoricasa" come baseline, fallback su "Battuti"
+            var coHome = GetPair(corners, "In Casa");
+            var coAway = GetPair(corners, "Fuoricasa");
+            var coFor = GetFirstAvailablePair(corners, "Battuti", "Effettuati");
+
+            var expCorners = new[] {
+        Blend(coHome, W.HomeW, 0m),
+        Blend(coAway, 0m, W.AwayW),
+        Blend(coFor,  W.HomeW, W.AwayW)
+    }.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty(9.0m).Average();
+
+            expCorners = Clamp(expCorners + 2.0m * W.PaceBias, 5.5m, 14.5m);
+            var lineCorners = RoundToHalf(expCorners);
+
+            // CARTELLINI: Fatti/Subiti come intensità, meno dipendente da pace
+            var caFor = GetFirstAvailablePair(cards, "Fatti", "Cartellini Fatti", "Cards For");
+            var caAg = GetFirstAvailablePair(cards, "Subiti", "Cartellini Subiti", "Cards Against");
+            var expCards = new[] {
+        Blend(caFor, W.HomeW, W.AwayW),
+        Blend(caAg,  W.HomeW, W.AwayW)
+    }.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty(4.5m).Average();
+
+            expCards = Clamp(expCards + 0.8m * (W.AttackBias - W.DefenseBias), 2.5m, 7.5m);
+            var lineCards = RoundToHalf(expCards);
+
+            // FALLI: simile a cartellini ma con più ampiezza
+            var faFor = GetFirstAvailablePair(fouls, "Fatti", "Fouls For");
+            var faAg = GetFirstAvailablePair(fouls, "Subiti", "Fouls Against");
+            var expFouls = new[] {
+        Blend(faFor, W.HomeW, W.AwayW),
+        Blend(faAg,  W.HomeW, W.AwayW)
+    }.Where(x => x.HasValue).Select(x => x!.Value).DefaultIfEmpty(26m).Average();
+
+            expFouls = Clamp(expFouls + 2.5m * (W.DefenseBias - 0.2m * W.AttackBias), 16m, 38m);
+            var lineFouls = RoundToHalf(expFouls);
+
+            // FUORIGIOCO: poco varianza, dipende leggermente da pace
+            var ofFor = GetFirstAvailablePair(offsides, "Fatti", "Offsides For");
+            var expOff = Blend(ofFor, W.HomeW, W.AwayW) ?? 3.0m;
+            expOff = Clamp(expOff + 0.5m * W.PaceBias, 1.5m, 6.0m);
+            var lineOff = RoundToHalf(expOff);
+
+            return $"Linee indicative totali → Gol ~ {lineGoals:0.0} | Tiri ~ {lineShots:0.0} | Corner ~ {lineCorners:0.0} | Cartellini ~ {lineCards:0.0} | Falli ~ {lineFouls:0.0} | Fuorigioco ~ {lineOff:0.0}";
+        }
+
+        // ------------------------ LINES (SQUADRA) ------------------------
+        private static string BuildTeamLinesWeighted(
+            Weights W,
+            string homeName, string awayName,
+            MetricGroup? goals, MetricGroup? shots, MetricGroup? corners)
+        {
+            // Corner per squadra (usiamo "In Casa" per la home, "Fuoricasa" per l'away; fallback su "Battuti")
+            var coHome = GetPair(corners, "In Casa");
+            var coAway = GetPair(corners, "Fuoricasa");
+            var coFor = GetFirstAvailablePair(corners, "Battuti", "Effettuati");
+
+            var lineHomeCorners = RoundToHalf((Blend(coHome, 1m, 0m) ?? Blend(coFor, 1m, 0m) ?? 4.5m) + 1.0m * W.PaceBias);
+            var lineAwayCorners = RoundToHalf((Blend(coAway, 0m, 1m) ?? Blend(coFor, 0m, 1m) ?? 4.0m) + 0.8m * W.PaceBias);
+
+            // Tiri per squadra (In Casa/Fuoricasa; fallback su Effettuati)
+            var shHome = GetPair(shots, "In Casa");
+            var shAway = GetPair(shots, "Fuoricasa");
+            var shFor = GetFirstAvailablePair(shots, "Effettuati", "Total Shots");
+
+            var lineHomeShots = RoundToHalf((Blend(shHome, 1m, 0m) ?? Blend(shFor, 1m, 0m) ?? 11m) + 2.0m * W.PaceBias);
+            var lineAwayShots = RoundToHalf((Blend(shAway, 0m, 1m) ?? Blend(shFor, 0m, 1m) ?? 10m) + 1.5m * W.PaceBias);
+
+            // Goal per squadra (come sopra, utile se vuoi “Team Over 0.5” ecc.)
+            var gHomeHome = GetPair(goals, "Fatti in Casa");
+            var gAwayAway = GetPair(goals, "Fatti in Trasferta");
+            var lineHomeGoals = RoundToHalf((Blend(gHomeHome, 1m, 0m) ?? 1.0m) + 0.3m * W.AttackBias - 0.3m * W.DefenseBias);
+            var lineAwayGoals = RoundToHalf((Blend(gAwayAway, 0m, 1m) ?? 0.9m) + 0.2m * W.AttackBias - 0.2m * W.DefenseBias);
+
+            return $"Linee squadra → {homeName}: Corner ~ {lineHomeCorners:0.0}, Tiri ~ {lineHomeShots:0.0}, Gol ~ {lineHomeGoals:0.0} | {awayName}: Corner ~ {lineAwayCorners:0.0}, Tiri ~ {lineAwayShots:0.0}, Gol ~ {lineAwayGoals:0.0}";
+        }
 
         /// <summary>
         /// Converte le Metriche in 3–5 "segnali" sintetici per ogni blocco
@@ -1125,6 +1411,141 @@ STATISTICHE (solo per tuo ragionamento, NON riportare numeri):
             if (q < min) q = min;
             if (q > max) q = max;
             return q;
+        }
+        // ===== TEAM LINES =====
+        private record TeamIndicativeLines(
+            decimal HomeGoals, decimal AwayGoals,
+            decimal HomeCorners, decimal AwayCorners,
+            decimal HomeCards, decimal AwayCards,
+            decimal HomeShots, decimal AwayShots
+        );
+
+        private static TeamIndicativeLines BuildTeamLines(JsonObject? goals, JsonObject? corners, JsonObject? cards, JsonObject? shots, PredictionRow? p)
+        {
+            // Goals expected (già ricavati nella BuildIndicativeLines: homeExpGoals/awayExpGoals)
+            // Ricalcolo qui per non dipendere da variabili locali
+            var (gFh, gSh, gFa, gSa) = ExtractForAgainst(goals);
+            var homeExpGoals = Blend(gFh, gSa);
+            var awayExpGoals = Blend(gFa, gSh);
+
+            if (p is not null && p.GoalSimulatoCasa > 0 && p.GoalSimulatoOspite > 0)
+            {
+                // blend 60/40 con i simulati interni se presenti
+                homeExpGoals = (homeExpGoals > 0 ? 0.4m * homeExpGoals : 0m) + 0.6m * p.GoalSimulatoCasa;
+                awayExpGoals = (awayExpGoals > 0 ? 0.4m * awayExpGoals : 0m) + 0.6m * p.GoalSimulatoOspite;
+            }
+
+            var homeGoalsLine = Quantize(homeExpGoals, 0.5m, 0.5m, 2.5m);
+            var awayGoalsLine = Quantize(awayExpGoals, 0.5m, 0.5m, 2.5m);
+
+            // Corners: team ≈ media tra "Corner fatti" della squadra e "Corner concessi" dell'avversaria
+            var (cFh, cSh, cFa, cSa) = ExtractForAgainst(corners);
+            var homeCornersExp = Blend(cFh, cSa);
+            var awayCornersExp = Blend(cFa, cSh);
+            var homeCornersLine = Quantize(homeCornersExp, 0.5m, 3.5m, 6.5m);
+            var awayCornersLine = Quantize(awayCornersExp, 0.5m, 3.5m, 6.5m);
+
+            // Cartellini
+            var (caFh, caSh, caFa, caSa) = ExtractForAgainst(cards);
+            var homeCardsExp = Blend(caFh, caSa);
+            var awayCardsExp = Blend(caFa, caSh);
+            var homeCardsLine = Quantize(homeCardsExp, 0.5m, 1.5m, 3.5m);
+            var awayCardsLine = Quantize(awayCardsExp, 0.5m, 1.5m, 3.5m);
+
+            // Tiri
+            var (sFh, sSh, sFa, sSa) = ExtractForAgainst(shots);
+            var homeShotsExp = Blend(sFh, sSa);
+            var awayShotsExp = Blend(sFa, sSh);
+            var homeShotsLine = Quantize(homeShotsExp, 0.5m, 7.5m, 16.5m);
+            var awayShotsLine = Quantize(awayShotsExp, 0.5m, 7.5m, 16.5m);
+
+            return new TeamIndicativeLines(
+                homeGoalsLine, awayGoalsLine,
+                homeCornersLine, awayCornersLine,
+                homeCardsLine, awayCardsLine,
+                homeShotsLine, awayShotsLine
+            );
+        }
+
+        // Decide automaticamente Over/Under sul mercato singola squadra 
+        // in base alla distanza dall’aspettativa (soglia 0.10 = cuscinetto antibandiera)
+        private static string DecideDirection(decimal expected, decimal line)
+        {
+            if (expected >= line + 0.10m) return "Over";
+            if (expected <= line - 0.10m) return "Under";
+            // se a ridosso della linea lascia comunque Over (più “market friendly”)
+            return expected >= line ? "Over" : "Under";
+        }
+
+        // Crea 2–4 candidati “singola squadra” già con direzione consigliata
+        // (stringa da passare al prompt, NON da stampare in pagina)
+        private static string BuildTeamCandidates(JsonObject? goals, JsonObject? corners, JsonObject? cards, JsonObject? shots,
+                                                 PredictionRow? p, string home, string away)
+        {
+            // riuso same expectations
+            var (gFh, gSh, gFa, gSa) = ExtractForAgainst(goals);
+            var homeExpGoals = Blend(gFh, gSa);
+            var awayExpGoals = Blend(gFa, gSh);
+
+            if (p is not null && p.GoalSimulatoCasa > 0 && p.GoalSimulatoOspite > 0)
+            {
+                homeExpGoals = (homeExpGoals > 0 ? 0.4m * homeExpGoals : 0m) + 0.6m * p.GoalSimulatoCasa;
+                awayExpGoals = (awayExpGoals > 0 ? 0.4m * awayExpGoals : 0m) + 0.6m * p.GoalSimulatoOspite;
+            }
+
+            var (cFh, cSh, cFa, cSa) = ExtractForAgainst(corners);
+            var (caFh, caSh, caFa, caSa) = ExtractForAgainst(cards);
+            var (sFh, sSh, sFa, sSa) = ExtractForAgainst(shots);
+
+            var homeCornersExp = Blend(cFh, cSa);
+            var awayCornersExp = Blend(cFa, cSh);
+            var homeCardsExp = Blend(caFh, caSa);
+            var awayCardsExp = Blend(caFa, caSh);
+            var homeShotsExp = Blend(sFh, sSa);
+            var awayShotsExp = Blend(sFa, sSh);
+
+            var tl = BuildTeamLines(goals, corners, cards, shots, p);
+
+            var cand = new List<string>();
+
+            // Goals singola
+            if (homeExpGoals > 0) cand.Add($"{home} Gol: {DecideDirection(homeExpGoals, tl.HomeGoals)} {tl.HomeGoals:0.0} (exp≈{homeExpGoals:0.00})");
+            if (awayExpGoals > 0) cand.Add($"{away} Gol: {DecideDirection(awayExpGoals, tl.AwayGoals)} {tl.AwayGoals:0.0} (exp≈{awayExpGoals:0.00})");
+
+            // Corners singola
+            if (homeCornersExp > 0) cand.Add($"{home} Corner: {DecideDirection(homeCornersExp, tl.HomeCorners)} {tl.HomeCorners:0.0} (exp≈{homeCornersExp:0.00})");
+            if (awayCornersExp > 0) cand.Add($"{away} Corner: {DecideDirection(awayCornersExp, tl.AwayCorners)} {tl.AwayCorners:0.0} (exp≈{awayCornersExp:0.00})");
+
+            // Cartellini singola
+            if (homeCardsExp > 0) cand.Add($"{home} Cartellini: {DecideDirection(homeCardsExp, tl.HomeCards)} {tl.HomeCards:0.0} (exp≈{homeCardsExp:0.00})");
+            if (awayCardsExp > 0) cand.Add($"{away} Cartellini: {DecideDirection(awayCardsExp, tl.AwayCards)} {tl.AwayCards:0.0} (exp≈{awayCardsExp:0.00})");
+
+            // Tiri singola
+            if (homeShotsExp > 0) cand.Add($"{home} Tiri: {DecideDirection(homeShotsExp, tl.HomeShots)} {tl.HomeShots:0.0} (exp≈{homeShotsExp:0.00})");
+            if (awayShotsExp > 0) cand.Add($"{away} Tiri: {DecideDirection(awayShotsExp, tl.AwayShots)} {tl.AwayShots:0.0} (exp≈{awayShotsExp:0.00})");
+
+            // ordina per “confidenza” (|exp-line| desc) e tieni i migliori 3–4
+            var ranked = cand
+                .Select(s =>
+                {
+                    // parse veloce della parte (line, exp) dalla stringa tipo: "... {line} (exp≈{exp})"
+                    var li = s.LastIndexOf('(');
+                    if (li <= 0) return (score: 0m, text: s);
+                    var main = s[..li];
+                    var tail = s[li..];
+                    // estrai numeri
+                    decimal line = 0, exp = 0;
+                    var m1 = System.Text.RegularExpressions.Regex.Match(main, @"\s(\d+(\.\d)?)\s*$");
+                    var m2 = System.Text.RegularExpressions.Regex.Match(tail, @"exp≈(\d+(\.\d+)?)");
+                    if (m1.Success) decimal.TryParse(m1.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out line);
+                    if (m2.Success) decimal.TryParse(m2.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out exp);
+                    return (score: Math.Abs(exp - line), text: s);
+                })
+                .OrderByDescending(x => x.score)
+                .Take(4)
+                .Select(x => x.text);
+
+            return string.Join("\n- ", ranked);
         }
 
         private record IndicativeLines(
