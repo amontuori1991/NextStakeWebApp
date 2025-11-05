@@ -13,98 +13,70 @@
 
 <div class="card">
     <div class="card-header">
-        <strong>Invia messaggio al canale Telegram</strong>
-        <span class="text-muted ms-2">(Topic: <code>Idee</code>)</span>
+        <strong>Post Telegram – Generatore/Refiner AI</strong>
     </div>
     <div class="card-body">
-        <div asp-validation-summary="All" class="text-danger mb-3"></div>
-
         <form method="post">
-            <div asp-validation-summary="All" class="text-danger mb-2"></div>
-
             @Html.AntiForgeryToken()
 
-            <div class="mb-3">
-                <label class="form-label">Testo da inviare</label>
-                <textarea class="form-control" rows="6" asp-for="Input.Message" placeholder="Scrivi qui il messaggio…"></textarea>
-                <span asp-validation-for="Input.Message" class="text-danger"></span>
-
-            </div>
-
-            <div class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" asp-for="Input.UseAI" id="useAiChk">
-                        <label class="form-check-label" for="useAiChk">
-                            Migliora/riscrivi con A.I. (OpenAI)
-                        </label>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Modalità</label>
+                    <select asp-for="Input.Mode" class="form-select" asp-items="Model.ModeOptions"></select>
+                    <div class="form-text">
+                        <b>Migliora</b>: rifinisce la tua bozza. <b>Genera</b>: crea il post partendo dal tema.
                     </div>
                 </div>
-
-                <div class="col-md-4">
-                    <label class="form-label">Stile</label>
-                    <select class="form-select" asp-for="Input.Tone" asp-items="Model.ToneOptions"></select>
+                <div class="col-6 col-md-3">
+                    <label class="form-label">Tono</label>
+                    <select asp-for="Input.Tone" class="form-select" asp-items="Model.ToneOptions"></select>
                 </div>
-
-                <div class="col-md-4">
+                <div class="col-6 col-md-3">
                     <label class="form-label">Lunghezza</label>
-                    <select class="form-select" asp-for="Input.Length" asp-items="Model.LengthOptions"></select>
+                    <select asp-for="Input.Length" class="form-select" asp-items="Model.LengthOptions"></select>
                 </div>
 
-                <input type="hidden" name="Input.Tone" id="ToneHidden" value="@Model.Input.Tone" />
-                <input type="hidden" name="Input.Length" id="LengthHidden" value="@Model.Input.Length" />
+                <div class="col-12">
+                    <label class="form-label">Messaggio / Tema</label>
+                    <textarea asp-for="Input.Message" class="form-control" rows="5" placeholder="Scrivi la bozza (Migliora) oppure il tema/argomento (Genera)"></textarea>
+                    <span class="text-danger" asp-validation-for="Input.Message"></span>
+                </div>
 
+                <div class="col-12">
+                    <label class="form-label">Istruzioni AI (opzionali)</label>
+                    <textarea asp-for="Input.Instructions" class="form-control" rows="3" placeholder="Es: usa bullet point, apri con un gancio forte, chiudi con una domanda, cita xG se presenti..."></textarea>
+                </div>
+
+                <div class="col-12">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" asp-for="Input.UseAI" id="useAiSwitch">
+                        <label class="form-check-label" for="useAiSwitch">Usa AI</label>
+                    </div>
+                </div>
             </div>
 
-            <hr />
-
-            <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-outline-primary" formaction="?handler=Preview">🧪 Genera anteprima</button>
-                <button type="submit" class="btn btn-success" formaction="?handler=Send">🚀 Invia su Telegram</button>
+            <div class="d-flex gap-2 mt-3">
+                <button formaction="?handler=Preview" class="btn btn-primary">🧪 Genera anteprima</button>
+                <button formaction="?handler=Send" class="btn btn-success">🚀 Invia su Telegram (topic Idee)</button>
             </div>
         </form>
 
-        @if (!string.IsNullOrWhiteSpace(Model.Preview))
-        {
-            <hr />
-            <div class="alert alert-secondary">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="badge bg-info text-dark">Anteprima</span>
-                    <small class="text-muted">Questo è il testo che verrà inviato</small>
-                </div>
-                <div style="white-space:pre-wrap">@Model.Preview</div>
-            </div>
-        }
+        <hr class="my-4" />
+
+        <h5>Anteprima</h5>
+        <div class="border rounded p-3 bg-light" style="min-height:120px">
+            @if (string.IsNullOrWhiteSpace(Model.Preview))
+            {
+                <span class="text-muted">L'anteprima apparirà qui…</span>
+            }
+            else
+            {
+                @Html.Raw(Model.Preview.Replace("\n", "<br/>"))
+            }
+        </div>
     </div>
 </div>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
-    <script>
-        (function(){
-          const chk = document.getElementById('useAiChk');
-          const toneSel = document.getElementById('Input_Tone');
-          const lenSel  = document.getElementById('Input_Length');
-          const toneHid = document.getElementById('ToneHidden');
-          const lenHid  = document.getElementById('LengthHidden');
-
-          function syncDisabled(){
-            const on = !!(chk && chk.checked);
-            if (toneSel) toneSel.disabled = !on;
-            if (lenSel)  lenSel.disabled  = !on;
-          }
-          function syncHidden(){
-            if (toneSel && toneHid) toneHid.value = toneSel.value || 'Neutro';
-            if (lenSel  && lenHid)  lenHid.value  = lenSel.value  || 'Media';
-          }
-
-          chk?.addEventListener('change', () => { syncDisabled(); syncHidden(); });
-          toneSel?.addEventListener('change', syncHidden);
-          lenSel?.addEventListener('change',  syncHidden);
-
-          document.addEventListener('DOMContentLoaded', () => { syncDisabled(); syncHidden(); });
-        })();
-    </script>
 }
-
-

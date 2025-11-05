@@ -36,6 +36,12 @@ namespace NextStakeWebApp.Areas.Admin.Pages
                 new { Value = "Media",  Text = "Media" },
                 new { Value = "Lunga",  Text = "Lunga" },
             }, "Value", "Text");
+
+            ModeOptions = new SelectList(new[]
+            {
+                new { Value = "Migliora", Text = "Migliora la mia bozza" },
+                new { Value = "Genera",   Text = "Genera da zero" }
+            }, "Value", "Text");
         }
 
         [BindProperty]
@@ -46,18 +52,22 @@ namespace NextStakeWebApp.Areas.Admin.Pages
 
         public SelectList ToneOptions { get; }
         public SelectList LengthOptions { get; }
+        public SelectList ModeOptions { get; }
 
         public void OnGet() { }
 
         // ===== Anteprima (con o senza AI) =====
         public async Task<IActionResult> OnPostPreviewAsync()
         {
+            // i select possono essere disabilitati lato UI → rimuovo per validazione
             ModelState.Remove("Input.Tone");
             ModelState.Remove("Input.Length");
+            ModelState.Remove("Input.Mode");
+            ModelState.Remove("Input.Instructions");
 
             if (!ModelState.IsValid)
             {
-                StatusMessage = "Compila correttamente il messaggio.";
+                StatusMessage = "Compila correttamente i campi richiesti.";
                 return Page();
             }
 
@@ -72,10 +82,12 @@ namespace NextStakeWebApp.Areas.Admin.Pages
         {
             ModelState.Remove("Input.Tone");
             ModelState.Remove("Input.Length");
+            ModelState.Remove("Input.Mode");
+            ModelState.Remove("Input.Instructions");
 
             if (!ModelState.IsValid)
             {
-                StatusMessage = "Compila correttamente il messaggio.";
+                StatusMessage = "Compila correttamente i campi richiesti.";
                 return Page();
             }
 
@@ -90,7 +102,7 @@ namespace NextStakeWebApp.Areas.Admin.Pages
                 Preview = text;
                 return Page();
             }
-            Console.WriteLine($"[ADMIN] Send topic={topicId}, useAI={Input.UseAI}, tone={Input.Tone}, len={Input.Length}");
+            Console.WriteLine($"[ADMIN] Send topic={topicId}, useAI={Input.UseAI}, mode={Input.Mode}, tone={Input.Tone}, len={Input.Length}");
 
             // 3) invia
             await _telegram.SendMessageAsync(topicId, text);
@@ -105,46 +117,83 @@ namespace NextStakeWebApp.Areas.Admin.Pages
         {
             var baseText = (input.Message ?? "").Trim();
 
-            if (!input.UseAI || string.IsNullOrWhiteSpace(baseText))
+            // Se AI OFF → restituisco il testo così com'è
+            if (!input.UseAI)
                 return baseText;
 
+            // Fallback sicuri se i select sono disabilitati
             var tone = string.IsNullOrWhiteSpace(input.Tone) ? "Neutro" : input.Tone!;
             var length = string.IsNullOrWhiteSpace(input.Length) ? "Media" : input.Length!;
+            var mode = string.IsNullOrWhiteSpace(input.Mode) ? "Migliora" : input.Mode!;
+            var extra = (input.Instructions ?? "").Trim();
 
-            var prompt =
-                $"Riscrivi e migliora il seguente testo per un canale Telegram su analisi calcistiche. " +
-                $"Tono: {tone}. Lunghezza: {length}. " +
-                $"Mantieni l'italiano e NON aggiungere hashtag o emoji extra a meno che siano utili.\n\n" +
-                $"Testo:\n\"\"\"\n{baseText}\n\"\"\"";
+            string prompt;
 
-            try
+            if (mode.Equals("Genera", StringComparison.OrdinalIgnoreCase))
             {
-                var improved = await _openai.AskAsync(prompt);
-                return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
-            }
-            catch (Exception ex)
-            {
-                // Log opzionale se hai un ILogger<IndexModel>
-                // _logger.LogError(ex, "Errore OpenAI");
+                // GENERA DA ZERO partendo dal tema
+                if (string.IsNullOrWhiteSpace(baseText))
+                    return "";
 
-                // Messaggio visibile in pagina (in alto)
-                StatusMessage = $"⚠️ AI non disponibile: {ex.Message}";
-                return baseText; // fallback: restituisco il testo originale
+                prompt =
+                    "Sei un copywriter esperto di calcio e betting. Produce un post per un canale Telegram che pubblica analisi e consigli.\n" +
+                    "Obiettivi: informare velocemente, dare valore, invogliare alla discussione senza mai promettere vincite certe.\n" +
+                    $"Tono: {tone}. Lunghezza: {length}.\n" +
+                    "Regole:\n" +
+                    "- Scrivi in italiano naturale.\n" +
+                    "- Evita claim assoluti; usa linguaggio probabilistico.\n" +
+                    "- Usa emoji con moderazione, solo se utili alla leggibilità.\n" +
+                    "- Niente hashtag superflui.\n" +
+                    "- Se ha senso, chiudi con una micro call-to-action (es. \"Tu come la vedi?\").\n" +
+                    "Tema del post:\n" +
+                    baseText + "\n\n" +
+                    "Istruzioni aggiuntive (se pertinenti):\n" +
+                    (string.IsNullOrWhiteSpace(extra) ? "(nessuna)" : extra);
             }
+            else
+            {
+                // MIGLIORA LA MIA BOZZA
+                prompt =
+                    "Migliora e riscrivi la seguente bozza per un post Telegram su analisi calcistiche.\n" +
+                    "Mantieni il significato, migliora ritmo e chiarezza.\n" +
+                    $"Tono: {tone}. Lunghezza: {length}.\n" +
+                    "Regole:\n" +
+                    "- Italiano naturale.\n" +
+                    "- Niente hashtag superflui, emoji essenziali.\n" +
+                    "- Evita promesse; preferisci probabilità e scenario.\n" +
+                    "- Mantieni eventuali dati/statistiche presenti.\n" +
+                    "Bozza:\n" + baseText + "\n\n" +
+                    "Istruzioni aggiuntive (se utili):\n" +
+                    (string.IsNullOrWhiteSpace(extra) ? "(nessuna)" : extra);
+            }
+
+            var improved = await _openai.AskAsync(prompt);
+            return string.IsNullOrWhiteSpace(improved) ? baseText : improved.Trim();
         }
 
 
         public class FormInput
         {
+            // Campo multifunzione:
+            // - in modalità "Migliora": è la bozza da rifinire
+            // - in modalità "Genera": è il "tema/argomento" a partire dal quale creare il post
             [Required, MinLength(3)]
+            [Display(Name = "Messaggio / Tema")]
             public string Message { get; set; } = "";
 
-            // di default NO AI
-            public bool UseAI { get; set; } = false;
+            // ON/OFF AI
+            public bool UseAI { get; set; } = true;
 
-            // opzionali: vengono normalizzati in BuildTextAsync
+            // Modalità AI: Migliora o Genera
+            public string? Mode { get; set; } = "Migliora";
+
+            // Opzioni stile
             public string? Tone { get; set; } = "Neutro";
             public string? Length { get; set; } = "Media";
+
+            // Istruzioni libere (come se stessi chattando): es. “usa bullet point”, “metti un gancio iniziale…”
+            [Display(Name = "Istruzioni AI (opzionali)")]
+            public string? Instructions { get; set; }
         }
     }
 }
