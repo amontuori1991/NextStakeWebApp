@@ -96,13 +96,13 @@ namespace NextStakeWebApp.Pages.Match
 
         // Handler: genera con AI e invia su 'Idee'
         // Handler: genera con AI e invia su 'Idee' (con integrazione dati Prediction)
-        public async Task<IActionResult> OnPostGenerateAiPickAsync(long id)
+
+
+        public async Task<IActionResult> OnPostPreviewAiPickAsync(long id)
         {
-            // Solo Admin o SuperAdmin
             if (!(User.IsInRole("Admin") || User.IsInRole("SuperAdmin")))
                 return Forbid();
 
-            // Dati essenziali match
             var dto = await (
                 from mm in _read.Matches
                 join lg in _read.Leagues on mm.LeagueId equals lg.Id
@@ -123,38 +123,40 @@ namespace NextStakeWebApp.Pages.Match
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
 
-            if (dto is null)
-                return NotFound();
+            if (dto is null) return NotFound();
 
-            // === 1) Carica indicatori proprietari + forma e classifica ===
+            // Dati proprietari + forma + classifica
             var p = await LoadPredictionAsync(id);
-
             var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
             var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
             var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
 
             string ToFormSeq(List<FormRow> rows) => string.Join("", rows.Select(r => r.Result));
-            var homeFormSeq = homeForm.Count > 0 ? ToFormSeq(homeForm) : "—";
-            var awayFormSeq = awayForm.Count > 0 ? ToFormSeq(awayForm) : "—";
+            var homeSeq = homeForm.Count > 0 ? ToFormSeq(homeForm) : "—";
+            var awaySeq = awayForm.Count > 0 ? ToFormSeq(awayForm) : "—";
+
+            var homeSeqEmo = FormSeqToEmojis(homeSeq);
+            var awaySeqEmo = FormSeqToEmojis(awaySeq);
 
             int? homeRank = standings.FirstOrDefault(s => s.TeamId == dto.HomeId)?.Rank;
             int? awayRank = standings.FirstOrDefault(s => s.TeamId == dto.AwayId)?.Rank;
 
-            // Blocco sintetico dei dati da passare all'AI e da allegare su Telegram
+            // Blocco per AI (testo "WDL"), Blocco per Telegram (emoji)
             string statsForAi, statsForTelegram;
-
             if (p is null)
             {
                 statsForAi =
         $@"(nessun dato proprietario disponibile)
-- Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
-- Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+- Forma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+- Forma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+
                 statsForTelegram =
         $@"
 
 📊 <b>Indicatori interni</b>
-• Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
-• Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+• Forma {dto.Home}: {homeSeqEmo} | Rank: {(homeRank?.ToString() ?? "—")}
+• Forma {dto.Away}: {awaySeqEmo} | Rank: {(awayRank?.ToString() ?? "—")}
+<em>Legenda: W=🟩  D=⬜️  L=🟥</em>";
             }
             else
             {
@@ -165,8 +167,8 @@ namespace NextStakeWebApp.Pages.Match
 - Multigoal Casa: {p.MultigoalCasa}
 - Multigoal Ospite: {p.MultigoalOspite}
 - Goal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})
-- Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
-- Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+- Forma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}
+- Forma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}";
 
                 statsForTelegram =
         $@"
@@ -178,11 +180,12 @@ namespace NextStakeWebApp.Pages.Match
 • MG Casa: {p.MultigoalCasa}
 • MG Ospite: {p.MultigoalOspite}
 • Goal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})
-• Forma {dto.Home}: {homeFormSeq} | Rank: {(homeRank?.ToString() ?? "—")}
-• Forma {dto.Away}: {awayFormSeq} | Rank: {(awayRank?.ToString() ?? "—")}";
+• Forma {dto.Home}: {homeSeqEmo} | Rank: {(homeRank?.ToString() ?? "—")}
+• Forma {dto.Away}: {awaySeqEmo} | Rank: {(awayRank?.ToString() ?? "—")}
+<em>Legenda: W=🟩  D=⬜️  L=🟥</em>";
             }
 
-            // === 2) Prompt AI con i tuoi dati come contesto ===
+            // Prompt AI (testo semplice, niente emoji)
             var prompt =
         $@"Sei un analista calcistico. Scrivi un post TELEGRAM conciso (max 4 righe) che contenga:
 - una combo consigliata CHIARA (senza garanzie; linguaggio probabilistico),
@@ -216,23 +219,38 @@ Dati proprietari (usali come spunto, NON inventare numeri diversi):
                 return RedirectToPage(new { id });
             }
 
-            // === 3) Costruisci messaggio Telegram
+            var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
+            var header =
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}\n\n";
+
+            var preview = header + aiText + (string.IsNullOrEmpty(statsForTelegram) ? "" : statsForTelegram);
+
+            TempData["AiPreview"] = preview;
+            StatusMessage = "✅ Anteprima generata. Controlla e premi Invia.";
+            return RedirectToPage(new { id });
+        }
+
+        // === 2) INVIO: prende il testo dall'anteprima (hidden) e invia sul topic "Idee" ===
+        public async Task<IActionResult> OnPostSendAiPickAsync(long id, string preview)
+        {
+            if (!(User.IsInRole("Admin") || User.IsInRole("SuperAdmin")))
+                return Forbid();
+
+            if (string.IsNullOrWhiteSpace(preview))
+            {
+                StatusMessage = "❌ Nessun contenuto da inviare. Genera prima l'anteprima.";
+                return RedirectToPage(new { id });
+            }
+
             if (!long.TryParse(_config["Telegram:Topics:Idee"], out var topicId) || topicId <= 0)
             {
                 StatusMessage = "❌ Topic 'Idee' non configurato (Telegram:Topics:Idee).";
                 return RedirectToPage(new { id });
             }
 
-            var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
-            var header =
-                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
-                $"⚽️ {dto.Home} - {dto.Away}\n\n";
-
-            var finalMsg = header + aiText + (string.IsNullOrEmpty(statsForTelegram) ? "" : statsForTelegram);
-
-            await _telegram.SendMessageAsync(topicId, finalMsg);
-
-            StatusMessage = "✅ Pronostico AI generato con i tuoi dati e inviato su ‘Idee’.";
+            await _telegram.SendMessageAsync(topicId, preview);
+            StatusMessage = "✅ Inviato su Telegram (Idee).";
             return RedirectToPage(new { id });
         }
 
@@ -626,6 +644,24 @@ Dati proprietari (usali come spunto, NON inventare numeri diversi):
 
 
         // Helper conversione field
+
+        private static string FormSeqToEmojis(string seq)
+        {
+            if (string.IsNullOrWhiteSpace(seq)) return "—";
+            var sb = new System.Text.StringBuilder(seq.Length * 2);
+            foreach (var ch in seq)
+            {
+                sb.Append(ch switch
+                {
+                    'W' or 'w' => "🟩",
+                    'D' or 'd' => "⬜️",
+                    'L' or 'l' => "🟥",
+                    _ => "▪️"
+                });
+            }
+            return sb.ToString();
+        }
+
         private static T? GetField<T>(IDataRecord r, string name)
         {
             int ord = r.GetOrdinal(name);

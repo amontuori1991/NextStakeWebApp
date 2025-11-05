@@ -66,15 +66,37 @@
         @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
         @if (User.IsInRole("Admin") || User.IsInRole("SuperAdmin"))
         {
-            <form method="post" asp-page-handler="GenerateAiPick" class="ms-auto">
+            <form method="post" asp-page-handler="PreviewAiPick" class="ms-auto">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="id" value="@Model.Data.MatchId" />
                 <button type="submit" class="btn btn-primary">
-                    🤖 Genera pronostico (AI)
+                    🤖 Genera anteprima (AI)
                 </button>
             </form>
         }
+
     </div>
+    @* ANTEPRIMA AI (se presente in TempData) *@
+    @if (TempData["AiPreview"] is string aiPrev && !string.IsNullOrWhiteSpace(aiPrev))
+    {
+        <div class="card border-success mb-3">
+            <div class="card-header bg-success text-white">Anteprima messaggio (AI)</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    @* Mostra come HTML Telegram (abbiamo usato <b>, <em>, ecc.) *@
+                    @Html.Raw(aiPrev.Replace("\n", "<br/>"))
+                </div>
+
+                <form method="post" asp-page-handler="SendAiPick" class="d-flex gap-2">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                    <input type="hidden" name="preview" value="@aiPrev" />
+                    <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
+                    <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
+                </form>
+            </div>
+        </div>
+    }
 
 
     <!-- Selettore gruppi -->
