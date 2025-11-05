@@ -30,17 +30,23 @@ namespace NextStakeWebApp.Services
             var body = new BodyBuilder { HtmlBody = htmlMessage };
 
             // Logo inline (CID) — usa il tuo SVG wwwroot/icons/favicon.svg
-            var logoPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "icons", "favicon.svg");
-            if (File.Exists(logoPath))
+            // Logo inline (CID) — usa la PNG wwwroot/icons/favicon-96x96.png
+            var pngPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "icons", "favicon-96x96.png");
+            if (File.Exists(pngPath))
             {
-                var logo = body.LinkedResources.Add(logoPath);
-                logo.ContentId = MimeUtils.GenerateMessageId();
-                // Sostituisci eventuale cid statico in html con quello reale
+                var logo = body.LinkedResources.Add(pngPath);
+                logo.ContentId = MimeKit.Utils.MimeUtils.GenerateMessageId();
+
+                // rimpiazza il placeholder nel template con il CID reale
                 body.HtmlBody = body.HtmlBody.Replace("cid:logo-nextstake", $"cid:{logo.ContentId}");
-                // MimeKit riconosce svg; in caso, forzi ContentType:
-                logo.ContentType.MediaType = "image";
-                logo.ContentType.MediaSubtype = "svg+xml";
+
+                // assicurati che sia inline e non come allegato
+                logo.ContentDisposition = new ContentDisposition(ContentDisposition.Inline);
+                if (logo is MimePart part)
+                    part.ContentTransferEncoding = ContentEncoding.Base64;
+
             }
+
 
             msg.Body = body.ToMessageBody();
 

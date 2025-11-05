@@ -41,9 +41,14 @@ namespace NextStakeWebApp.Areas.Identity.Pages.Account
             {
                 Message = "Email confermata con successo! Ora puoi effettuare l'accesso.";
 
-                // Notifica admin
-                var adminEmail = _config["SuperAdmin:Email"] ?? "nextstakeai@gmail.com";
-                var html = $@"
+                // ✅ dedup: invia notifica admin solo se non già inviata
+                var alreadyNotified = await _userManager.GetAuthenticationTokenAsync(
+                    user, "NextStake", "AdminEmailConfirmedNotified");
+
+                if (string.IsNullOrEmpty(alreadyNotified))
+                {
+                    var adminEmail = _config["SuperAdmin:Email"] ?? "nextstakeai@gmail.com";
+                    var html = $@"
 <!doctype html>
 <html lang=""it"">
   <body style=""font-family:Arial,Helvetica,sans-serif;color:#111;background:#f7f7f9;padding:24px;"">
@@ -73,12 +78,19 @@ namespace NextStakeWebApp.Areas.Identity.Pages.Account
   </body>
 </html>";
 
-                await _emailSender.SendEmailAsync(adminEmail, "Nuova registrazione confermata — NextStake", html);
+                    // invio email admin
+                    await _emailSender.SendEmailAsync(adminEmail, "Nuova registrazione confermata — NextStake", html);
+
+                    // marca come già notificato (idempotenza)
+                    await _userManager.SetAuthenticationTokenAsync(
+                        user, "NextStake", "AdminEmailConfirmedNotified", DateTime.UtcNow.ToString("o"));
+                }
             }
             else
             {
                 Message = "Impossibile confermare l'email. Il link potrebbe essere scaduto o già utilizzato.";
             }
+
 
             return Page();
         }
