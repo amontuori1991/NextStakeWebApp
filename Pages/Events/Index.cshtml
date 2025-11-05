@@ -1,6 +1,7 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Events.IndexModel
 @using System.Globalization
+@using System.Runtime.InteropServices
 @{
     // Cultura italiana per nomi dei giorni/mesi
     var it = new CultureInfo("it-IT");
@@ -28,6 +29,10 @@
 
     // Parametri comuni da preservare nei link
     var common = $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}" + (Model.ShowBest ? "&best=1" : "");
+
+    // Timezone Italia (cross‑platform)
+    var tzId = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "W. Europe Standard Time" : "Europe/Rome";
+    var tzRome = TimeZoneInfo.FindSystemTimeZoneById(tzId);
 }
 
 
@@ -205,7 +210,13 @@
                                             var awayName = parts.Length > 1 ? parts[1] : "";
 
                                             <tr>
-                                                <td>@r.EventDate.ToLocalTime().ToString("dd/MM HH:mm")</td>
+                                                @{
+                                                    var _dt = r.EventDate;
+                                                    var _local = (_dt.Kind == DateTimeKind.Utc)
+                                                    ? TimeZoneInfo.ConvertTimeFromUtc(_dt, tzRome)
+                                                    : TimeZoneInfo.ConvertTime(_dt, tzRome);
+                                                }
+                                                <td>@_local.ToString("dd/MM HH:mm")</td>
                                                 <td>
                                                     <div class="d-flex align-items-center gap-2 flex-wrap">
                                                         <div class="d-flex align-items-center gap-1">
@@ -310,7 +321,14 @@
                                                 var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
                                                 var homeScoreStr = matchEnded && r.HomeGoal.HasValue ? r.HomeGoal.Value.ToString() : "–";
                                                 var awayScoreStr = matchEnded && r.AwayGoal.HasValue ? r.AwayGoal.Value.ToString() : "–";
-                                                var ko = r.KickoffUtc.ToLocalTime().ToString("HH:mm");
+
+                                                // Orario Italia: convertiamo da UTC a Europe/Rome in modo affidabile
+                                                DateTime _kick;
+                                                if (r.KickoffUtc.Kind == DateTimeKind.Utc)
+                                                    _kick = TimeZoneInfo.ConvertTimeFromUtc(r.KickoffUtc, tzRome);
+                                                else
+                                                    _kick = TimeZoneInfo.ConvertTime(r.KickoffUtc, tzRome);
+                                                var ko = _kick.ToString("HH:mm");
                                             }
 
                                             <!-- COLONNA SINISTRA: contenuto cliccabile -->
@@ -658,32 +676,26 @@
 
     /* Animazione colore/leggera opacità (non sparisce mai) */
     @@keyframes livePulse {
-        0%
+        0% {
+            color: var(--live-color);
+            opacity: 0.95;
+        }
 
-    {
-        color: var(--live-color);
-        opacity: 0.95;
-    }
-
-    100% {
-        color: var(--live-color-soft);
-        opacity: 1;
-    }
-
+        100% {
+            color: var(--live-color-soft);
+            opacity: 1;
+        }
     }
 
     /* Puntino che “respira” */
     @@keyframes blinkDot {
-        0%
+        0% {
+            opacity: .55;
+        }
 
-    {
-        opacity: .55;
-    }
-
-    100% {
-        opacity: 1;
-    }
-
+        100% {
+            opacity: 1;
+        }
     }
 
     /* Applica a punteggi live */
@@ -707,10 +719,55 @@
 
     /* Accessibilità: se l’utente preferisce meno animazioni, disattivale */
     @@media (prefers-reduced-motion: reduce) {
-        .is-live, .live-minute.is-live
+        .is-live, .live-minute.is-live {
+            animation: none !important;
+        }
+    }
+
+    /* 📱 Migliorie mobile: logo sopra, nome sotto; nomi a 2 righe senza sovrapporsi ai punteggi */
+    @@media (max-width: 576px) {
+        .team
 
     {
-        animation: none !important;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .team.home {
+        justify-self: end;
+    }
+
+    .team.away {
+        justify-self: start;
+    }
+
+    .team-logo {
+        height: 24px;
+        margin-bottom: 2px;
+    }
+
+    /* permetti il wrapping su due righe, evitando overlap con i punteggi (che sono sulla riga 2 della grid) */
+    .team-name {
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        max-width: 100%;
+        line-height: 1.1;
+    }
+
+    /* Compatta un filo la pill "vs" per ridurre l'ingombro centrale */
+    .vs-pill {
+        font-size: .65rem;
+        padding: .08rem .35rem;
+    }
+
+    /* Lascia respirare la seconda riga (punteggi) quando i nomi vanno su 2 righe */
+    .match-grid {
+        row-gap: .35rem;
     }
 
     }
@@ -785,9 +842,6 @@
             }
           } catch (_) { /* no-op */ }
         }
-
-        
-
 
           let h = null;
           function start() { tick(); h = setInterval(tick, 20000); }
