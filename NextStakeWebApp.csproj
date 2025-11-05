@@ -28,5 +28,15 @@
   <ItemGroup>
     <Folder Include="wwwroot\icons\" />
   </ItemGroup>
+<ItemGroup>
+  <Content Update="Areas\**\*.cshtml">
+    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+  <Content Update="Pages\**\*.cshtml">
+    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+</ItemGroup>
 
 </Project>
