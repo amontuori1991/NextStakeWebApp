@@ -1,0 +1,17 @@
+﻿@page
+@model NextStakeWebApp.Areas.Identity.Pages.Account.ConfirmEmailModel
+@{
+    ViewData["Title"] = "Conferma email";
+}
+
+<h1 class="mb-3">@ViewData["Title"]</h1>
+
+@if (Model.Success)
+{
+    <div class="alert alert-success">@Model.Message</div>
+    <a class="btn btn-primary" href="/Identity/Account/Login">Vai al login</a>
+}
+else
+{
+    <div class="alert alert-danger">@Model.Message</div>
+}

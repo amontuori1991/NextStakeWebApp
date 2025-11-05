@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using NextStakeWebApp.Data;
@@ -96,19 +99,29 @@ builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Te
 builder.Services.AddSingleton<ITelegramService, TelegramService>();
 
 // Identity
+// Identity
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(o =>
     {
-        o.SignIn.RequireConfirmedAccount = false;
+        o.SignIn.RequireConfirmedAccount = true;   // ✅ obbligo conferma email
+        o.User.RequireUniqueEmail = true;
         o.Password.RequiredLength = 4;
         o.Password.RequireNonAlphanumeric = false;
         o.Password.RequireUppercase = false;
         o.Password.RequireLowercase = false;
         o.Password.RequireDigit = false;
+        o.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders()
     .AddDefaultUI();
+
+builder.Services.AddTransient<IEmailSender, GmailSmtpSender>();
+
+builder.Services.Configure<DataProtectionTokenProviderOptions>(o =>
+{
+    o.TokenLifespan = TimeSpan.FromHours(24); // token conferma valido 24h
+});
 
 builder.Services.ConfigureApplicationCookie(o =>
 {
@@ -121,6 +134,8 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/");
     o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
     o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/RegisterConfirmation"); // ✅
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/ConfirmEmail");        // ✅
 });
 builder.Services.AddControllersWithViews();
 

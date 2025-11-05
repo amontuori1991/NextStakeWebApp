@@ -1,0 +1,15 @@
+﻿@page
+@model Microsoft.AspNetCore.Mvc.RazorPages.PageModel
+@{
+    ViewData["Title"] = "Conferma la tua email";
+    var email = Request.Query["email"].ToString();
+}
+
+<h1 class="mb-3">Verifica la tua casella email</h1>
+<p>
+    Ti abbiamo inviato un messaggio a <strong>@email</strong> con il link per confermare il tuo account.
+    Se non lo trovi, controlla nello spam.
+</p>
+<p class="text-muted">
+    Dopo la conferma, potrai accedere al tuo account NextStake.
+</p>
