@@ -134,9 +134,16 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AuthorizeFolder("/");
     o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Login");
     o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/Register");
-    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/RegisterConfirmation"); // ✅
-    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/ConfirmEmail");        // ✅
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/RegisterConfirmation");
+    o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/ConfirmEmail");
+
+    // ✅ Route esplicite (evita sorprese in publish/Linux)
+    o.Conventions.AddAreaPageRoute("Identity", "/Account/Login", "/Identity/Account/Login");
+    o.Conventions.AddAreaPageRoute("Identity", "/Account/Register", "/Identity/Account/Register");
+    o.Conventions.AddAreaPageRoute("Identity", "/Account/RegisterConfirmation", "/Identity/Account/RegisterConfirmation");
+    o.Conventions.AddAreaPageRoute("Identity", "/Account/ConfirmEmail", "/Identity/Account/ConfirmEmail");
 });
+
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
