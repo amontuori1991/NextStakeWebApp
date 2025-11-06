@@ -8,6 +8,7 @@
 @{
     ViewData["Title"] = "Dettaglio Match";
 }
+<div class="details-page">
 
 <div class="container py-4">
     @* Messaggio di stato (TempData) *@
@@ -242,7 +243,9 @@
                             <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
                             <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
                             <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span></li>
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span>
+                                </li>
                         </ul>
                     </div>
                 </div>
@@ -447,20 +450,15 @@
                                         <span>@m.Score</span>
                                         @if (m.Result == "W")
                                         {
-                                            <span class="badge bg-success">W</span>
-                                            ;
+                                            <span class="badge bg-success">W</span>;
                                         }
                                         else if (m.Result == "D")
                                         {
-
-                                            <span class="badge bg-secondary">D</span>
-                                            ;
+                                            <span class="badge bg-secondary">D</span>;
                                         }
                                         else
                                         {
-
-                                            <span class="badge bg-danger">L</span>
-                                            ;
+                                            <span class="badge bg-danger">L</span>;
                                         }
                                     </div>
                                 </a>
@@ -490,20 +488,15 @@
                                         <span>@m.Score</span>
                                         @if (m.Result == "W")
                                         {
-                                            <span class="badge bg-success">W</span>
-                                            ;
+                                            <span class="badge bg-success">W</span>;
                                         }
                                         else if (m.Result == "D")
                                         {
-
-                                            <span class="badge bg-secondary">D</span>
-                                            ;
+                                            <span class="badge bg-secondary">D</span>;
                                         }
                                         else
                                         {
-
-                                            <span class="badge bg-danger">L</span>
-                                            ;
+                                            <span class="badge bg-danger">L</span>;
                                         }
                                     </div>
                                 </a>
@@ -552,7 +545,8 @@
                                 {
                                     var isHome = s.TeamId == Model.Data.HomeId;
                                     var isAway = s.TeamId == Model.Data.AwayId;
-                                    var rowClass = isHome ? "table-success" : (isAway ? "table-danger" : "");
+                                    // 🔧 Aggiungo anche le classi Bootstrap per la banda visibile
+                                    var rowClass = isHome ? "ns-home table-success" : (isAway ? "ns-away table-danger" : "");
                                     <tr class="@rowClass">
                                         <td>@s.Rank</td>
                                         <td>@s.TeamName</td>
@@ -1180,8 +1174,256 @@
           setMode(saved === 'widget' ? 'widget' : 'native');
         })();
     </script>
-
+    </div>
     @section Scripts {
         <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
     }
 </div>
+@section Styles {
+    <text>
+        <style>
+            /* Stesso “mood” scuro delle altre pagine */
+            body {
+                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+                color: #e9edf3;
+                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            }
+
+            header .text-center img {
+                width: 120px;
+                height: auto;
+                filter: drop-shadow(0 0 6px rgba(0,195,255,.3));
+                margin-top: 15px;
+            }
+
+            header, footer {
+                background: transparent !important;
+                border: none !important;
+            }
+
+            /* Card/list nel tema scuro */
+            .details-page .card,
+            .details-page .list-group-item,
+            .details-page .dropdown-menu,
+            .details-page .modal-content {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.16);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                color: #e9edf3;
+            }
+
+            .details-page .card-header {
+                background: rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255,255,255,0.14);
+            }
+
+            /* 🔧 TABELLE (Classifica): testi chiari, zebratura dark, hover leggibile */
+            .details-page .table {
+                --bs-table-color: #e9edf3;
+                --bs-table-bg: transparent;
+                --bs-table-border-color: rgba(255,255,255,.14);
+                --bs-table-striped-bg: rgba(255,255,255,.06);
+                --bs-table-striped-color: #e9edf3;
+                --bs-table-hover-bg: rgba(255,255,255,.10);
+                --bs-table-hover-color: #fff;
+            }
+
+                .details-page .table thead th {
+                    color: #f4f7fb;
+                    background: rgba(255,255,255,.08);
+                    border-bottom-color: rgba(255,255,255,.18);
+                    white-space: nowrap;
+                }
+
+            /* --- FIX: evidenza Home/Away più accesa e leggibile --- */
+            .details-page .table-success {
+                background: rgba(40, 167, 69, 0.5) !important; /* verde più pieno */
+                color: #fff !important;
+                font-weight: 600;
+            }
+
+            .details-page .table-danger {
+                background: rgba(220, 53, 69, 0.55) !important; /* rosso più pieno */
+                color: #fff !important;
+                font-weight: 600;
+            }
+
+                /* opzionale: leggera ombra interna per contrasto testo */
+                .details-page .table-success > *,
+                .details-page .table-danger > * {
+                    text-shadow: 0 0 3px rgba(0,0,0,0.4);
+                }
+
+            /* Badge e link */
+            .details-page .badge.bg-light.text-dark {
+                background: rgba(255,255,255,.85) !important;
+                color: #111 !important;
+            }
+
+            .details-page a {
+                color: #7bd3ff;
+            }
+
+                .details-page a:hover {
+                    color: #9be0ff;
+                }
+
+            /* Form elementi */
+            .details-page .form-control,
+            .details-page .form-select {
+                background: rgba(255,255,255,.10);
+                border: 1px solid rgba(255,255,255,.24);
+                color: #fff;
+            }
+
+                .details-page .form-control:focus,
+                .details-page .form-select:focus {
+                    border-color: #00c3ff;
+                    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+                }
+
+            /* Pulsanti coerenti */
+            .details-page .btn-primary {
+                background: #00baff;
+                border-color: #00baff;
+            }
+
+                .details-page .btn-primary:hover {
+                    background: #009cdc;
+                    border-color: #009cdc;
+                }
+
+            .details-page .btn-outline-secondary {
+                color: #e9edf3;
+                border-color: rgba(255,255,255,.28);
+            }
+
+                .details-page .btn-outline-secondary:hover {
+                    background: rgba(255,255,255,.10);
+                }
+
+            /* --- FIX ANALISI: numeri leggibili nei box chiari --- */
+            .details-page .bg-light,
+            .details-page .p-2.bg-light,
+            .details-page .vstack .bg-light {
+                background: rgba(255,255,255,.12) !important; /* scurisco il box */
+                color: #fff !important; /* testo chiaro */
+                border: 1px solid rgba(255,255,255,.18);
+            }
+
+                .details-page .bg-light .fw-bold,
+                .details-page .bg-light span,
+                .details-page .bg-light small {
+                    color: #fff !important;
+                }
+            /* --- FIX CLASSIFICA: zebratura e testo coerenti nel dark --- */
+            .details-page .table {
+                --bs-table-color: #e9edf3;
+                --bs-table-bg: transparent;
+                --bs-table-border-color: rgba(255,255,255,.16);
+                --bs-table-striped-bg: rgba(255,255,255,.08); /* odd */
+                --bs-table-striped-color: #e9edf3;
+                --bs-table-hover-bg: rgba(255,255,255,.12);
+                --bs-table-hover-color: #fff;
+            }
+
+                .details-page .table thead th {
+                    background: rgba(255,255,255,.12);
+                    color: #f4f7fb;
+                    border-bottom-color: rgba(255,255,255,.22);
+                }
+
+                /* Forzo il colore del testo su tutte le celle (pari e dispari) */
+                .details-page .table tbody tr > * {
+                    color: #e9edf3;
+                }
+
+                /* Dispari: sfondo leggermente più chiaro per la zebratura */
+                .details-page .table.table-striped > tbody > tr:nth-of-type(odd) > * {
+                    background-color: rgba(255,255,255,.08) !important;
+                }
+
+                /* Pari: trasparente ma con bordo, così non “spariscono” */
+                .details-page .table.table-striped > tbody > tr:nth-of-type(even) > * {
+                    background-color: transparent !important;
+                    border-top-color: rgba(255,255,255,.10);
+                }
+
+            /* Evidenze home/away nel dark */
+            .details-page .table-success {
+                background: rgba(25,135,84,.28) !important;
+                color: #eafff4 !important;
+            }
+
+            .details-page .table-danger {
+                background: rgba(220,53,69,.28) !important;
+                color: #ffe9ec !important;
+            }
+            /* === STANDINGS: zebratura e testi sempre leggibili === */
+            #standings-native table.table thead th {
+                background: rgba(255,255,255,.12);
+                color: #f4f7fb;
+                border-bottom-color: rgba(255,255,255,.22);
+            }
+
+            #standings-native table.table tbody tr > * {
+                color: #e9edf3 !important; /* testo chiaro ovunque */
+                border-top-color: rgba(255,255,255,.10);
+            }
+
+            /* zebratura più visibile su dark */
+            #standings-native table.table.table-striped > tbody > tr:nth-of-type(odd) > * {
+                background-color: rgba(255,255,255,.08) !important;
+            }
+
+            #standings-native table.table.table-striped > tbody > tr:nth-of-type(even) > * {
+                background-color: rgba(0,0,0,.12) !important; /* non trasparente */
+            }
+
+            /* Evidenza HOME/AWAY con colore acceso e testo bianco (applicata alle celle) */
+            #standings-native tr.table-success > * {
+                background-color: rgba(0,171,85,.70) !important; /* verde vivo */
+                color: #fff !important;
+                font-weight: 700;
+                text-shadow: 0 0 3px rgba(0,0,0,.35);
+            }
+
+            #standings-native tr.table-danger > * {
+                background-color: rgba(220,38,38,.70) !important; /* rosso vivo */
+                color: #fff !important;
+                font-weight: 700;
+                text-shadow: 0 0 3px rgba(0,0,0,.35);
+            }
+            /* Zebratura ben visibile su dark */
+            #standings-native table.table tbody tr > * {
+                color: #e9edf3 !important;
+                border-top-color: rgba(255,255,255,.10);
+            }
+
+            #standings-native table.table.table-striped > tbody > tr:nth-of-type(odd) > * {
+                background-color: rgba(255,255,255,.08) !important;
+            }
+
+            #standings-native table.table.table-striped > tbody > tr:nth-of-type(even) > * {
+                background-color: rgba(0,0,0,.18) !important; /* più scura: si vede */
+            }
+
+            /* Evidenze HOME/AWAY con colore acceso */
+            #standings-native tr.ns-home > * {
+                background-color: rgba(0,171,85,.78) !important; /* verde vivo */
+                color: #fff !important;
+                font-weight: 700;
+                text-shadow: 0 0 3px rgba(0,0,0,.35);
+            }
+
+            #standings-native tr.ns-away > * {
+                background-color: rgba(220,38,38,.78) !important; /* rosso vivo */
+                color: #fff !important;
+                font-weight: 700;
+                text-shadow: 0 0 3px rgba(0,0,0,.35);
+            }
+
+        </style>
+    </text>
+}

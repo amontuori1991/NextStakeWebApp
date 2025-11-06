@@ -1,0 +1,88 @@
+﻿@*
+    Layout minimale per le pagine di autenticazione NextStake
+    - Supporta sezioni Styles e Scripts
+    - Design neutro e isolato
+*@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — NextStake</title>
+
+    <!-- Icone e manifest -->
+    <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="~/icons/favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="~/icons/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="~/icons/android-chrome-512x512.png">
+    <link rel="mask-icon" href="~/icons/favicon.svg" color="#000000">
+    <link rel="manifest" href="~/icons/site.webmanifest">
+    <meta name="theme-color" content="#252e40" />
+
+    <!-- Bootstrap & CSS base -->
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/NextStakeWebApp.styles.css" asp-append-version="true" />
+
+    <!-- Sezione CSS personalizzati pagina -->
+    @await RenderSectionAsync("Styles", required: false)
+
+    <style>
+        /* Sfondo e reset base per le pagine di autenticazione */
+        body {
+            background-color: #252e40;
+            background-image: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+            color: #fff;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+
+        main {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.55);
+        }
+
+            footer a {
+                color: #00c3ff;
+                text-decoration: none;
+            }
+
+                footer a:hover {
+                    text-decoration: underline;
+                }
+    </style>
+</head>
+<body>
+    <main role="main">
+        @RenderBody()
+    </main>
+
+    <footer>
+        © @DateTime.Now.Year — <strong>NextStake</strong>
+    </footer>
+
+    <!-- Script base -->
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <!-- Script custom per pagina -->
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

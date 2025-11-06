@@ -1,4 +1,8 @@
 ﻿@page
+@{
+    Layout = "/Pages/Shared/_Layout.cshtml";
+}
+
 @model NextStakeWebApp.Pages.Events.IndexModel
 @using System.Globalization
 @using System.Runtime.InteropServices
@@ -39,8 +43,9 @@
 @{
     ViewData["Title"] = "Eventi";
 }
+<div class="events-page">
+    <div class="container py-4">
 
-<div class="container py-4">
     <div class="row g-3">
         <!-- SIDEBAR (mini calendario + azioni + filtri) -->
         <aside class="col-12 col-lg-3">
@@ -381,6 +386,7 @@
                 }
             }
         </main>
+        </div>
     </div>
 </div>
 
@@ -389,24 +395,32 @@
     .loading-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(255,255,255,0.85);
+        background: rgba(10,14,20,0.65); /* prima era bianco: ora scuro e non “sbianca” tutto */
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 2000;
+        z-index: 5000; /* più alto per stare sopra tutto */
         backdrop-filter: blur(2px);
     }
 
     .loading-panel {
-        background: #fff;
+        background: rgba(20,26,36,0.92); /* pannello scuro semi-trasparente */
+        color: #fff; /* testo chiaro e nitido */
+        border: 1px solid rgba(255,255,255,0.18);
         border-radius: .75rem;
-        box-shadow: 0 10px 30px rgba(0,0,0,.12);
+        box-shadow: 0 12px 36px rgba(0,0,0,.35);
         padding: 1.25rem 1.5rem;
         display: flex;
         align-items: center;
         gap: .75rem;
         max-width: 90vw;
     }
+
+        /* Spinner chiaro dentro il pannello scuro */
+        .loading-panel .spinner-border {
+            color: #fff;
+        }
+
 </style>
 
 <div id="loadingOverlay" class="loading-overlay d-none" aria-hidden="true">
@@ -851,4 +865,119 @@
           start();
         })();
     </script>
+}
+@section Styles {
+    <text>
+        <style>
+            /* Sfondo e struttura generale */
+            body {
+                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+                color: #e9edf3;
+                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            }
+
+            /* Riduzione e centratura del logo */
+            header .text-center img {
+                width: 120px;
+                height: auto;
+                filter: drop-shadow(0 0 6px rgba(0,195,255,.3));
+                margin-top: 15px;
+            }
+
+            header {
+                background: transparent !important;
+                border: none !important;
+            }
+
+            footer {
+                background: transparent !important;
+                border: none !important;
+                color: rgba(255,255,255,.6);
+            }
+
+            /* Tema scuro coerente */
+            .events-page {
+                background: transparent;
+                color: #e9edf3;
+            }
+
+                .events-page .card,
+                .events-page .list-group-item,
+                .events-page .dropdown-menu,
+                .events-page .modal-content {
+                    background: rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.16);
+                    backdrop-filter: blur(8px);
+                    -webkit-backdrop-filter: blur(8px);
+                    color: #e9edf3;
+                }
+
+                .events-page .card-header {
+                    background: rgba(255,255,255,0.06);
+                    border-bottom: 1px solid rgba(255,255,255,0.14);
+                    color: #f4f7fb;
+                }
+
+                .events-page .btn-primary {
+                    background: #00baff;
+                    border-color: #00baff;
+                }
+
+                    .events-page .btn-primary:hover {
+                        background: #009cdc;
+                        border-color: #009cdc;
+                    }
+
+                .events-page .form-control,
+                .events-page .form-select {
+                    background: rgba(255,255,255,.10);
+                    border: 1px solid rgba(255,255,255,.24);
+                    color: #fff;
+                }
+
+                    .events-page .form-control:focus,
+                    .events-page .form-select:focus {
+                        border-color: #00c3ff;
+                        box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+                    }
+
+                .events-page a {
+                    color: #7bd3ff;
+                }
+
+                    .events-page a:hover {
+                        color: #9be0ff;
+                    }
+
+                .events-page .mini-cal-day {
+                    background: rgba(255,255,255,.08);
+                    color: #f1f5fa;
+                    border: 1px solid rgba(255,255,255,.20);
+                }
+
+                    .events-page .mini-cal-day:hover {
+                        background: rgba(255,255,255,.14);
+                    }
+
+                    .events-page .mini-cal-day.is-selected {
+                        background: #0d6efd;
+                        color: #fff;
+                        border-color: #0d6efd;
+                        box-shadow: 0 8px 18px rgba(13,110,253,.28);
+                    }
+       
+.events-page .form-select {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.24);
+}
+
+
+.events-page .form-select option {
+  color: #111;
+  background: #fff;
+}
+
+                    </style>
+    </text>
 }

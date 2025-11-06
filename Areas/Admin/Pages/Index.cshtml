@@ -1,82 +1,177 @@
 ﻿@page
+@{
+    Layout = "/Pages/Shared/_Layout.cshtml";
+}
 @model NextStakeWebApp.Areas.Admin.Pages.IndexModel
 @{
     ViewData["Title"] = "SuperAdmin";
 }
 
-<h1 class="mb-3">Dashboard SuperAdmin</h1>
+<div class="admin-page">
+    <div class="container py-4">
 
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-{
-    <div class="alert alert-info">@Model.StatusMessage</div>
-}
+        <h1 class="mb-3">Dashboard SuperAdmin</h1>
 
-<div class="card">
-    <div class="card-header">
-        <strong>Post Telegram – Generatore/Refiner AI</strong>
-    </div>
-    <div class="card-body">
-        <form method="post">
-            @Html.AntiForgeryToken()
+        @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+        {
+            <div class="alert alert-info d-flex align-items-center gap-2">
+                <span>ℹ️</span><span>@Model.StatusMessage</span>
+            </div>
+        }
 
-            <div class="row g-3">
-                <div class="col-12 col-md-6">
-                    <label class="form-label">Modalità</label>
-                    <select asp-for="Input.Mode" class="form-select" asp-items="Model.ModeOptions"></select>
-                    <div class="form-text">
-                        <b>Migliora</b>: rifinisce la tua bozza. <b>Genera</b>: crea il post partendo dal tema.
+        <div class="card">
+            <div class="card-header">
+                <strong>Post Telegram – Generatore/Refiner AI</strong>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    @Html.AntiForgeryToken()
+
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Modalità</label>
+                            <select asp-for="Input.Mode" class="form-select" asp-items="Model.ModeOptions"></select>
+                            <div class="form-text">
+                                <b>Migliora</b>: rifinisce la tua bozza. <b>Genera</b>: crea il post partendo dal tema.
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Tono</label>
+                            <select asp-for="Input.Tone" class="form-select" asp-items="Model.ToneOptions"></select>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Lunghezza</label>
+                            <select asp-for="Input.Length" class="form-select" asp-items="Model.LengthOptions"></select>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">Messaggio / Tema</label>
+                            <textarea asp-for="Input.Message" class="form-control" rows="5" placeholder="Scrivi la bozza (Migliora) oppure il tema/argomento (Genera)"></textarea>
+                            <span class="text-danger" asp-validation-for="Input.Message"></span>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">Istruzioni AI (opzionali)</label>
+                            <textarea asp-for="Input.Instructions" class="form-control" rows="3" placeholder="Es: usa bullet point, apri con un gancio forte, chiudi con una domanda, cita xG se presenti..."></textarea>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" asp-for="Input.UseAI" id="useAiSwitch">
+                                <label class="form-check-label" for="useAiSwitch">Usa AI</label>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label class="form-label">Tono</label>
-                    <select asp-for="Input.Tone" class="form-select" asp-items="Model.ToneOptions"></select>
-                </div>
-                <div class="col-6 col-md-3">
-                    <label class="form-label">Lunghezza</label>
-                    <select asp-for="Input.Length" class="form-select" asp-items="Model.LengthOptions"></select>
-                </div>
 
-                <div class="col-12">
-                    <label class="form-label">Messaggio / Tema</label>
-                    <textarea asp-for="Input.Message" class="form-control" rows="5" placeholder="Scrivi la bozza (Migliora) oppure il tema/argomento (Genera)"></textarea>
-                    <span class="text-danger" asp-validation-for="Input.Message"></span>
-                </div>
-
-                <div class="col-12">
-                    <label class="form-label">Istruzioni AI (opzionali)</label>
-                    <textarea asp-for="Input.Instructions" class="form-control" rows="3" placeholder="Es: usa bullet point, apri con un gancio forte, chiudi con una domanda, cita xG se presenti..."></textarea>
-                </div>
-
-                <div class="col-12">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" asp-for="Input.UseAI" id="useAiSwitch">
-                        <label class="form-check-label" for="useAiSwitch">Usa AI</label>
+                    <div class="d-flex gap-2 mt-3">
+                        <button formaction="?handler=Preview" class="btn btn-primary">🧪 Genera anteprima</button>
+                        <button formaction="?handler=Send" class="btn btn-success">🚀 Invia su Telegram (topic Idee)</button>
                     </div>
+                </form>
+
+                <hr class="my-4" />
+
+                <h5>Anteprima</h5>
+                <div class="preview-box rounded p-3" style="min-height:120px">
+                    @if (string.IsNullOrWhiteSpace(Model.Preview))
+                    {
+                        <span class="text-muted">L'anteprima apparirà qui…</span>
+                    }
+                    else
+                    {
+                        @Html.Raw(Model.Preview.Replace("\n", "<br/>"))
+                    }
                 </div>
             </div>
-
-            <div class="d-flex gap-2 mt-3">
-                <button formaction="?handler=Preview" class="btn btn-primary">🧪 Genera anteprima</button>
-                <button formaction="?handler=Send" class="btn btn-success">🚀 Invia su Telegram (topic Idee)</button>
-            </div>
-        </form>
-
-        <hr class="my-4" />
-
-        <h5>Anteprima</h5>
-        <div class="border rounded p-3 bg-light" style="min-height:120px">
-            @if (string.IsNullOrWhiteSpace(Model.Preview))
-            {
-                <span class="text-muted">L'anteprima apparirà qui…</span>
-            }
-            else
-            {
-                @Html.Raw(Model.Preview.Replace("\n", "<br/>"))
-            }
         </div>
+
     </div>
 </div>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+}
+
+@section Styles {
+    <text>
+        <style>
+            /* Tema scuro coerente con Events/Details */
+            body {
+                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+                color: #e9edf3;
+                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            }
+
+            .admin-page .card,
+            .admin-page .list-group-item,
+            .admin-page .dropdown-menu,
+            .admin-page .modal-content {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.16);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                color: #e9edf3;
+            }
+
+            .admin-page .card-header {
+                background: rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255,255,255,0.14);
+                color: #f4f7fb;
+            }
+
+            .admin-page .btn-primary {
+                background: #00baff;
+                border-color: #00baff;
+            }
+
+                .admin-page .btn-primary:hover {
+                    background: #009cdc;
+                    border-color: #009cdc;
+                }
+
+            .admin-page .btn-success {
+                background: #00b35a;
+                border-color: #00b35a;
+            }
+
+                .admin-page .btn-success:hover {
+                    background: #029a4e;
+                    border-color: #029a4e;
+                }
+
+            .admin-page .form-control,
+            .admin-page .form-select {
+                background: rgba(255,255,255,.10);
+                border: 1px solid rgba(255,255,255,.24);
+                color: #fff;
+            }
+
+                .admin-page .form-control:focus,
+                .admin-page .form-select:focus {
+                    border-color: #00c3ff;
+                    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+                }
+
+                /* Options del select leggibili (menu nativo) */
+                .admin-page .form-select option {
+                    color: #111;
+                    background: #fff;
+                }
+
+            /* Box anteprima scuro (invece di bg-light) */
+            .admin-page .preview-box {
+                background: rgba(255,255,255,.10);
+                border: 1px solid rgba(255,255,255,.18);
+                color: #fff;
+            }
+
+            .admin-page a {
+                color: #7bd3ff;
+            }
+
+                .admin-page a:hover {
+                    color: #9be0ff;
+                }
+        </style>
+    </text>
 }

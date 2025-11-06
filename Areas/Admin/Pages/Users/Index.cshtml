@@ -1,67 +1,183 @@
 ﻿@page
+@{
+    Layout = "/Pages/Shared/_Layout.cshtml";
+}
 @model NextStakeWebApp.Areas.Admin.Pages.Users.IndexModel
 @{
     ViewData["Title"] = "Gestione Utenti";
 }
 
-<h2 class="mb-4">Gestione Utenti</h2>
-@if (TempData["Msg"] is string msg)
-{
-    <div class="alert alert-success">@msg</div>
-}
+<div class="admin-users-page">
+    <div class="container py-4">
 
-<table class="table table-striped align-middle">
-    <thead>
-        <tr>
-            <th>Email</th>
-            <th>Piano</th>
-            <th>Scadenza</th>
-            <th>Approvato</th>
-            <th>Azioni</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var user in Model.Users)
+        <h2 class="mb-4">Gestione Utenti</h2>
+        @if (TempData["Msg"] is string msg)
         {
-            <tr>
-                <td>@user.Email</td>
-                <td>@user.Plan</td>
-                <td>@(user.PlanExpiresAtUtc?.ToString("dd/MM/yyyy") ?? "∞")</td>
-                <td>
-                    @if (user.IsApproved)
-                    {
-                        <span class="badge bg-success">Sì</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-danger">No</span>
-                    }
-                </td>
-                <td>
-                    <form method="post"
-                          action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
-                          class="d-inline">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-sm btn-outline-secondary">
-                            @(user.IsApproved ? "Blocca" : "Approva")
-                        </button>
-                    </form>
-
-                    <form method="post"
-                          action="/Admin/Users?handler=ChangePlan&id=@user.Id"
-                          class="d-inline">
-                        @Html.AntiForgeryToken()
-                        <select name="plan" class="form-select form-select-sm d-inline w-auto">
-                            @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
-                            {
-                                <option value="@p" selected="@(p == user.Plan)">@p</option>
-                            }
-                        </select>
-                        <button type="submit" class="btn btn-sm btn-outline-primary">Cambia</button>
-                    </form>
-
-                </td>
-            </tr>
+            <div class="alert alert-success d-flex align-items-center gap-2">
+                <span>✅</span><span>@msg</span>
+            </div>
         }
-    </tbody>
-</table>
+
+        <div class="card">
+            <div class="card-header">
+                <strong>Utenti registrati</strong>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Piano</th>
+                                <th>Scadenza</th>
+                                <th>Approvato</th>
+                                <th>Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in Model.Users)
+                            {
+                                <tr>
+                                    <td>@user.Email</td>
+                                    <td>@user.Plan</td>
+                                    <td>@(user.PlanExpiresAtUtc?.ToString("dd/MM/yyyy") ?? "∞")</td>
+                                    <td>
+                                        @if (user.IsApproved)
+                                        {
+                                            <span class="badge bg-success">Sì</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">No</span>
+                                        }
+                                    </td>
+                                    <td class="text-nowrap">
+                                        <form method="post"
+                                              action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
+                                              class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                @(user.IsApproved ? "Blocca" : "Approva")
+                                            </button>
+                                        </form>
+
+                                        <form method="post"
+                                              action="/Admin/Users?handler=ChangePlan&id=@user.Id"
+                                              class="d-inline ms-1">
+                                            @Html.AntiForgeryToken()
+                                            <select name="plan" class="form-select form-select-sm d-inline w-auto align-middle">
+                                                @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
+                                                {
+                                                    <option value="@p" selected="@(p == user.Plan)">@p</option>
+                                                }
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-outline-primary ms-1">Cambia</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@section Styles {
+    <text>
+        <style>
+            body {
+                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+                color: #e9edf3;
+                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            }
+
+            .admin-users-page .card,
+            .admin-users-page .dropdown-menu,
+            .admin-users-page .modal-content {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.16);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                color: #e9edf3;
+            }
+
+            .admin-users-page .card-header {
+                background: rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255,255,255,0.14);
+                color: #f4f7fb;
+            }
+
+            /* Tabella dark leggibile + zebratura */
+            .admin-users-page .table {
+                --bs-table-color: #e9edf3;
+                --bs-table-bg: transparent;
+                --bs-table-border-color: rgba(255,255,255,.16);
+                --bs-table-striped-bg: rgba(255,255,255,.08);
+                --bs-table-striped-color: #e9edf3;
+                --bs-table-hover-bg: rgba(255,255,255,.12);
+                --bs-table-hover-color: #fff;
+            }
+
+                .admin-users-page .table thead th {
+                    background: rgba(255,255,255,.12);
+                    color: #f4f7fb;
+                    border-bottom-color: rgba(255,255,255,.22);
+                    white-space: nowrap;
+                }
+
+                .admin-users-page .table tbody tr > * {
+                    color: #e9edf3;
+                    border-top-color: rgba(255,255,255,.10);
+                }
+
+            /* Form scuri coerenti */
+            .admin-users-page .form-control,
+            .admin-users-page .form-select {
+                background: rgba(255,255,255,.10);
+                border: 1px solid rgba(255,255,255,.24);
+                color: #fff;
+            }
+
+                .admin-users-page .form-control:focus,
+                .admin-users-page .form-select:focus {
+                    border-color: #00c3ff;
+                    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+                }
+                /* Opzioni nel menu nativo */
+                .admin-users-page .form-select option {
+                    color: #111;
+                    background: #fff;
+                }
+
+            /* Pulsanti coerenti */
+            .admin-users-page .btn-outline-primary {
+                color: #7bd3ff;
+                border-color: #7bd3ff;
+            }
+
+                .admin-users-page .btn-outline-primary:hover {
+                    background: rgba(123,211,255,.12);
+                }
+
+            .admin-users-page .btn-outline-secondary {
+                color: #e9edf3;
+                border-color: rgba(255,255,255,.28);
+            }
+
+                .admin-users-page .btn-outline-secondary:hover {
+                    background: rgba(255,255,255,.10);
+                }
+
+            a {
+                color: #7bd3ff;
+            }
+
+                a:hover {
+                    color: #9be0ff;
+                }
+        </style>
+    </text>
+}
