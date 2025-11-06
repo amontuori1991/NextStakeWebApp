@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NextStakeWebApp.Areas.Admin.Pages.Users
 {
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Policy = "Plan1")]
+
     public class IndexModel : PageModel
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -20,8 +21,9 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
         public List<AdminUserViewModel> Users { get; set; } = new();
 
 
+        public bool HasPlan1 { get; private set; }
 
-public async Task OnGetAsync()
+        public async Task OnGetAsync()
     {
         var allUsers = await _userManager.Users.ToListAsync(); // <-- await qui
         Users = allUsers.Select(u => new AdminUserViewModel

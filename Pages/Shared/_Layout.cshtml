@@ -1,9 +1,13 @@
-﻿<!DOCTYPE html>
+﻿@using NextStakeWebApp.Data
+@using Microsoft.AspNetCore.Identity
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - NextStake</title>
+
     <link rel="apple-touch-icon" sizes="180x180" href="~/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="~/icons/favicon-96x96.png">
     <link rel="icon" type="image/png" sizes="192x192" href="~/icons/android-chrome-192x192.png">
@@ -15,6 +19,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NextStake">
+
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/NextStakeWebApp.styles.css" asp-append-version="true" />
@@ -25,10 +30,12 @@
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container">
                 <a class="navbar-brand" asp-area="" asp-page="/Index">NextStake</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse"
+                        aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
+
                 <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item">
@@ -40,6 +47,26 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-page="/Events/Index">Eventi</a>
                         </li>
+
+                        @{
+                            var isSignedIn = User?.Identity?.IsAuthenticated ?? false;
+                            var planClaim = User?.FindFirst("plan")?.Value ?? User?.FindFirst("Plan")?.Value;
+                            var hasPlan1 = isSignedIn && planClaim == "1";
+                        }
+
+                        @if (hasPlan1)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark"
+                                   asp-area="Admin"
+                                   asp-page="/Users/Index">Utenti</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-warning fw-bold"
+                                   asp-area="Admin"
+                                   asp-page="/Index">SuperAdmin</a>
+                            </li>
+                        }
                     </ul>
 
                     <!-- Login / Register / Logout -->
@@ -47,12 +74,14 @@
                 </div>
             </div>
         </nav>
+
         <div class="text-center mb-4">
             <img src="~/icons/android-chrome-192x192.png"
                  alt="NextStake Logo"
                  style="width: 250px; height: auto;" />
         </div>
     </header>
+
     <div class="container">
         <main role="main" class="pb-3">
             @RenderBody()
@@ -68,7 +97,6 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
-
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

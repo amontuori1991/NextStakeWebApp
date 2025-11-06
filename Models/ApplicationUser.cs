@@ -14,5 +14,6 @@ namespace NextStakeWebApp.Models
         public DateTime? PlanExpiresAtUtc { get; set; } // null = senza scadenza (ADM)
 
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
     }
 }

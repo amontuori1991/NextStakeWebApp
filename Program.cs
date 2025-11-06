@@ -47,6 +47,12 @@ var wcsb = new NpgsqlConnectionStringBuilder(writeConn);
 var rcsb = new NpgsqlConnectionStringBuilder(readConn);
 Console.WriteLine($"[DB:WRITE] Host={wcsb.Host}; Port={wcsb.Port}; Db={wcsb.Database}; User={wcsb.Username}");
 Console.WriteLine($"[DB:READ ] Host={rcsb.Host}; Port={rcsb.Port}; Db={rcsb.Database}; User={rcsb.Username}");
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, AppClaimsPrincipalFactory>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Plan1", policy =>
+        policy.RequireClaim("plan", "1"));
+});
 
 // DbContext: pooling + retry
 builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
@@ -215,6 +221,17 @@ using (var scope = app.Services.CreateScope())
             if (!await userManager.IsInRoleAsync(user, adminRole))
                 await userManager.AddToRoleAsync(user, adminRole);
         }
+        if (user != null)
+        {
+            // Abilita le funzioni plan-based: 1 = PRO (o come si chiama nel tuo enum)
+            if ((int)user.Plan != 1)
+            {
+                user.Plan = (SubscriptionPlan)1; // oppure SubscriptionPlan.PRO se esiste
+                user.PlanExpiresAtUtc = null;    // opzionale: senza scadenza per il seed
+                await userManager.UpdateAsync(user);
+            }
+        }
+
     }
 }
 

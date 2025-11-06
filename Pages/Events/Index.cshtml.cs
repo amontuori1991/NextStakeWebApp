@@ -11,6 +11,7 @@ namespace NextStakeWebApp.Pages.Events
 {
     [Authorize]
     public class IndexModel : PageModel
+
     {
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;

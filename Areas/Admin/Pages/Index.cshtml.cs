@@ -9,7 +9,8 @@ using System.Threading.Tasks;
 
 namespace NextStakeWebApp.Areas.Admin.Pages
 {
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Policy = "Plan1")]
+
     public class IndexModel : PageModel
     {
         private readonly ITelegramService _telegram;

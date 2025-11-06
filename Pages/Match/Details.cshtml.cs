@@ -104,8 +104,9 @@ namespace NextStakeWebApp.Pages.Match
 
         public async Task<IActionResult> OnPostPreviewAiPickAsync(int id, string? analysisPayload)
         {
-            if (!(User.IsInRole("Admin") || User.IsInRole("SuperAdmin")))
+            if (!User.HasClaim("plan", "1"))
                 return Forbid();
+
 
             // 1) Metadati match
             var dto = await (
@@ -408,8 +409,9 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
         // === 2) INVIO: prende il testo dall'anteprima (hidden) e invia sul topic "Idee" ===
         public async Task<IActionResult> OnPostSendAiPickAsync(long id, string preview)
         {
-            if (!(User.IsInRole("Admin") || User.IsInRole("SuperAdmin")))
+            if (!User.HasClaim("plan", "1"))
                 return Forbid();
+
 
             if (string.IsNullOrWhiteSpace(preview))
             {
@@ -540,7 +542,8 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
         
         public async Task<IActionResult> OnPostSendPredictionAsync(long id, string? topicName, string? customPick)
         {
-            if (!User.IsInRole("Admin")) return Forbid();
+            if (!User.HasClaim("plan", "1"))
+                return Forbid();
 
             var key = string.IsNullOrWhiteSpace(topicName) ? "PronosticiDaPubblicare" : topicName!;
             long.TryParse(_config[$"Telegram:Topics:{key}"], out var topicId);
@@ -591,7 +594,8 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
        
         public async Task<IActionResult> OnPostSendExchangeAsync(long id, string customLay, string riskLevel, string? topicName)
         {
-            if (!User.IsInRole("Admin")) return Forbid();
+            if (!User.HasClaim("plan", "1"))
+                return Forbid();
 
             var key = string.IsNullOrWhiteSpace(topicName) ? "ExchangeDaPubblicare" : topicName!;
             long.TryParse(_config[$"Telegram:Topics:{key}"], out var topicId);
