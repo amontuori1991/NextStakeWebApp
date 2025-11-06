@@ -181,65 +181,54 @@
             </div>
 
             <!-- Sezione: Migliori pronostici (immutata, solo spostata qui) -->
-            @if (Model.ShowBest)
-            {
-                <div class="card mb-4">
-                    <div class="card-header d-flex align-items-center justify-content-between">
-                        <div class="fw-semibold">🔥 Migliori pronostici</div>
-                        <small class="text-muted">Ordinati per data/ora</small>
-                    </div>
-                    <div class="card-body">
-                        @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
-                        {
-                            <div class="alert alert-info mb-3">@Model.BestMessage</div>
-                        }
+                @if (Model.ShowBest)
+                {
+                    <div class="card mb-4 best-picks">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <div class="fw-semibold">🔥 Migliori pronostici</div>
+                            <small class="text-muted">Ordinati per data/ora</small>
+                        </div>
+                        <div class="card-body">
+                            @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
+                            {
+                                <div class="alert alert-info mb-3">@Model.BestMessage</div>
+                            }
 
-                        @if (Model.BestPicks?.Count > 0)
-                        {
-                            <div class="table-responsive">
-                                <table class="table table-sm align-middle">
-                                    <thead>
-                                        <tr>
-                                            <th style="width:120px;">Data</th>
-                                            <th>Evento</th>
-                                            <th style="width:120px;">Azione</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
-                                        {
-                                            Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
+                            @if (Model.BestPicks?.Count > 0)
+                            {
+                                <div class="list-group list-group-flush">
+                                    @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
+                                    {
+                                        Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
 
-                                            var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
-                                            var homeName = parts.Length > 0 ? parts[0] : r.Match;
-                                            var awayName = parts.Length > 1 ? parts[1] : "";
+                                        var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
+                                        var homeName = parts.Length > 0 ? parts[0] : r.Match;
+                                        var awayName = parts.Length > 1 ? parts[1] : "";
 
-                                            <tr>
-                                                @{
-                                                    var _dt = r.EventDate;
-                                                    var _local = (_dt.Kind == DateTimeKind.Utc)
-                                                    ? TimeZoneInfo.ConvertTimeFromUtc(_dt, tzRome)
-                                                    : TimeZoneInfo.ConvertTime(_dt, tzRome);
-                                                }
-                                                <td>@_local.ToString("dd/MM HH:mm")</td>
-                                                <td>
-                                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                                        <div class="d-flex align-items-center gap-1">
-                                                            @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
-                                                            {
-                                                                <img src="@assets.HomeLogo" alt="home" style="height:18px;width:auto;" />
-                                                            }
-                                                            <span class="fw-semibold">@homeName</span>
-                                                        </div>
-                                                        <span class="mx-1">—</span>
-                                                        <div class="d-flex align-items-center gap-1">
-                                                            @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
-                                                            {
-                                                                <img src="@assets.AwayLogo" alt="away" style="height:18px;width:auto;" />
-                                                            }
-                                                            <span class="fw-semibold">@awayName</span>
-                                                        </div>
-                                                        <small class="text-muted ms-2" style="white-space:nowrap;">
+                                        // Orario Italia coerente con gli eventi
+                                        var _dt = r.EventDate;
+                                        var _local = (_dt.Kind == DateTimeKind.Utc)
+                                        ? TimeZoneInfo.ConvertTimeFromUtc(_dt, tzRome)
+                                        : TimeZoneInfo.ConvertTime(_dt, tzRome);
+                                        var ko = _local.ToString("dd/MM HH:mm");
+
+                                        <div class="list-group-item">
+                                            <div class="match-item">
+                                                <!-- COLONNA SINISTRA: stessa griglia degli eventi -->
+                                                <a href="/Match/Details?id=@r.Id" class="match-grid">
+                                                    <!-- RIGA 1 -->
+                                                    <div class="team home">
+                                                        @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
+                                                        {
+                                                            <img src="@assets.HomeLogo" alt="home" class="team-logo" />
+                                                        }
+                                                        <span class="team-name">@homeName</span>
+                                                    </div>
+
+                                                    <div class="center">
+                                                        <span class="vs-pill">vs</span>
+                                                        <small class="text-muted mt-1">@ko</small>
+                                                        <small class="text-muted mt-1" style="white-space:nowrap;">
                                                             (
                                                             @if (!string.IsNullOrWhiteSpace(assets?.LeagueFlag))
                                                             {
@@ -253,27 +242,42 @@
                                                             )
                                                         </small>
                                                     </div>
-                                                </td>
-                                                <td>
+
+                                                    <div class="team away">
+                                                        <span class="team-name">@awayName</span>
+                                                        @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
+                                                        {
+                                                            <img src="@assets.AwayLogo" alt="away" class="team-logo" />
+                                                        }
+                                                    </div>
+
+                                                    <!-- RIGA 2 (placeholder punteggi, coerente con eventi) -->
+                                                    <div class="home-score">–</div>
+                                                    <div class="score-sep">:</div>
+                                                    <div class="away-score">–</div>
+                                                </a>
+
+                                                <!-- COLONNA DESTRA: stessa logica “azione” -->
+                                                <div class="d-flex align-items-center">
                                                     <a href="/Match/Details?id=@r.Id"
                                                        target="_blank" rel="noopener"
                                                        class="btn btn-sm btn-outline-primary">
                                                         Apri evento ↗
                                                     </a>
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
-                        }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
+                            }
+                        </div>
                     </div>
-                </div>
-            }
+                }
+
 
             <!-- Lista partite raggruppate per competizione (immutata) -->
             @if (Model.Rows.Count == 0)
@@ -978,6 +982,42 @@
   background: #fff;
 }
 
-                    </style>
+                /* Uniforma la card "Migliori pronostici" all’aspetto delle righe eventi */
+                .events-page .best-picks {
+                    /* niente effetto card diverso: stessi bordi/trasparenze del resto */
+                    background: transparent;
+                    border: 1px solid rgba(255,255,255,.16);
+                }
+
+                    .events-page .best-picks .card-header {
+                        background: rgba(255,255,255,.06);
+                        border-bottom: 1px solid rgba(255,255,255,.14);
+                        color: #f4f7fb;
+                    }
+
+                    /* togli il padding della card per far “attaccare” la list-group ai bordi come gli eventi */
+                    .events-page .best-picks .card-body {
+                        padding: 0;
+                    }
+
+                    /* Le righe devono avere lo stesso sfondo/bordi delle righe eventi */
+                    .events-page .best-picks .list-group-flush .list-group-item {
+                        background: transparent; /* come le righe eventi */
+                        border-left: none;
+                        border-right: none;
+                        border-bottom: 1px solid rgba(255,255,255,.16); /* stesso bordo delle altre liste */
+                        color: #e9edf3;
+                    }
+
+                        /* Mantieni hover/zebratura coerenti se presenti altrove */
+                        .events-page .best-picks .list-group-flush .list-group-item:hover {
+                            background: rgba(255,255,255,.10);
+                        }
+
+                    /* Allinea la densità verticale alle righe eventi */
+                    .events-page .best-picks .match-item {
+                        gap: .75rem;
+                    }
+        </style>
     </text>
 }
