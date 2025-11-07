@@ -34,7 +34,7 @@
     // Parametri comuni da preservare nei link
     var common = $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}" + (Model.ShowBest ? "&best=1" : "");
 
-    // Timezone Italia (cross‑platform)
+    // Timezone Italia (cross-platform)
     var tzId = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "W. Europe Standard Time" : "Europe/Rome";
     var tzRome = TimeZoneInfo.FindSystemTimeZoneById(tzId);
 }
@@ -46,141 +46,141 @@
 <div class="events-page">
     <div class="container py-4">
 
-    <div class="row g-3">
-        <!-- SIDEBAR (mini calendario + azioni + filtri) -->
-        <aside class="col-12 col-lg-3">
-            <!-- Mini calendario in un riquadro compatto -->
-            <div class="card mb-3">
-                <div class="card-header d-flex align-items-center justify-content-between">
-                    <a class="btn btn-sm btn-outline-secondary"
-                       href="/Events?d=@firstOfMonth.AddMonths(-1).ToString("yyyy-MM-dd")@common"
-                       aria-label="Mese precedente">←</a>
-                    <div class="fw-semibold small text-center">
-                        @it.TextInfo.ToTitleCase(firstOfMonth.ToDateTime(TimeOnly.MinValue).ToString("MMMM", it))
-                        @firstOfMonth.Year
-                    </div>
-                    <a class="btn btn-sm btn-outline-secondary"
-                       href="/Events?d=@firstOfMonth.AddMonths(1).ToString("yyyy-MM-dd")@common"
-                       aria-label="Mese successivo">→</a>
-                </div>
-
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <small class="text-muted">Lun</small>
-                        <small class="text-muted">Mar</small>
-                        <small class="text-muted">Mer</small>
-                        <small class="text-muted">Gio</small>
-                        <small class="text-muted">Ven</small>
-                        <small class="text-muted">Sab</small>
-                        <small class="text-muted">Dom</small>
+        <div class="row g-3">
+            <!-- SIDEBAR (mini calendario + azioni + filtri) -->
+            <aside class="col-12 col-lg-3">
+                <!-- Mini calendario in un riquadro compatto -->
+                <div class="card mb-3">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="/Events?d=@firstOfMonth.AddMonths(-1).ToString("yyyy-MM-dd")@common"
+                           aria-label="Mese precedente">←</a>
+                        <div class="fw-semibold small text-center">
+                            @it.TextInfo.ToTitleCase(firstOfMonth.ToDateTime(TimeOnly.MinValue).ToString("MMMM", it))
+                            @firstOfMonth.Year
+                        </div>
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="/Events?d=@firstOfMonth.AddMonths(1).ToString("yyyy-MM-dd")@common"
+                           aria-label="Mese successivo">→</a>
                     </div>
 
-                    <div class="mini-cal">
-                        @{
-                            var d = startCal;
-                            while (d <= endCal)
-                            {
-                                <div class="mini-cal-row">
-                                    @for (int i = 0; i < 7; i++)
-                                    {
-                                        var isOutside = d < firstOfMonth || d > lastOfMonth;
-                                        var isToday = d == today;
-                                        var isSelected = d == sel;
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted">Lun</small>
+                            <small class="text-muted">Mar</small>
+                            <small class="text-muted">Mer</small>
+                            <small class="text-muted">Gio</small>
+                            <small class="text-muted">Ven</small>
+                            <small class="text-muted">Sab</small>
+                            <small class="text-muted">Dom</small>
+                        </div>
 
-                                        <a class="mini-cal-day @(isOutside ? "cal-outside" : "") @(isToday ? "is-today" : "") @(isSelected ? "is-selected" : "")"
-                                           href="/Events?d=@d.ToString("yyyy-MM-dd")@common">
-                                            @d.Day
-                                        </a>
-                                        ;
+                        <div class="mini-cal">
+                            @{
+                                var d = startCal;
+                                while (d <= endCal)
+                                {
+                                    <div class="mini-cal-row">
+                                        @for (int i = 0; i < 7; i++)
+                                        {
+                                            var isOutside = d < firstOfMonth || d > lastOfMonth;
+                                            var isToday = d == today;
+                                            var isSelected = d == sel;
 
-                                        d = d.AddDays(1);
-                                    }
-                                </div>
+                                            <a class="mini-cal-day @(isOutside ? "cal-outside" : "") @(isToday ? "is-today" : "") @(isSelected ? "is-selected" : "")"
+                                               href="/Events?d=@d.ToString("yyyy-MM-dd")@common">
+                                                @d.Day
+                                            </a>
+                                            ;
+
+                                            d = d.AddDays(1);
+                                        }
+                                    </div>
+                                }
                             }
-                        }
-                    </div>
+                        </div>
 
-                    <div class="d-grid mt-2">
-                        <!-- Spostato qui il tasto OGGI -->
-                        <a class="btn btn-sm btn-outline-primary"
-                           href="/Events?d=@today.ToString("yyyy-MM-dd")@common">Oggi</a>
+                        <div class="d-grid mt-2">
+                            <!-- Spostato qui il tasto OGGI -->
+                            <a class="btn btn-sm btn-outline-primary"
+                               href="/Events?d=@today.ToString("yyyy-MM-dd")@common">Oggi</a>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Azioni globali (Preferiti / Migliori) -->
-            <div class="d-grid gap-2 mb-3">
-                <a class="btn @(Model.OnlyFavorites ? "btn-warning" : "btn-outline-warning")"
-                   href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 0 : 1)&country=@Model.SelectedCountryCode&q=@Model.Query">
-                    ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
-                </a>
-
-                <a class="btn btn-success"
-                   href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
-                   data-loading="best">
-                    Migliori pronostici
-                </a>
-
-                @if (Model.ShowBest)
-                {
-                    <a class="btn btn-outline-secondary"
-                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
-                        Nascondi pronostici
+                <!-- Azioni globali (Preferiti / Migliori) -->
+                <div class="d-grid gap-2 mb-3">
+                    <a class="btn @(Model.OnlyFavorites ? "btn-warning" : "btn-outline-warning")"
+                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 0 : 1)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                        ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
                     </a>
-                }
-            </div>
 
-            <!-- Filtri: Nazione + Ricerca -->
-            <form method="get" action="/Events" class="card p-3 mb-3">
-                <div class="mb-2">
-                    <label class="form-label">Filtro Nazione</label>
-                    <select class="form-select form-select-sm" name="country" onchange="this.form.submit()">
-                        <option value="">— Mostra tutte —</option>
-                        @foreach (var c in Model.AvailableCountries)
-                        {
-                            <option value="@c.Code" selected="@(Model.SelectedCountryCode == c.Code)">
-                                @c.Name (@c.Code)
-                            </option>
-                        }
-                    </select>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label">Cerca (squadra o competizione)</label>
-                    <input class="form-control form-control-sm" type="text" name="q" value="@Model.Query" placeholder="Es: Serie A, Inter, Premier..." />
+                    <a class="btn btn-success"
+                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
+                       data-loading="best">
+                        Migliori pronostici
+                    </a>
+
+                    @if (Model.ShowBest)
+                    {
+                        <a class="btn btn-outline-secondary"
+                           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                            Nascondi pronostici
+                        </a>
+                    }
                 </div>
 
-                <input type="hidden" name="d" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
-                <input type="hidden" name="fav" value="@(Model.OnlyFavorites ? 1 : 0)" />
-                @if (Model.ShowBest)
-                {
-                    <input type="hidden" name="best" value="1" />
-                }
+                <!-- Filtri: Nazione + Ricerca -->
+                <form method="get" action="/Events" class="card p-3 mb-3">
+                    <div class="mb-2">
+                        <label class="form-label">Filtro Nazione</label>
+                        <select class="form-select form-select-sm" name="country" onchange="this.form.submit()">
+                            <option value="">— Mostra tutte —</option>
+                            @foreach (var c in Model.AvailableCountries)
+                            {
+                                <option value="@c.Code" selected="@(Model.SelectedCountryCode == c.Code)">
+                                    @c.Name (@c.Code)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Cerca (squadra o competizione)</label>
+                        <input class="form-control form-control-sm" type="text" name="q" value="@Model.Query" placeholder="Es: Serie A, Inter, Premier..." />
+                    </div>
 
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-sm">Filtra</button>
+                    <input type="hidden" name="d" value="@Model.SelectedDate.ToString("yyyy-MM-dd")" />
+                    <input type="hidden" name="fav" value="@(Model.OnlyFavorites ? 1 : 0)" />
+                    @if (Model.ShowBest)
+                    {
+                        <input type="hidden" name="best" value="1" />
+                    }
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-sm">Filtra</button>
+                    </div>
+                </form>
+            </aside>
+
+            <!-- MAIN -->
+            <main class="col-12 col-lg-9">
+                <!-- Barra data + frecce (senza OGGI) -->
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="h5 mb-0">
+                        @dayName @Model.SelectedDate.ToString("dd/MM/yyyy")
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a class="btn btn-outline-secondary"
+                           href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")@common"
+                           aria-label="Giorno precedente">←</a>
+
+                        <a class="btn btn-outline-secondary"
+                           href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")@common"
+                           aria-label="Giorno successivo">→</a>
+                    </div>
                 </div>
-            </form>
-        </aside>
 
-        <!-- MAIN -->
-        <main class="col-12 col-lg-9">
-            <!-- Barra data + frecce (senza OGGI) -->
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div class="h5 mb-0">
-                    @dayName @Model.SelectedDate.ToString("dd/MM/yyyy")
-                </div>
-                <div class="d-flex gap-2">
-                    <a class="btn btn-outline-secondary"
-                       href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")@common"
-                       aria-label="Giorno precedente">←</a>
-
-                    <a class="btn btn-outline-secondary"
-                       href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")@common"
-                       aria-label="Giorno successivo">→</a>
-                </div>
-            </div>
-
-            <!-- Sezione: Migliori pronostici (immutata, solo spostata qui) -->
+                <!-- Sezione: Migliori pronostici (RAGGRUPPATI come gli eventi) -->
                 @if (Model.ShowBest)
                 {
                     <div class="card mb-4 best-picks">
@@ -194,81 +194,131 @@
                                 <div class="alert alert-info mb-3">@Model.BestMessage</div>
                             }
 
-                            @if (Model.BestPicks?.Count > 0)
-                            {
-                                <div class="list-group list-group-flush">
-                                    @foreach (var r in Model.BestPicks.OrderBy(x => x.EventDate))
+                            @{
+                                // Proiezione: arricchisco ogni pick con assets e split Competition -> CountryCode + LeagueName
+                                var bestItems = Model.BestPicks?
+                                .OrderBy(x => x.EventDate)
+                                .Select(r =>
+                                {
+                                    Model.AssetsByMatchId.TryGetValue(r.Id, out var a);
+                                    var comp = r.Competition ?? "";
+                                    var split = comp.Split(" - ", 2, StringSplitOptions.TrimEntries);
+                                    var countryCode = split.Length > 0 ? split[0] : "";
+                                    var leagueName = split.Length > 1 ? split[1] : comp;
+                                    return new
                                     {
-                                        Model.AssetsByMatchId.TryGetValue(r.Id, out var assets);
+                                        R = r,
+                                        A = a,
+                                        Country = countryCode,      // es. "NL"
+                                        League = leagueName,       // es. "Eredivisie"
+                                        Flag = a?.LeagueFlag,    // bandiera del paese/lega
+                                        Logo = a?.LeagueLogo     // logo lega
+                                    };
+                                })
+                                .ToList();
 
-                                        var parts = (r.Match ?? "").Split('-', 2, StringSplitOptions.TrimEntries);
-                                        var homeName = parts.Length > 0 ? parts[0] : r.Match;
-                                        var awayName = parts.Length > 1 ? parts[1] : "";
+                                var gi = 0; // per id univoci dei collapse
+                            }
 
-                                        // Orario Italia coerente con gli eventi
-                                        var _dt = r.EventDate;
-                                        var _local = (_dt.Kind == DateTimeKind.Utc)
-                                        ? TimeZoneInfo.ConvertTimeFromUtc(_dt, tzRome)
-                                        : TimeZoneInfo.ConvertTime(_dt, tzRome);
-                                        var ko = _local.ToString("dd/MM HH:mm");
+                            @if (bestItems != null && bestItems.Count > 0)
+                            {
+                                @foreach (var grp in bestItems.GroupBy(x => new { x.Country, x.League, x.Flag, x.Logo }))
+                                {
+                                    var gid = $"bestgrp-{++gi}";
 
-                                        <div class="list-group-item">
-                                            <div class="match-item">
-                                                <!-- COLONNA SINISTRA: stessa griglia degli eventi -->
-                                                <a href="/Match/Details?id=@r.Id" class="match-grid">
-                                                    <!-- RIGA 1 -->
-                                                    <div class="team home">
-                                                        @if (!string.IsNullOrWhiteSpace(assets?.HomeLogo))
+                                    <div class="mb-3 border rounded">
+                                        <!-- Barra tipo "eventi": mostra LEGA + PAESE con logo/flag -->
+                                        <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#@gid"
+                                                aria-expanded="true" aria-controls="@gid">
+                                            <div class="d-flex align-items-center gap-2 py-2 px-3">
+                                                <span class="toggle-caret">▾</span>
+
+                                                @if (!string.IsNullOrWhiteSpace(grp.Key.Logo))
+                                                {
+                                                    <img src="@grp.Key.Logo" alt="league-logo" style="height:18px;width:auto;" />
+                                                }
+
+                                                <span class="fw-semibold">@grp.Key.League</span>
+
+                                                @if (!string.IsNullOrWhiteSpace(grp.Key.Country) || !string.IsNullOrWhiteSpace(grp.Key.Flag))
+                                                {
+                                                    <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                                                        ( @grp.Key.Country
+                                                        @if (!string.IsNullOrWhiteSpace(grp.Key.Flag))
                                                         {
-                                                            <img src="@assets.HomeLogo" alt="home" class="team-logo" />
+                                                            <img src="@grp.Key.Flag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
                                                         }
-                                                        <span class="team-name">@homeName</span>
+                                                        )
+                                                    </small>
+                                                }
+                                            </div>
+                                        </button>
+
+                                        <div id="@gid" class="collapse show">
+                                            <div class="list-group list-group-flush">
+                                                @foreach (var bp in grp)
+                                                {
+                                                    // Nomi squadre
+                                                    var parts = (bp.R.Match ?? "").Split(" - ", 2, StringSplitOptions.TrimEntries);
+                                                    var homeName = parts.Length > 0 ? parts[0] : bp.R.Match;
+                                                    var awayName = parts.Length > 1 ? parts[1] : "";
+
+                                                    // Orario Italia
+                                                    var _dt = bp.R.EventDate;
+                                                    var _local = (_dt.Kind == DateTimeKind.Utc)
+                                                    ? TimeZoneInfo.ConvertTimeFromUtc(_dt, tzRome)
+                                                    : TimeZoneInfo.ConvertTime(_dt, tzRome);
+                                                    var ko = _local.ToString("dd/MM HH:mm");
+
+                                                    <div class="list-group-item">
+                                                        <div class="match-item">
+                                                            <!-- Contenuto cliccabile -->
+                                                            <a href="/Match/Details?id=@bp.R.Id" class="match-grid">
+                                                                <!-- Riga 1 -->
+                                                                <div class="team home">
+                                                                    @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
+                                                                    {
+                                                                         <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
+                                                                    }
+                                                                    <span class="team-name">@homeName</span>
+                                                                </div>
+
+                                                                <div class="center">
+                                                                    <span class="vs-pill">vs</span>
+                                                                    <!-- SOLO orario (lega/paese sono in testata del gruppo) -->
+                                                                    <small class="text-muted mt-1">@ko</small>
+                                                                </div>
+
+                                                                <div class="team away">
+                                                                    <span class="team-name">@awayName</span>
+                                                                    @if (!string.IsNullOrWhiteSpace(bp.A?.AwayLogo))
+                                                                    {
+                                                                        <img src="@bp.A.AwayLogo" alt="away" class="team-logo" />
+                                                                    }
+                                                                </div>
+
+                                                                <!-- Riga 2 (placeholder punteggi) -->
+                                                                <div class="home-score">–</div>
+                                                                <div class="score-sep">:</div>
+                                                                <div class="away-score">–</div>
+                                                            </a>
+
+                                                            <!-- Azione a destra -->
+                                                            <div class="d-flex align-items-center">
+                                                                <a href="/Match/Details?id=@bp.R.Id"
+                                                                   target="_blank" rel="noopener"
+                                                                   class="btn btn-sm btn-outline-primary">
+                                                                    Apri evento ↗
+                                                                </a>
+                                                            </div>
+                                                        </div>
                                                     </div>
-
-                                                    <div class="center">
-                                                        <span class="vs-pill">vs</span>
-                                                        <small class="text-muted mt-1">@ko</small>
-                                                        <small class="text-muted mt-1" style="white-space:nowrap;">
-                                                            (
-                                                            @if (!string.IsNullOrWhiteSpace(assets?.LeagueFlag))
-                                                            {
-                                                                <img src="@assets.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;margin-right:4px;" />
-                                                            }
-                                                            @r.Competition
-                                                            @if (!string.IsNullOrWhiteSpace(assets?.LeagueLogo))
-                                                            {
-                                                                <img src="@assets.LeagueLogo" alt="league" style="height:16px;width:auto;vertical-align:middle;margin-left:6px;" />
-                                                            }
-                                                            )
-                                                        </small>
-                                                    </div>
-
-                                                    <div class="team away">
-                                                        <span class="team-name">@awayName</span>
-                                                        @if (!string.IsNullOrWhiteSpace(assets?.AwayLogo))
-                                                        {
-                                                            <img src="@assets.AwayLogo" alt="away" class="team-logo" />
-                                                        }
-                                                    </div>
-
-                                                    <!-- RIGA 2 (placeholder punteggi, coerente con eventi) -->
-                                                    <div class="home-score">–</div>
-                                                    <div class="score-sep">:</div>
-                                                    <div class="away-score">–</div>
-                                                </a>
-
-                                                <!-- COLONNA DESTRA: stessa logica “azione” -->
-                                                <div class="d-flex align-items-center">
-                                                    <a href="/Match/Details?id=@r.Id"
-                                                       target="_blank" rel="noopener"
-                                                       class="btn btn-sm btn-outline-primary">
-                                                        Apri evento ↗
-                                                    </a>
-                                                </div>
+                                                }
                                             </div>
                                         </div>
-                                    }
-                                </div>
+                                    </div>
+                                }
                             }
                             else
                             {
@@ -279,117 +329,117 @@
                 }
 
 
-            <!-- Lista partite raggruppate per competizione (immutata) -->
-            @if (Model.Rows.Count == 0)
-            {
-                <p>Nessuna partita trovata per il giorno selezionato.</p>
-            }
-            else
-            {
-                @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
+                <!-- Lista partite raggruppate per competizione -->
+                @if (Model.Rows.Count == 0)
                 {
-                    var groupId = $"lg-{group.Key.LeagueId}";
+                    <p>Nessuna partita trovata per il giorno selezionato.</p>
+                }
+                else
+                {
+                    @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
+                    {
+                        var groupId = $"lg-{group.Key.LeagueId}";
 
-                    <div class="mb-3 border rounded">
-                        <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
-                                type="button" data-bs-toggle="collapse" data-bs-target="#@groupId"
-                                aria-expanded="true" aria-controls="@groupId">
-                            <div class="d-flex align-items-center gap-2 py-2 px-3">
-                                <span class="toggle-caret">▾</span>
+                        <div class="mb-3 border rounded">
+                            <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                                    type="button" data-bs-toggle="collapse" data-bs-target="#@groupId"
+                                    aria-expanded="true" aria-controls="@groupId">
+                                <div class="d-flex align-items-center gap-2 py-2 px-3">
+                                    <span class="toggle-caret">▾</span>
 
-                                @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
-                                {
-                                    <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
-                                }
+                                    @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
+                                    {
+                                        <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
+                                    }
 
-                                <span class="fw-semibold">@group.Key.LeagueName</span>
+                                    <span class="fw-semibold">@group.Key.LeagueName</span>
 
-                                @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                                {
-                                    <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
-                                        ( @group.Key.CountryName
-                                        @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
-                                        {
-                                            <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
-                                        }
-                                        )
-                                    </small>
-                                }
-
-                                <small class="text-muted ms-2">#@group.Key.LeagueId</small>
-                            </div>
-                        </button>
-
-                        <div id="@groupId" class="collapse show">
-                            <div class="list-group list-group-flush">
-                                @foreach (var r in group)
-                                {
-                                    <div class="list-group-item">
-                                        <div class="match-item">
-                                            @{
-                                                var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
-                                                var homeScoreStr = matchEnded && r.HomeGoal.HasValue ? r.HomeGoal.Value.ToString() : "–";
-                                                var awayScoreStr = matchEnded && r.AwayGoal.HasValue ? r.AwayGoal.Value.ToString() : "–";
-
-                                                // Orario Italia: convertiamo da UTC a Europe/Rome in modo affidabile
-                                                DateTime _kick;
-                                                if (r.KickoffUtc.Kind == DateTimeKind.Utc)
-                                                    _kick = TimeZoneInfo.ConvertTimeFromUtc(r.KickoffUtc, tzRome);
-                                                else
-                                                    _kick = TimeZoneInfo.ConvertTime(r.KickoffUtc, tzRome);
-                                                var ko = _kick.ToString("HH:mm");
+                                    @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                                    {
+                                        <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                                            ( @group.Key.CountryName
+                                            @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
+                                            {
+                                                <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
                                             }
+                                            )
+                                        </small>
+                                    }
 
-                                            <!-- COLONNA SINISTRA: contenuto cliccabile -->
-                                            <a href="/Match/Details?id=@r.MatchId" class="match-grid">
-                                                <!-- RIGA 1 -->
-                                                <div class="team home">
-                                                    @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
-                                                    {
-                                                        <img src="@r.HomeLogo" alt="home" class="team-logo" />
-                                                    }
-                                                    <span class="team-name">@r.Home</span>
-                                                </div>
+                                    <small class="text-muted ms-2">#@group.Key.LeagueId</small>
+                                </div>
+                            </button>
 
-                                                <div class="center">
-                                                    <span class="vs-pill">vs</span>
-                                                    <small class="text-muted mt-1">Ora: @ko</small>
-                                                    <small class="live-minute d-none" data-fixture="@r.MatchId"></small>
-                                                </div>
-                                                <div class="team away">
-                                                    <span class="team-name">@r.Away</span>
-                                                    @if (!string.IsNullOrWhiteSpace(r.AwayLogo))
-                                                    {
-                                                        <img src="@r.AwayLogo" alt="away" class="team-logo" />
-                                                    }
-                                                </div>
+                            <div id="@groupId" class="collapse show">
+                                <div class="list-group list-group-flush">
+                                    @foreach (var r in group)
+                                    {
+                                        <div class="list-group-item">
+                                            <div class="match-item">
+                                                @{
+                                                    var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
+                                                    var homeScoreStr = matchEnded && r.HomeGoal.HasValue ? r.HomeGoal.Value.ToString() : "–";
+                                                    var awayScoreStr = matchEnded && r.AwayGoal.HasValue ? r.AwayGoal.Value.ToString() : "–";
 
-                                                <!-- RIGA 2 (risultato sotto le rispettive squadre) -->
-                                                <div class="home-score" data-fixture="@r.MatchId" data-side="home">@homeScoreStr</div>
-                                                <div class="score-sep">:</div>
-                                                <div class="away-score" data-fixture="@r.MatchId" data-side="away">@awayScoreStr</div>
-                                            </a>
+                                                    // Orario Italia
+                                                    DateTime _kick;
+                                                    if (r.KickoffUtc.Kind == DateTimeKind.Utc)
+                                                        _kick = TimeZoneInfo.ConvertTimeFromUtc(r.KickoffUtc, tzRome);
+                                                    else
+                                                        _kick = TimeZoneInfo.ConvertTime(r.KickoffUtc, tzRome);
+                                                    var ko = _kick.ToString("HH:mm");
+                                                }
 
-                                            <!-- COLONNA DESTRA: preferito -->
-                                            <form method="post"
-                                                  action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
-                                                  class="fav-form">
-                                                @Html.AntiForgeryToken()
-                                                <button type="submit"
-                                                        class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
-                                                        title="Aggiungi/rimuovi dai preferiti">
-                                                    ⭐
-                                                </button>
-                                            </form>
+                                                <!-- COLONNA SINISTRA: contenuto cliccabile -->
+                                                <a href="/Match/Details?id=@r.MatchId" class="match-grid">
+                                                    <!-- RIGA 1 -->
+                                                    <div class="team home">
+                                                        @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
+                                                        {
+                                                            <img src="@r.HomeLogo" alt="home" class="team-logo" />
+                                                        }
+                                                        <span class="team-name">@r.Home</span>
+                                                    </div>
+
+                                                    <div class="center">
+                                                        <span class="vs-pill">vs</span>
+                                                        <small class="text-muted mt-1">Ora: @ko</small>
+                                                        <small class="live-minute d-none" data-fixture="@r.MatchId"></small>
+                                                    </div>
+                                                    <div class="team away">
+                                                        <span class="team-name">@r.Away</span>
+                                                        @if (!string.IsNullOrWhiteSpace(r.AwayLogo))
+                                                        {
+                                                            <img src="@r.AwayLogo" alt="away" class="team-logo" />
+                                                        }
+                                                    </div>
+
+                                                    <!-- RIGA 2 (risultato) -->
+                                                    <div class="home-score" data-fixture="@r.MatchId" data-side="home">@homeScoreStr</div>
+                                                    <div class="score-sep">:</div>
+                                                    <div class="away-score" data-fixture="@r.MatchId" data-side="away">@awayScoreStr</div>
+                                                </a>
+
+                                                <!-- COLONNA DESTRA: preferito -->
+                                                <form method="post"
+                                                      action="/Events?handler=ToggleFavorite&matchId=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites?1:0)&country=@Model.SelectedCountryCode&q=@Model.Query@(Model.ShowBest ? "&best=1" : "")"
+                                                      class="fav-form">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit"
+                                                            class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
+                                                            title="Aggiungi/rimuovi dai preferiti">
+                                                        ⭐
+                                                    </button>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
-                                }
+                                    }
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 }
-            }
-        </main>
+            </main>
         </div>
     </div>
 </div>
@@ -399,17 +449,17 @@
     .loading-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(10,14,20,0.65); /* prima era bianco: ora scuro e non “sbianca” tutto */
+        background: rgba(10,14,20,0.65);
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 5000; /* più alto per stare sopra tutto */
+        z-index: 5000;
         backdrop-filter: blur(2px);
     }
 
     .loading-panel {
-        background: rgba(20,26,36,0.92); /* pannello scuro semi-trasparente */
-        color: #fff; /* testo chiaro e nitido */
+        background: rgba(20,26,36,0.92);
+        color: #fff;
         border: 1px solid rgba(255,255,255,0.18);
         border-radius: .75rem;
         box-shadow: 0 12px 36px rgba(0,0,0,.35);
@@ -420,11 +470,9 @@
         max-width: 90vw;
     }
 
-        /* Spinner chiaro dentro il pannello scuro */
         .loading-panel .spinner-border {
             color: #fff;
         }
-
 </style>
 
 <div id="loadingOverlay" class="loading-overlay d-none" aria-hidden="true">
@@ -446,28 +494,24 @@
       }
 
       document.addEventListener('click', function (e) {
-        // Click su "Migliori pronostici"
         const bestBtn = e.target.closest('a[data-loading="best"]');
         if (bestBtn) {
           showOverlay('Caricamento migliori pronostici…');
           return;
         }
 
-        // Click su un evento (card match)
         const matchLink = e.target.closest('a.match-grid');
         if (matchLink) {
           showOverlay('Caricamento match in corso…');
           return;
         }
 
-        // Opzionale: link con messaggio personalizzato
         const generic = e.target.closest('a[data-loading-message]');
         if (generic) {
           showOverlay(generic.getAttribute('data-loading-message') || 'Caricamento…');
         }
       });
 
-      // Se la pagina torna dal bfcache, nascondi l’overlay
       window.addEventListener('pageshow', () => {
         if (overlay) overlay.classList.add('d-none');
       });
@@ -504,6 +548,7 @@
         border-bottom: 1px solid #dee2e6;
     }
 </style>
+
 <style>
     /* Mini calendario compatto in sidebar */
     .mini-cal {
@@ -550,7 +595,6 @@
         color: #fff;
     }
 
-    /* Pulsanti toggle gruppi leghe (già presenti, solo ordine) */
     .league-toggle-btn {
         background-color: #f7f7f7;
         transition: background-color .2s ease;
@@ -614,12 +658,11 @@
             justify-self: end;
             flex-direction: row;
         }
-        /* logo → testo */
+
         .team.away {
             justify-self: start;
             flex-direction: row;
         }
-    /* testo → logo */
 
     .team-logo {
         height: 18px;
@@ -641,7 +684,7 @@
         align-items: center;
     }
 
-    /* RIGA 2 (punteggio allineato sotto le squadre) */
+    /* RIGA 2 (punteggio allineato sotto le rispettive squadre) */
     .home-score {
         grid-column: 1;
         justify-self: end;
@@ -682,17 +725,16 @@
         justify-self: end;
     }
 
-    /* opzionale: marker live senza alterare il layout */
+    /* Live */
     .is-live::after {
         content: ' •';
     }
 
     :root {
-        --live-color: #dc3545; /* rosso Bootstrap-ish */
-        --live-color-soft: #ff6b6b; /* variante più chiara per l'alternanza */
+        --live-color: #dc3545;
+        --live-color-soft: #ff6b6b;
     }
 
-    /* Animazione colore/leggera opacità (non sparisce mai) */
     @@keyframes livePulse {
         0% {
             color: var(--live-color);
@@ -705,7 +747,6 @@
         }
     }
 
-    /* Puntino che “respira” */
     @@keyframes blinkDot {
         0% {
             opacity: .55;
@@ -716,78 +757,165 @@
         }
     }
 
-    /* Applica a punteggi live */
     .is-live {
         color: var(--live-color);
         animation: livePulse 1.1s ease-in-out infinite alternate;
     }
 
-    /* Badge minutaggio live */
     .live-minute.is-live {
         color: var(--live-color);
         font-weight: 700;
         animation: livePulse .9s ease-in-out infinite alternate;
     }
 
-    /* Se vuoi mantenere il • sui punteggi live, animiamolo leggermente */
     .is-live::after {
         content: ' •';
         animation: blinkDot 1s ease-in-out infinite alternate;
     }
 
-    /* Accessibilità: se l’utente preferisce meno animazioni, disattivale */
     @@media (prefers-reduced-motion: reduce) {
         .is-live, .live-minute.is-live {
             animation: none !important;
         }
     }
 
-    /* 📱 Migliorie mobile: logo sopra, nome sotto; nomi a 2 righe senza sovrapporsi ai punteggi */
+    /* 📱 Migliorie mobile globali di base */
     @@media (max-width: 576px) {
-        .team
+        .team {
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
 
-    {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
+            .team.home {
+                justify-self: end;
+            }
+
+            .team.away {
+                justify-self: start;
+            }
+
+        .team-logo {
+            height: 24px;
+            margin-bottom: 2px;
+        }
+
+        .team-name {
+            white-space: normal;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            max-width: 100%;
+            line-height: 1.1;
+        }
+
+        .vs-pill {
+            font-size: .65rem;
+            padding: .08rem .35rem;
+        }
+
+        .match-grid {
+            row-gap: .35rem;
+        }
     }
 
-    .team.home {
+    /* === FIX SPECIFICO: mantieni layout degli EVENTI su mobile (3 colonne),
+               e applica le variazioni SOLO ai Best Picks === */
+
+    @@media (max-width: 576px) {
+        /* Eventi standard: riportiamo le squadre in riga (override del blocco globale sopra) */
+        .list-group .match-grid .team {
+            flex-direction: row !important;
+            align-items: center !important;
+            text-align: initial !important;
+        }
+
+        .list-group .home-score {
+            justify-self: end !important;
+        }
+
+        .list-group .score-sep {
+            justify-self: center !important;
+        }
+
+        .list-group .away-score {
+            justify-self: start !important;
+        }
+    }
+
+    /* === Best Picks: anti-overflow (desktop e mobile) === */
+
+    /* impedisce che la colonna sinistra schiacci il bottone */
+    .best-picks .match-item {
+        grid-template-columns: minmax(0,1fr) auto;
+    }
+
+    /* la griglia interna si comprime senza rompere */
+    .best-picks .match-grid {
+        grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+    }
+
+    /* consenti truncation pulita */
+    .best-picks .team {
+        min-width: 0;
+    }
+
+    .best-picks .team-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    /* il testo centrale può andare a capo */
+    .best-picks .center small {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.15;
+    }
+
+    /* loghi contenuti */
+    .best-picks .team-logo {
+        max-width: 100%;
+        height: 18px;
+        width: auto;
+        object-fit: contain;
+    }
+
+    /* bottone a destra resta in colonna sua */
+    .best-picks .match-item > .d-flex {
         justify-self: end;
     }
 
-    .team.away {
-        justify-self: start;
+    /* se ci fosse un vecchio inline style col nowrap, sbloccalo */
+    .best-picks .center small[style] {
+        white-space: normal !important;
     }
 
-    .team-logo {
-        height: 24px;
-        margin-bottom: 2px;
-    }
+    /* XS: piccole rifiniture solo Best Picks */
+    @@media (max-width: 576px) {
+        .best-picks .team-logo {
+            height: 20px;
+        }
 
-    /* permetti il wrapping su due righe, evitando overlap con i punteggi (che sono sulla riga 2 della grid) */
-    .team-name {
-        white-space: normal;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        max-width: 100%;
-        line-height: 1.1;
-    }
+        .best-picks .team-name {
+            white-space: normal;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
 
-    /* Compatta un filo la pill "vs" per ridurre l'ingombro centrale */
-    .vs-pill {
-        font-size: .65rem;
-        padding: .08rem .35rem;
-    }
+        .best-picks .center img {
+            display: none;
+        }
 
-    /* Lascia respirare la seconda riga (punteggi) quando i nomi vanno su 2 righe */
-    .match-grid {
-        row-gap: .35rem;
-    }
-
+        .best-picks .vs-pill {
+            font-size: .65rem;
+            padding: .08rem .35rem;
+        }
     }
 </style>
 
@@ -800,66 +928,62 @@
           if (!ids.length) return;
 
           const chunk = (arr, size) => arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
-          const batches = chunk(ids, 20); // prudente: 20 id per chiamata
+          const batches = chunk(ids, 20);
 
-        async function tick() {
-          try {
-            const liveStatuses = ['1H','2H','ET','P','BT','LIVE','HT'];
+          async function tick() {
+            try {
+              const liveStatuses = ['1H','2H','ET','P','BT','LIVE','HT'];
 
-            for (const b of batches) {
-              const qs = encodeURIComponent(b.join(','));
-              const res = await fetch(`/api/livescores?ids=${qs}`, { cache: 'no-store' });
-              if (!res.ok) continue;
+              for (const b of batches) {
+                const qs = encodeURIComponent(b.join(','));
+                const res = await fetch(`/api/livescores?ids=${qs}`, { cache: 'no-store' });
+                if (!res.ok) continue;
 
-              const data = await res.json();
+                const data = await res.json();
 
-              for (const it of data) {
-                const id = String(it.id);
-                const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
-                const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
-                const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
+                for (const it of data) {
+                  const id = String(it.id);
+                  const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
+                  const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
+                  const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
 
-                // Punteggi
-                if (homeEl) homeEl.textContent = (it.home ?? '–');
-                if (awayEl) awayEl.textContent = (it.away ?? '–');
+                  if (homeEl) homeEl.textContent = (it.home ?? '–');
+                  if (awayEl) awayEl.textContent = (it.away ?? '–');
 
-                // Live?
-                const isLive = it.status && liveStatuses.includes(it.status);
+                  const isLive = it.status && liveStatuses.includes(it.status);
 
-                // Minuto (solo live)
-                if (minuteEl) {
-                  if (isLive) {
-                    let label = '';
-                    if (typeof it.elapsed === 'number' && it.elapsed >= 0) {
-                      label = `${it.elapsed}'`;
-                    } else if (it.status === 'HT') {
-                      label = 'HT';
-                    }
-                    if (label) {
-                      minuteEl.textContent = label;
-                      minuteEl.classList.remove('d-none');
+                  if (minuteEl) {
+                    if (isLive) {
+                      let label = '';
+                      if (typeof it.elapsed === 'number' && it.elapsed >= 0) {
+                        label = `${it.elapsed}'`;
+                      } else if (it.status === 'HT') {
+                        label = 'HT';
+                      }
+                      if (label) {
+                        minuteEl.textContent = label;
+                        minuteEl.classList.remove('d-none');
+                      } else {
+                        minuteEl.classList.add('d-none');
+                      }
+                      minuteEl.classList.add('is-live');
                     } else {
                       minuteEl.classList.add('d-none');
+                      minuteEl.classList.remove('is-live');
                     }
-                    minuteEl.classList.add('is-live');
-                  } else {
-                    minuteEl.classList.add('d-none');
-                    minuteEl.classList.remove('is-live');
                   }
-                }
 
-                // Evidenzia punteggi live in rosso + pulsazione
-                const apply = el => {
-                  if (!el) return;
-                  if (isLive) el.classList.add('is-live');
-                  else el.classList.remove('is-live');
-                };
-                apply(homeEl);
-                apply(awayEl);
+                  const apply = el => {
+                    if (!el) return;
+                    if (isLive) el.classList.add('is-live');
+                    else el.classList.remove('is-live');
+                  };
+                  apply(homeEl);
+                  apply(awayEl);
+                }
               }
-            }
-          } catch (_) { /* no-op */ }
-        }
+            } catch (_) { /* no-op */ }
+          }
 
           let h = null;
           function start() { tick(); h = setInterval(tick, 20000); }
@@ -969,52 +1093,46 @@
                         border-color: #0d6efd;
                         box-shadow: 0 8px 18px rgba(13,110,253,.28);
                     }
-       
-.events-page .form-select {
-  background: rgba(255,255,255,.12);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,.24);
-}
 
+                .events-page .form-select {
+                    background: rgba(255,255,255,.12);
+                    color: #fff;
+                    border: 1px solid rgba(255,255,255,.24);
+                }
 
-.events-page .form-select option {
-  color: #111;
-  background: #fff;
-}
+                    .events-page .form-select option {
+                        color: #111;
+                        background: #fff;
+                    }
 
                 /* Uniforma la card "Migliori pronostici" all’aspetto delle righe eventi */
                 .events-page .best-picks {
-                    /* niente effetto card diverso: stessi bordi/trasparenze del resto */
                     background: transparent;
                     border: 1px solid rgba(255,255,255,.16);
                 }
 
                     .events-page .best-picks .card-header {
-                        background: rgba(255,255,255,.06);
-                        border-bottom: 1px solid rgba(255,255,255,.14);
+                        background: rgba(255,255,255,0.06);
+                        border-bottom: 1px solid rgba(255,255,255,0.14);
                         color: #f4f7fb;
                     }
 
-                    /* togli il padding della card per far “attaccare” la list-group ai bordi come gli eventi */
                     .events-page .best-picks .card-body {
                         padding: 0;
                     }
 
-                    /* Le righe devono avere lo stesso sfondo/bordi delle righe eventi */
                     .events-page .best-picks .list-group-flush .list-group-item {
-                        background: transparent; /* come le righe eventi */
+                        background: transparent;
                         border-left: none;
                         border-right: none;
-                        border-bottom: 1px solid rgba(255,255,255,.16); /* stesso bordo delle altre liste */
+                        border-bottom: 1px solid rgba(255,255,255,.16);
                         color: #e9edf3;
                     }
 
-                        /* Mantieni hover/zebratura coerenti se presenti altrove */
                         .events-page .best-picks .list-group-flush .list-group-item:hover {
                             background: rgba(255,255,255,.10);
                         }
 
-                    /* Allinea la densità verticale alle righe eventi */
                     .events-page .best-picks .match-item {
                         gap: .75rem;
                     }
