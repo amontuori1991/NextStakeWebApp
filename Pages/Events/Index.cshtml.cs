@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Configuration;
 
 namespace NextStakeWebApp.Pages.Events
 {
@@ -17,44 +16,17 @@ namespace NextStakeWebApp.Pages.Events
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IConfiguration _cfg;
-        private readonly TimeZoneInfo _tzRome;
-        private readonly bool _datesLocalInDb; // true: orari salvati come Europe/Rome; false: salvati in UTC
 
-        public IndexModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager, IConfiguration cfg)
+        public IndexModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager)
         {
             _read = read;
             _write = write;
             _userManager = userManager;
-            _cfg = cfg;
-
-            var tzId = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? "W. Europe Standard Time"
-                : "Europe/Rome";
-            _tzRome = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-
-            // Env/appsettings: DatesLocalInDb (o DATES_LOCAL_IN_DB)
-            var raw = _cfg["DatesLocalInDb"] ?? _cfg["DATES_LOCAL_IN_DB"];
-            _datesLocalInDb = raw == "1" || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Converte un DateTime letto dal DB in UTC coerente con la config
-        private DateTime FromDbToUtc(DateTime dbDate)
-        {
-            if (_datesLocalInDb)
-            {
-                // DB contiene Europe/Rome senza offset
-                var local = DateTime.SpecifyKind(dbDate, DateTimeKind.Unspecified);
-                return TimeZoneInfo.ConvertTimeToUtc(local, _tzRome);
-            }
-            else
-            {
-                // DB contiene UTC (anche se Unspecified)
-                return DateTime.SpecifyKind(dbDate, DateTimeKind.Utc);
-            }
-        }
+        // Giorno selezionato (giorno "Italia")
+        public DateOnly SelectedDate { get; private set; } = DateOnly.FromDateTime(DateTime.Now);
 
-        public DateOnly SelectedDate { get; private set; } = DateOnly.FromDateTime(DateTime.UtcNow);
         public bool OnlyFavorites { get; private set; }
         public string? SelectedCountryCode { get; private set; }
         public string? Query { get; private set; }
@@ -93,7 +65,7 @@ namespace NextStakeWebApp.Pages.Events
             public string? StatusShort { get; set; }
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
-            public DateTime KickoffUtc { get; set; } // SEMPRE UTC per la View
+            public DateTime KickoffLocal { get; set; } // *** ORA LOCALE ITALIA, come salvato in DB ***
             public string? LeagueFlag { get; set; }
             public string? HomeLogo { get; set; }
             public string? AwayLogo { get; set; }
@@ -105,7 +77,7 @@ namespace NextStakeWebApp.Pages.Events
             public string Name { get; set; } = "";
         }
 
-        // ===== DTO tipizzati per le SELECT EF (niente dynamic!) =====
+        // DTO tipizzati per le select EF
         private sealed class RawRow
         {
             public long Id { get; set; }
@@ -121,7 +93,7 @@ namespace NextStakeWebApp.Pages.Events
             public string? Away { get; set; }
             public string? HomeLogo { get; set; }
             public string? AwayLogo { get; set; }
-            public DateTime Date { get; set; }
+            public DateTime Date { get; set; }          // *** IN DB: ORA ITALIA (senza offset) ***
             public string? StatusShort { get; set; }
         }
 
@@ -148,89 +120,35 @@ namespace NextStakeWebApp.Pages.Events
                                      .Select(fm => fm.MatchId)
                                      .ToHashSet();
 
-            var day = SelectedDate;
+            // Finestra del giorno: *** in locale ITALIA, senza conversioni ***
+            var dayStartLocal = SelectedDate.ToDateTime(TimeOnly.MinValue);      // 00:00
+            var dayEndLocal = dayStartLocal.AddDays(1);                        // 24:00
 
-            // Finestra della giornata [00:00, 24:00) nella TZ di Roma
-            DateTime dayStartLocal = day.ToDateTime(TimeOnly.MinValue);
-            DateTime dayEndLocal = dayStartLocal.AddDays(1);
-
-            // E anche in UTC (per il ramo UTC)
-            DateTime dayStartUtc, dayEndUtc;
-            if (_datesLocalInDb)
-            {
-                dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(dayStartLocal, _tzRome);
-                dayEndUtc = TimeZoneInfo.ConvertTimeToUtc(dayEndLocal, _tzRome);
-            }
-            else
-            {
-                dayStartUtc = DateTime.SpecifyKind(dayStartLocal, DateTimeKind.Utc);
-                dayEndUtc = DateTime.SpecifyKind(dayEndLocal, DateTimeKind.Utc);
-            }
-
-            // =========================
-            // Query base eventi del giorno (TIPIZZATA)
-            // =========================
-            IQueryable<RawRow> baseQuery;
-            if (_datesLocalInDb)
-            {
-                var localStart = dayStartLocal;
-                var localEnd = dayEndLocal;
-
-                baseQuery =
-                    from m in _read.Matches
-                    join lg in _read.Leagues on m.LeagueId equals lg.Id
-                    join th in _read.Teams on m.HomeId equals th.Id
-                    join ta in _read.Teams on m.AwayId equals ta.Id
-                    where m.Date >= localStart && m.Date < localEnd
-                    select new RawRow
-                    {
-                        Id = m.Id,
-                        LeagueId = m.LeagueId,
-                        LeagueName = lg.Name,
-                        LeagueLogo = lg.Logo,
-                        HomeGoal = m.HomeGoal,
-                        AwayGoal = m.AwayGoal,
-                        CountryName = lg.CountryName,
-                        CountryCode = lg.CountryCode,
-                        Flag = lg.Flag,
-                        Home = th.Name,
-                        Away = ta.Name,
-                        HomeLogo = th.Logo,
-                        AwayLogo = ta.Logo,
-                        Date = m.Date,
-                        StatusShort = m.StatusShort
-                    };
-            }
-            else
-            {
-                var utcStart = dayStartUtc;
-                var utcEnd = dayEndUtc;
-
-                baseQuery =
-                    from m in _read.Matches
-                    join lg in _read.Leagues on m.LeagueId equals lg.Id
-                    join th in _read.Teams on m.HomeId equals th.Id
-                    join ta in _read.Teams on m.AwayId equals ta.Id
-                    where m.Date >= utcStart && m.Date < utcEnd
-                    select new RawRow
-                    {
-                        Id = m.Id,
-                        LeagueId = m.LeagueId,
-                        LeagueName = lg.Name,
-                        LeagueLogo = lg.Logo,
-                        HomeGoal = m.HomeGoal,
-                        AwayGoal = m.AwayGoal,
-                        CountryName = lg.CountryName,
-                        CountryCode = lg.CountryCode,
-                        Flag = lg.Flag,
-                        Home = th.Name,
-                        Away = ta.Name,
-                        HomeLogo = th.Logo,
-                        AwayLogo = ta.Logo,
-                        Date = m.Date,
-                        StatusShort = m.StatusShort
-                    };
-            }
+            // Query base eventi del giorno (DB contiene orari già Italia)
+            IQueryable<RawRow> baseQuery =
+                from m in _read.Matches
+                join lg in _read.Leagues on m.LeagueId equals lg.Id
+                join th in _read.Teams on m.HomeId equals th.Id
+                join ta in _read.Teams on m.AwayId equals ta.Id
+                where m.Date >= dayStartLocal && m.Date < dayEndLocal
+                select new RawRow
+                {
+                    Id = m.Id,
+                    LeagueId = m.LeagueId,
+                    LeagueName = lg.Name,
+                    LeagueLogo = lg.Logo,
+                    HomeGoal = m.HomeGoal,
+                    AwayGoal = m.AwayGoal,
+                    CountryName = lg.CountryName,
+                    CountryCode = lg.CountryCode,
+                    Flag = lg.Flag,
+                    Home = th.Name,
+                    Away = ta.Name,
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo,
+                    Date = m.Date,                  // *** già locale Italia ***
+                    StatusShort = m.StatusShort
+                };
 
             // Filtri opzionali
             if (!string.IsNullOrWhiteSpace(SelectedCountryCode))
@@ -269,30 +187,15 @@ namespace NextStakeWebApp.Pages.Events
                 HomeGoal = r.HomeGoal,
                 AwayGoal = r.AwayGoal,
                 LeagueFlag = r.Flag,
-                // Normalizziamo SEMPRE a UTC per la vista
-                KickoffUtc = FromDbToUtc(r.Date)
+                KickoffLocal = DateTime.SpecifyKind(r.Date, DateTimeKind.Unspecified) // manteniamo "locale" senza offset
             }).ToList();
 
-            // =========================
-            // Nazioni disponibili per il giorno (stessa finestra del where) - TIPIZZATA
-            // =========================
-            IQueryable<CountryPair> countriesQuery;
-            if (_datesLocalInDb)
-            {
-                countriesQuery =
-                    from m in _read.Matches
-                    join lg in _read.Leagues on m.LeagueId equals lg.Id
-                    where m.Date >= dayStartLocal && m.Date < dayEndLocal
-                    select new CountryPair { CountryCode = lg.CountryCode, CountryName = lg.CountryName };
-            }
-            else
-            {
-                countriesQuery =
-                    from m in _read.Matches
-                    join lg in _read.Leagues on m.LeagueId equals lg.Id
-                    where m.Date >= dayStartUtc && m.Date < dayEndUtc
-                    select new CountryPair { CountryCode = lg.CountryCode, CountryName = lg.CountryName };
-            }
+            // Nazioni disponibili per il giorno (stessa finestra locale)
+            var countriesQuery =
+                from m in _read.Matches
+                join lg in _read.Leagues on m.LeagueId equals lg.Id
+                where m.Date >= dayStartLocal && m.Date < dayEndLocal
+                select new CountryPair { CountryCode = lg.CountryCode, CountryName = lg.CountryName };
 
             AvailableCountries = await countriesQuery
                 .GroupBy(x => new { x.CountryCode, x.CountryName })
@@ -304,18 +207,14 @@ namespace NextStakeWebApp.Pages.Events
                 .OrderBy(x => x.Name)
                 .ToListAsync();
 
-            // Carica "Migliori pronostici" se richiesto
             if (ShowBest)
-            {
                 await LoadBestPicksAsync();
-            }
 
             ViewData["Title"] = "Eventi";
         }
 
         private async Task LoadBestPicksAsync()
         {
-            // Legge definizione query dalla tabella analyses
             var analysis = await _read.Analyses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.ViewName == ".." && a.Description == "Partite in Pronostico");
@@ -351,7 +250,6 @@ namespace NextStakeWebApp.Pages.Events
                     return;
                 }
 
-                // ===== Enrichment: asset per i match nei Best =====
                 var matchIds = BestPicks.Select(b => b.Id).Distinct().ToList();
 
                 var assets = await (
@@ -410,8 +308,7 @@ namespace NextStakeWebApp.Pages.Events
         }
     }
 
-    // Model minimo per la tabella 'analyses' se non fosse già presente nel tuo progetto
-    // RIMUOVILO se hai già la tua classe Analysis mappata nel contesto.
+    // Rimuovi se hai già la tua entity
     public class Analysis
     {
         public int Id { get; set; }
