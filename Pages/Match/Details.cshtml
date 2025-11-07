@@ -531,6 +531,7 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
+                                    <th class="text-center icon-col" title="Casa/Trasferta">
                                     <th>Squadra</th>
                                     <th class="text-center">Punti</th>
                                     <th class="text-center">G</th>
@@ -547,38 +548,33 @@
                                     {
                                         var isHome = s.TeamId == Model.Data.HomeId;
                                         var isAway = s.TeamId == Model.Data.AwayId;
+                                        var isHighlighted = isHome || isAway;
 
-                                        // 1. Definisci lo stile IN-LINE ASSOLUTO (Background e Testo)
-                                        var cellInlineStyle = "";
-                                        if (isHome)
-                                        {
-                                            // Verde saturo 100%
-                                            cellInlineStyle = "background-color: rgb(0, 120, 60) !important; color: white !important; font-weight: 700 !important; text-shadow: 0 0 3px rgba(0,0,0,0.35) !important;";
-                                        }
-                                        else if (isAway)
-                                        {
-                                            // Rosso saturo 100%
-                                            cellInlineStyle = "background-color: rgb(150, 0, 0) !important; color: white !important; font-weight: 700 !important; text-shadow: 0 0 3px rgba(0,0,0,0.35) !important;";
-                                        }
+                                        <tr class="@(isHighlighted ? "hl-row" : "")">
+                                            <td>@s.Rank</td>
+                                            <td class="icon-col text-start">
+                                                @if (isHome)
+                                                {
+                                                    <span class="role-icon" title="Squadra di casa" aria-label="Squadra di casa">🏠</span>
+                                                }
+                                                else if (isAway)
+                                                {
 
-                                        // 2. La classe sulla TR può restare (per i selettori CSS generici), ma lo stile VA SULLE CELLE
-                                        var rowClass = isHome ? "ns-home table-success" : (isAway ? "ns-away table-danger" : "");
-
-                                        // *** MODIFICATO: style in-line su ogni singola cella ***
-                                        <tr class="@rowClass">
-                                            <td style="@cellInlineStyle">@s.Rank</td>
-                                            <td style="@cellInlineStyle">@s.TeamName</td>
-                                            <td class="text-center fw-bold" style="@cellInlineStyle">@s.Points</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.Played</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.Win</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.Draw</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.Lose</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.GF</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.GA</td>
-                                            <td class="text-center" style="@cellInlineStyle">@s.Diff</td>
+                                                    <span class="role-icon" title="Squadra in trasferta" aria-label="Squadra in trasferta">✈️</span>
+                                                }
+                                            </td>
+                                            <td>@s.TeamName</td>
+                                            <td class="text-center fw-bold">@s.Points</td>
+                                            <td class="text-center">@s.Played</td>
+                                            <td class="text-center">@s.Win</td>
+                                            <td class="text-center">@s.Draw</td>
+                                            <td class="text-center">@s.Lose</td>
+                                            <td class="text-center">@s.GF</td>
+                                            <td class="text-center">@s.GA</td>
+                                            <td class="text-center">@s.Diff</td>
                                         </tr>
                                     }
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 }
@@ -1278,14 +1274,6 @@
                     border: 1px solid rgba(255,255,255,.18);
                 }
 
-                /* Testo per le righe Home/Away (ns-home/ns-away) - il background è in-line */
-                /* Forza le proprietà di testo che sono state rimosse dall'in-line per evitare conflitti */
-                .details-page tr.ns-home > *,
-                .details-page tr.ns-away > * {
-                    color: #fff !important;
-                    font-weight: 700 !important;
-                    text-shadow: 0 0 3px rgba(0,0,0,0.5) !important;
-                }
 
                 /* --- Altri stili minori (per completezza) --- */
                 .details-page .card-header {
@@ -1338,6 +1326,29 @@
                 .details-page .bg-light .fw-bold, .details-page .bg-light span, .details-page .bg-light small {
                     color: #e9edf3 !important;
                 }
+                /* Colonna icona: larghezza fissa e centrata */
+                /* Colonna icona: stretta, padding ridotto, allineata a sinistra */
+                .details-page .icon-col {
+                    width: 1.4rem; /* più stretta */
+                    padding-left: .25rem;
+                    padding-right: .25rem;
+                    white-space: nowrap;
+                    text-align: left; /* safety se manca la classe */
+                }
+
+                .details-page .role-icon {
+                    display: inline-block;
+                    line-height: 1;
+                    font-size: .95rem; /* meno ingombrante */
+                }
+
+                /* Evidenziamento UNIFORME delle due squadre (vince sulla zebratura) */
+                .details-page #standings-native table.table tbody tr.hl-row > td,
+                .details-page #standings-native table.table.table-striped > tbody > tr.hl-row:nth-of-type(odd) > td,
+                .details-page #standings-native table.table.table-striped > tbody > tr.hl-row:nth-of-type(even) > td {
+                    background-color: rgba(0, 160, 255, 0.15) !important;
+                }
+
         </style>
     </text>
 }
