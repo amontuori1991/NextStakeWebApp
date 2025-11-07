@@ -10,8 +10,12 @@
     // Cultura italiana per nomi dei giorni/mesi
     var it = new CultureInfo("it-IT");
 
-    // Oggi (UTC -> poi ToLocalTime per le ore; qui ci basta il giorno)
-    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    // Timezone Italia (cross-platform)
+    var tzId = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "W. Europe Standard Time" : "Europe/Rome";
+    var tzRome = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+
+    // "Oggi" calcolato in Europe/Rome per coerenza UI (no UTC)
+    var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tzRome));
 
     // Giorno selezionato (già fornito dal Model)
     var sel = Model.SelectedDate;
@@ -34,11 +38,15 @@
     // Parametri comuni da preservare nei link
     var common = $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}" + (Model.ShowBest ? "&best=1" : "");
 
-    // Timezone Italia (cross-platform)
-    var tzId = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "W. Europe Standard Time" : "Europe/Rome";
-    var tzRome = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+    // Helper: da UTC a ora di Roma (KickoffUtc è sempre UTC dal Model)
+    DateTime ToRome(DateTime utc)
+    {
+        var u = utc.Kind == DateTimeKind.Utc ? utc
+                : (utc.Kind == DateTimeKind.Local ? utc.ToUniversalTime()
+                : DateTime.SpecifyKind(utc, DateTimeKind.Utc));
+        return TimeZoneInfo.ConvertTimeFromUtc(u, tzRome);
+    }
 }
-
 
 @{
     ViewData["Title"] = "Eventi";
@@ -101,7 +109,6 @@
                         </div>
 
                         <div class="d-grid mt-2">
-                            <!-- Spostato qui il tasto OGGI -->
                             <a class="btn btn-sm btn-outline-primary"
                                href="/Events?d=@today.ToString("yyyy-MM-dd")@common">Oggi</a>
                         </div>
@@ -164,7 +171,7 @@
 
             <!-- MAIN -->
             <main class="col-12 col-lg-9">
-                <!-- Barra data + frecce (senza OGGI) -->
+                <!-- Barra data + frecce -->
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <div class="h5 mb-0">
                         @dayName @Model.SelectedDate.ToString("dd/MM/yyyy")
@@ -180,7 +187,7 @@
                     </div>
                 </div>
 
-                <!-- Sezione: Migliori pronostici (RAGGRUPPATI come gli eventi) -->
+                <!-- Sezione: Migliori pronostici -->
                 @if (Model.ShowBest)
                 {
                     <div class="card mb-4 best-picks">
@@ -195,7 +202,6 @@
                             }
 
                             @{
-                                // Proiezione: arricchisco ogni pick con assets e split Competition -> CountryCode + LeagueName
                                 var bestItems = Model.BestPicks?
                                 .OrderBy(x => x.EventDate)
                                 .Select(r =>
@@ -209,15 +215,15 @@
                                     {
                                         R = r,
                                         A = a,
-                                        Country = countryCode,      // es. "NL"
-                                        League = leagueName,       // es. "Eredivisie"
-                                        Flag = a?.LeagueFlag,    // bandiera del paese/lega
-                                        Logo = a?.LeagueLogo     // logo lega
+                                        Country = countryCode,
+                                        League = leagueName,
+                                        Flag = a?.LeagueFlag,
+                                        Logo = a?.LeagueLogo
                                     };
                                 })
                                 .ToList();
 
-                                var gi = 0; // per id univoci dei collapse
+                                var gi = 0;
                             }
 
                             @if (bestItems != null && bestItems.Count > 0)
@@ -227,7 +233,6 @@
                                     var gid = $"bestgrp-{++gi}";
 
                                     <div class="mb-3 border rounded">
-                                        <!-- Barra tipo "eventi": mostra LEGA + PAESE con logo/flag -->
                                         <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
                                                 type="button" data-bs-toggle="collapse" data-bs-target="#@gid"
                                                 aria-expanded="true" aria-controls="@gid">
@@ -273,20 +278,17 @@
 
                                                     <div class="list-group-item">
                                                         <div class="match-item">
-                                                            <!-- Contenuto cliccabile -->
                                                             <a href="/Match/Details?id=@bp.R.Id" class="match-grid">
-                                                                <!-- Riga 1 -->
                                                                 <div class="team home">
                                                                     @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
                                                                     {
-                                                                         <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
+                                                                        <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
                                                                     }
                                                                     <span class="team-name">@homeName</span>
                                                                 </div>
 
                                                                 <div class="center">
                                                                     <span class="vs-pill">vs</span>
-                                                                    <!-- SOLO orario (lega/paese sono in testata del gruppo) -->
                                                                     <small class="text-muted mt-1">@ko</small>
                                                                 </div>
 
@@ -298,13 +300,11 @@
                                                                     }
                                                                 </div>
 
-                                                                <!-- Riga 2 (placeholder punteggi) -->
                                                                 <div class="home-score">–</div>
                                                                 <div class="score-sep">:</div>
                                                                 <div class="away-score">–</div>
                                                             </a>
 
-                                                            <!-- Azione a destra -->
                                                             <div class="d-flex align-items-center">
                                                                 <a href="/Match/Details?id=@bp.R.Id"
                                                                    target="_blank" rel="noopener"
@@ -327,7 +327,6 @@
                         </div>
                     </div>
                 }
-
 
                 <!-- Lista partite raggruppate per competizione -->
                 @if (Model.Rows.Count == 0)
@@ -381,13 +380,8 @@
                                                     var homeScoreStr = matchEnded && r.HomeGoal.HasValue ? r.HomeGoal.Value.ToString() : "–";
                                                     var awayScoreStr = matchEnded && r.AwayGoal.HasValue ? r.AwayGoal.Value.ToString() : "–";
 
-                                                    // Orario Italia
-                                                    DateTime _kick;
-                                                    if (r.KickoffUtc.Kind == DateTimeKind.Utc)
-                                                        _kick = TimeZoneInfo.ConvertTimeFromUtc(r.KickoffUtc, tzRome);
-                                                    else
-                                                        _kick = TimeZoneInfo.ConvertTime(r.KickoffUtc, tzRome);
-                                                    var ko = _kick.ToString("HH:mm");
+                                                    // Orario Italia: KickoffUtc è già UTC → ToRome()
+                                                    var ko = ToRome(r.KickoffUtc).ToString("HH:mm");
                                                 }
 
                                                 <!-- COLONNA SINISTRA: contenuto cliccabile -->
@@ -444,7 +438,6 @@
     </div>
 </div>
 
-
 <style>
     .loading-overlay {
         position: fixed;
@@ -482,7 +475,6 @@
     </div>
 </div>
 
-
 <script>
     (function () {
       const overlay = document.getElementById('loadingOverlay');
@@ -517,7 +509,6 @@
       });
     })();
 </script>
-
 
 <style>
     .league-toggle-btn {
@@ -595,35 +586,6 @@
         color: #fff;
     }
 
-    .league-toggle-btn {
-        background-color: #f7f7f7;
-        transition: background-color .2s ease;
-        border-top-left-radius: .25rem;
-        border-top-right-radius: .25rem;
-        width: 100%;
-    }
-
-        .league-toggle-btn:hover {
-            background-color: #e9ecef;
-        }
-
-    .toggle-caret {
-        transition: transform .2s ease;
-        display: inline-block;
-        font-size: 1.1rem;
-    }
-
-    [data-bs-toggle="collapse"][aria-expanded="false"] .toggle-caret {
-        transform: rotate(-90deg);
-    }
-
-    .list-group-item {
-        border-left: none;
-        border-right: none;
-        border-bottom: 1px solid #dee2e6;
-    }
-
-    /* Contenitore riga match: 2 colonne -> contenuto | stella */
     .match-item {
         display: grid;
         grid-template-columns: 1fr auto;
@@ -631,7 +593,6 @@
         gap: .75rem;
     }
 
-    /* Area cliccabile: grid 3 colonne -> home | centro | away; 2 righe (nomi / punteggi) */
     .match-grid {
         display: grid;
         grid-template-columns: 1fr auto 1fr;
@@ -646,7 +607,6 @@
             text-decoration: none;
         }
 
-    /* RIGA 1 (nomi/loghi + centro) */
     .team {
         display: inline-flex;
         align-items: center;
@@ -656,12 +616,10 @@
 
         .team.home {
             justify-self: end;
-            flex-direction: row;
         }
 
         .team.away {
             justify-self: start;
-            flex-direction: row;
         }
 
     .team-logo {
@@ -684,7 +642,6 @@
         align-items: center;
     }
 
-    /* RIGA 2 (punteggio allineato sotto le rispettive squadre) */
     .home-score {
         grid-column: 1;
         justify-self: end;
@@ -696,18 +653,12 @@
         justify-self: center;
     }
 
-    .live-minute {
-        font-weight: 600;
-        line-height: 1;
-    }
-
     .away-score {
         grid-column: 3;
         justify-self: start;
         font-weight: 600;
     }
 
-    /* Pill "vs" */
     .vs-pill {
         display: inline-flex;
         align-items: center;
@@ -720,12 +671,10 @@
         text-transform: uppercase;
     }
 
-    /* Colonna destra (stella) */
     .fav-form {
         justify-self: end;
     }
 
-    /* Live */
     .is-live::after {
         content: ' •';
     }
@@ -738,7 +687,7 @@
     @@keyframes livePulse {
         0% {
             color: var(--live-color);
-            opacity: 0.95;
+            opacity: .95;
         }
 
         100% {
@@ -779,21 +728,13 @@
         }
     }
 
-    /* 📱 Migliorie mobile globali di base */
+    /* 📱 Mobile */
     @@media (max-width: 576px) {
         .team {
             flex-direction: column;
             align-items: center;
             text-align: center;
         }
-
-            .team.home {
-                justify-self: end;
-            }
-
-            .team.away {
-                justify-self: start;
-            }
 
         .team-logo {
             height: 24px;
@@ -802,12 +743,9 @@
 
         .team-name {
             white-space: normal;
-            overflow: hidden;
-            text-overflow: ellipsis;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
-            max-width: 100%;
             line-height: 1.1;
         }
 
@@ -821,11 +759,8 @@
         }
     }
 
-    /* === FIX SPECIFICO: mantieni layout degli EVENTI su mobile (3 colonne),
-               e applica le variazioni SOLO ai Best Picks === */
-
+    /* Override: eventi standard mantengono 3 colonne su mobile */
     @@media (max-width: 576px) {
-        /* Eventi standard: riportiamo le squadre in riga (override del blocco globale sopra) */
         .list-group .match-grid .team {
             flex-direction: row !important;
             align-items: center !important;
@@ -845,19 +780,15 @@
         }
     }
 
-    /* === Best Picks: anti-overflow (desktop e mobile) === */
-
-    /* impedisce che la colonna sinistra schiacci il bottone */
+    /* Best Picks - anti-overflow */
     .best-picks .match-item {
         grid-template-columns: minmax(0,1fr) auto;
     }
 
-    /* la griglia interna si comprime senza rompere */
     .best-picks .match-grid {
         grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
     }
 
-    /* consenti truncation pulita */
     .best-picks .team {
         min-width: 0;
     }
@@ -869,7 +800,6 @@
         max-width: 100%;
     }
 
-    /* il testo centrale può andare a capo */
     .best-picks .center small {
         white-space: normal;
         overflow-wrap: anywhere;
@@ -877,7 +807,6 @@
         line-height: 1.15;
     }
 
-    /* loghi contenuti */
     .best-picks .team-logo {
         max-width: 100%;
         height: 18px;
@@ -885,17 +814,10 @@
         object-fit: contain;
     }
 
-    /* bottone a destra resta in colonna sua */
     .best-picks .match-item > .d-flex {
         justify-self: end;
     }
 
-    /* se ci fosse un vecchio inline style col nowrap, sbloccalo */
-    .best-picks .center small[style] {
-        white-space: normal !important;
-    }
-
-    /* XS: piccole rifiniture solo Best Picks */
     @@media (max-width: 576px) {
         .best-picks .team-logo {
             height: 20px;
@@ -1004,7 +926,6 @@
                 font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
             }
 
-            /* Riduzione e centratura del logo */
             header .text-center img {
                 width: 120px;
                 height: auto;
@@ -1023,7 +944,6 @@
                 color: rgba(255,255,255,.6);
             }
 
-            /* Tema scuro coerente */
             .events-page {
                 background: transparent;
                 color: #e9edf3;
@@ -1056,15 +976,13 @@
                         border-color: #009cdc;
                     }
 
-                .events-page .form-control,
-                .events-page .form-select {
+                .events-page .form-control, .events-page .form-select {
                     background: rgba(255,255,255,.10);
                     border: 1px solid rgba(255,255,255,.24);
                     color: #fff;
                 }
 
-                    .events-page .form-control:focus,
-                    .events-page .form-select:focus {
+                    .events-page .form-control:focus, .events-page .form-select:focus {
                         border-color: #00c3ff;
                         box-shadow: 0 0 0 4px rgba(0,195,255,.18);
                     }
@@ -1105,7 +1023,6 @@
                         background: #fff;
                     }
 
-                /* Uniforma la card "Migliori pronostici" all’aspetto delle righe eventi */
                 .events-page .best-picks {
                     background: transparent;
                     border: 1px solid rgba(255,255,255,.16);
