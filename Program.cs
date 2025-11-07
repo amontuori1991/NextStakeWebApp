@@ -53,6 +53,11 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Plan1", policy =>
         policy.RequireClaim("plan", "1"));
 });
+builder.Services.AddRazorPages()
+    .AddRazorPagesOptions(o =>
+    {
+        o.Conventions.AddPageRoute("/Events/Index", ""); // mappa "/"
+    });
 
 // DbContext: pooling + retry
 builder.Services.AddDbContextPool<ApplicationDbContext>(opt =>
