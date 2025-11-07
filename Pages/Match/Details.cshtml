@@ -95,7 +95,14 @@
         <a class="btn btn-outline-secondary" href="/Events">← Torna agli eventi</a>
 
             @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
-            @if (User.HasClaim("plan", "1"))
+            @{
+                bool canUseAi = User.HasClaim(c =>
+                (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
+            }
+            @if (canUseAi)
+
             {
                 <form method="post" asp-page-handler="PreviewAiPick" class="ms-auto">
                     @Html.AntiForgeryToken()
@@ -1060,7 +1067,8 @@
                     <li class="list-group-item"><strong>Top lay risultati esatti:</strong> @e.BancaRisultato1, @e.BancaRisultato2, @e.BancaRisultato3</li>
                 </ul>
 
-                @if (User.IsInRole("SuperAdmin"))
+                    @if (canUseAi || User.IsInRole("SuperAdmin"))
+
                 {
                     string? best1x2 = null;
                     if (e is not null)

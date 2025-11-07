@@ -50,23 +50,29 @@
 
                         @{
                             var isSignedIn = User?.Identity?.IsAuthenticated ?? false;
-                            var planClaim = User?.FindFirst("plan")?.Value ?? User?.FindFirst("Plan")?.Value;
-                            var hasPlan1 = isSignedIn && planClaim == "1";
+
+                            bool hasPlan1 = isSignedIn && User.HasClaim(c =>
+                            (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
+                            string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
+
+                            // Se vuoi che anche chi è SuperAdmin li veda comunque, usa:
+                            // bool showAdminMenu = hasPlan1 || User.IsInRole("SuperAdmin");
+                            // Se invece vuoi SOLO plan=1, usa direttamente hasPlan1:
+                            bool showAdminMenu = hasPlan1;
                         }
 
-                        @if (hasPlan1)
+
+                        @if (showAdminMenu)
                         {
                             <li class="nav-item">
-                                <a class="nav-link text-dark"
-                                   asp-area="Admin"
-                                   asp-page="/Users/Index">Utenti</a>
+                                <a class="nav-link text-dark" asp-area="Admin" asp-page="/Users/Index">Utenti</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-warning fw-bold"
-                                   asp-area="Admin"
-                                   asp-page="/Index">SuperAdmin</a>
+                                <a class="nav-link text-warning fw-bold" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
                             </li>
                         }
+
                      </ul>
 
                     <!-- Login / Register / Logout -->
