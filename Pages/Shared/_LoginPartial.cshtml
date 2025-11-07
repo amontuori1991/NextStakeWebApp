@@ -9,16 +9,10 @@
         <li class="nav-item">
             <span class="nav-link text-dark">Ciao, @User.Identity?.Name</span>
         </li>
-        @if (User.IsInRole("SuperAdmin"))
-        {
-            <li class="nav-item">
-                <a class="nav-link text-danger" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link text-dark" asp-area="Admin" asp-page="/Users/Index">Utenti</a>
-            </li>
 
-        }
+        <!-- Rimossi link Admin/SuperAdmin per evitare doppioni.
+             Restano solo nel menu a sinistra con logica plan=1 -->
+
         <li class="nav-item">
             <form class="form-inline" asp-area="Identity" asp-page="/Account/Logout" method="post" asp-route-returnUrl="~/">
                 <button type="submit" class="nav-link btn btn-link text-dark">Esci</button>
