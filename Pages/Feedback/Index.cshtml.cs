@@ -40,11 +40,16 @@ namespace NextStakeWebApp.Pages.Feedback
         {
             if (!ModelState.IsValid) return Page();
 
-            if (_tgOpts.Topics == null || !_tgOpts.Topics.TryGetValue("idee", out var topicId))
+            // 🔧 Cerca la chiave senza distinzione di maiuscole/minuscole
+            int topicId = 0;
+            if (_tgOpts.Topics == null ||
+                !_tgOpts.Topics.TryGetValue("Idee", out topicId) &&
+                !_tgOpts.Topics.TryGetValue("idee", out topicId))
             {
-                ModelState.AddModelError(string.Empty, "Configurazione Telegram mancante: topic 'idee' non trovato.");
+                ModelState.AddModelError(string.Empty, "Configurazione Telegram mancante: topic 'Idee' non trovato.");
                 return Page();
             }
+
 
             // Dati utente dalle claim
             var userId = User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
