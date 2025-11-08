@@ -58,6 +58,42 @@
             </noscript>
         </div>
     </div>
+        <script>
+            (function () {
+              function get(id){ return document.getElementById(id); }
+
+              function showOverlay(message) {
+                const overlay = get('aiLoadingOverlay');
+                const msgEl   = get('aiLoadingMessage');
+                if (!overlay) return;
+                if (msgEl && message) msgEl.textContent = message;
+                overlay.classList.remove('d-none');
+              }
+
+              function hideOverlay() {
+                const overlay = get('aiLoadingOverlay');
+                overlay?.classList.add('d-none');
+              }
+
+              document.addEventListener('submit', function (e) {
+                const form = e.target.closest('form[data-loading]');
+                if (!form) return;
+
+                const kind = form.getAttribute('data-loading');
+                if (kind === 'preview-ai') {
+                  showOverlay('Generazione anteprima pronostico AI…');
+                } else if (kind === 'send-ai') {
+                  showOverlay('Invio pronostico AI su Telegram…');
+                } else {
+                  showOverlay('Caricamento…');
+                }
+              });
+
+              window.addEventListener('pageshow', hideOverlay);
+            })();
+        </script>
+
+
     @{
         var aiPayloadObj = new
         {
@@ -104,7 +140,7 @@
             @if (canUseAi)
 
             {
-                <form method="post" asp-page-handler="PreviewAiPick" class="ms-auto">
+                <form method="post" asp-page-handler="PreviewAiPick" class="ms-auto" id="aiPreviewForm" data-loading="preview-ai">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" value="@Model.Data.MatchId" />
                     <textarea name="analysisPayload" hidden>@aiPayloadJson</textarea>
@@ -112,6 +148,7 @@
                         🤖 Genera anteprima (AI)
                     </button>
                 </form>
+
             }
 
         
@@ -128,13 +165,14 @@
                     @Html.Raw(aiPrev.Replace("\n", "<br/>"))
                 </div>
 
-                <form method="post" asp-page-handler="SendAiPick" class="d-flex gap-2">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                    <input type="hidden" name="preview" value="@aiPrev" />
-                    <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
-                    <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
-                </form>
+                    <form method="post" asp-page-handler="SendAiPick" class="d-flex gap-2" id="aiSendForm" data-loading="send-ai">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                        <input type="hidden" name="preview" value="@aiPrev" />
+                        <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
+                        <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
+                    </form>
+
             </div>
         </div>
     }
@@ -1197,6 +1235,14 @@
         })();
     </script>
     </div>
+    <!-- Overlay caricamento AI -->
+    <div id="aiLoadingOverlay" class="loading-overlay d-none" aria-hidden="true">
+        <div class="loading-panel">
+            <div class="spinner-border" role="status" aria-label="Caricamento"></div>
+            <div id="aiLoadingMessage" class="fw-semibold">Caricamento…</div>
+        </div>
+    </div>
+
     @section Scripts {
         <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
     }
@@ -1357,6 +1403,33 @@
                     background-color: rgba(0, 160, 255, 0.15) !important;
                 }
 
+            .loading-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(10,14,20,0.65);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 5000;
+                backdrop-filter: blur(2px);
+            }
+
+            .loading-panel {
+                background: rgba(20,26,36,0.92);
+                color: #fff;
+                border: 1px solid rgba(255,255,255,0.18);
+                border-radius: .75rem;
+                box-shadow: 0 12px 36px rgba(0,0,0,.35);
+                padding: 1.25rem 1.5rem;
+                display: flex;
+                align-items: center;
+                gap: .75rem;
+                max-width: 90vw;
+            }
+
+                .loading-panel .spinner-border {
+                    color: #fff;
+                }
         </style>
     </text>
 }
