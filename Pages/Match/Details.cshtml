@@ -376,102 +376,115 @@
             </div>
         </div>
 
-        <!-- ANALISI: Goal Attesi -->
-        <div class="tab-pane fade" id="tab-goals" role="tabpanel">
-            @if (Model.Data.Goals is null || Model.Data.Goals.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi goal disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Goals.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
+            <!-- ANALISI: Goal Attesi -->
+            <div class="tab-pane fade" id="tab-goals" role="tabpanel">
+                @if (Model.Data.Goals is null || Model.Data.Goals.Metrics.Count == 0)
                 {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="width:60%;">Metrica</th>
-                                    <th class="text-end">Valore</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr>
-                                        <td>@kv.Key</td>
-                                        <td class="text-end">@kv.Value</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="text-muted">Nessuna analisi goal disponibile.</div>
                 }
                 else
                 {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
+                    var metrics = Model.Data.Goals.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
                     );
 
-                    var orderedKeys = groups.Keys.OrderBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        // Etichette "parlanti" tipiche per xG (fallback: chiave originale)
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                         {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6">
-                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                            <span>Casa</span><span class="fw-bold">@row.Casa</span>
+                            ["xG"] = "xG medio (expected goals)",
+                            ["xGA"] = "xGA medio (expected goals concessi)",
+                            ["NPxG"] = "NPxG medio (senza rigori)",
+                            ["In Casa"] = "xG medio in casa",
+                            ["Fuoricasa"] = "xG medio in trasferta",
+                            ["Ultime 5"] = "xG medio (ultime 5 partite)",
+                            ["Partite Vinte"] = "xG medio nelle partite vinte",
+                            ["Partite Pareggiate"] = "xG medio nelle partite pareggiate",
+                            ["Partite Perse"] = "xG medio nelle partite perse"
+                        };
+
+                        var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        // Ordine: xG, xGA, NPxG, poi contesti
+                        string[] desiredOrder = { "xG", "xGA", "NPxG", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                            <span>Ospite</span><span class="fw-bold">@row.Ospite</span>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        }
-                    </div>
+                            }
+                        </div>
+                    }
                 }
-            }
-        </div>
+            </div>
+
 
         <!-- PRONOSTICI: Stato di forma -->
         <div class="tab-pane fade" id="tab-h2h" role="tabpanel">
@@ -590,432 +603,564 @@
             </div>
         </div>
 
-        <!-- ANALISI: Corner -->
-        <div class="tab-pane fade" id="tab-corners" role="tabpanel">
-            @if (Model.Data.Corners is null || Model.Data.Corners.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi corner disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Corners.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
+            <!-- ANALISI: Corner -->
+            <div class="tab-pane fade" id="tab-corners" role="tabpanel">
+                @if (Model.Data.Corners is null || Model.Data.Corners.Metrics.Count == 0)
                 {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead>
-                                <tr>
-                                    <th style="width:60%;">Metrica</th>
-                                    <th class="text-end">Valore</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
+                    <div class="text-muted">Nessuna analisi corner disponibile.</div>
                 }
                 else
                 {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
+                    var metrics = Model.Data.Corners.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
                     );
 
-                    var orderedKeys = groups.Keys.OrderBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead>
+                                    <tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                         {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-
-        <!-- ANALISI: Cartellini -->
-        <div class="tab-pane fade" id="tab-cards" role="tabpanel">
-            @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi cartellini disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Cards.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead>
-                                <tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                    );
-
-                    var orderedKeys = groups.Keys.OrderBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
-                        {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-
-        <!-- ANALISI: Falli -->
-        <div class="tab-pane fade" id="tab-fouls" role="tabpanel">
-            @if (Model.Data.Fouls is null || Model.Data.Fouls.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi falli disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Fouls.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                    );
-
-                    var orderedKeys = groups.Keys.OrderBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
-                        {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-
-        <!-- ANALISI: Fuorigioco -->
-        <div class="tab-pane fade" id="tab-offsides" role="tabpanel">
-            @if (Model.Data.Offsides is null || Model.Data.Offsides.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi fuorigioco disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Offsides.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                    );
-
-                    var orderedKeys = groups.Keys.OrderBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
-                        {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Casa</span><span class="fw-bold">@row.Casa</span></div></div>
-                                    <div class="col-6"><div class="p-2 bg-light rounded d-flex justify-content-between"><span>Ospite</span><span class="fw-bold">@row.Ospite</span></div></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-
-        <!-- ANALISI: Tiri -->
-        <div class="tab-pane fade" id="tab-shots" role="tabpanel">
-            @if (Model.Data.Shots is null || Model.Data.Shots.Metrics.Count == 0)
-            {
-                <div class="text-muted">Nessuna analisi tiri disponibile.</div>
-            }
-            else
-            {
-                var metrics = Model.Data.Shots.Metrics;
-
-                bool hasSides = metrics.Keys.Any(k =>
-                k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-                ));
-
-                if (!hasSides)
-                {
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
-                            <tbody>
-                                @foreach (var kv in metrics)
-                                {
-                                    <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-                else
-                {
-                    var groups = metrics
-                    .Select(kv =>
-                    {
-                        var key = kv.Key?.Trim() ?? "";
-                        var lastDash = key.LastIndexOf('-');
-                        var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                        var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                        return new { baseName, side, value = kv.Value };
-                    })
-                    .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                    g => g.Key,
-                    g => new
-                    {
-                        Casa = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i =>
-                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                    );
-
-                    string[] desiredOrder = new[] {
-                        "Effettuati","Subiti","In Casa","Fuoricasa",
-                        "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse"
+                            ["Battuti"] = "Media corner battuti",
+                            ["Effettuati"] = "Media corner a favore",
+                            ["Subiti"] = "Media corner concessi",
+                            ["In Casa"] = "Media corner a favore in casa",
+                            ["Fuoricasa"] = "Media corner a favore in trasferta",
+                            ["Ultime 5"] = "Media corner (ultime 5 partite)",
+                            ["Partite Vinte"] = "Media corner nelle partite vinte",
+                            ["Partite Pareggiate"] = "Media corner nelle partite pareggiate",
+                            ["Partite Perse"] = "Media corner nelle partite perse"
                         };
 
-                    var orderedKeys = groups.Keys
-                    .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
-                    .ThenBy(k => k);
-
-                    <div class="vstack gap-3">
-                        @foreach (var key in orderedKeys)
+                        var groups = metrics
+                        .Select(kv =>
                         {
-                            var row = groups[key];
-                            <div class="mb-2">
-                                <div class="fw-semibold border-bottom pb-1">@key</div>
-                                <div class="row g-2 pt-2">
-                                    <div class="col-6">
-                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                            <span>Casa</span><span class="fw-bold">@row.Casa</span>
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        string[] desiredOrder = { "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                            <span>Ospite</span><span class="fw-bold">@row.Ospite</span>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        }
-                    </div>
+                            }
+                        </div>
+                    }
                 }
-            }
-        </div>
+            </div>
+
+
+            <!-- ANALISI: Cartellini -->
+            <div class="tab-pane fade" id="tab-cards" role="tabpanel">
+                @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
+                {
+                    <div class="text-muted">Nessuna analisi cartellini disponibile.</div>
+                }
+                else
+                {
+                    var metrics = Model.Data.Cards.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
+                    );
+
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["Fatti"] = "Media cartellini ottenuti",
+                            ["Gialli"] = "Media cartellini gialli",
+                            ["Rossi"] = "Media cartellini rossi",
+                            ["Effettuati"] = "Media cartellini a favore",
+                            ["Subiti"] = "Media cartellini avversari",
+                            ["In Casa"] = "Media cartellini a favore in casa",
+                            ["Fuoricasa"] = "Media cartellini a favore in trasferta",
+                            ["Ultime 5"] = "Media cartellini (ultime 5 partite)",
+                            ["Partite Vinte"] = "Media cartellini nelle partite vinte",
+                            ["Partite Pareggiate"] = "Media cartellini nelle partite pareggiate",
+                            ["Partite Perse"] = "Media cartellini nelle partite perse"
+                        };
+
+                        var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        string[] desiredOrder = { "Gialli", "Rossi", "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+
+            <!-- ANALISI: Falli -->
+            <div class="tab-pane fade" id="tab-fouls" role="tabpanel">
+                @if (Model.Data.Fouls is null || Model.Data.Fouls.Metrics.Count == 0)
+                {
+                    <div class="text-muted">Nessuna analisi falli disponibile.</div>
+                }
+                else
+                {
+                    var metrics = Model.Data.Fouls.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
+                    );
+
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["Effettuati"] = "Media falli commessi",
+                            ["Fatti"] = "Media falli commessi",
+                            ["Subiti"] = "Media falli subiti",
+                            ["In Casa"] = "Media falli commessi in casa",
+                            ["Fuoricasa"] = "Media falli commessi in trasferta",
+                            ["Ultime 5"] = "Media falli (ultime 5 partite)",
+                            ["Partite Vinte"] = "Media falli nelle partite vinte",
+                            ["Partite Pareggiate"] = "Media falli nelle partite pareggiate",
+                            ["Partite Perse"] = "Media falli nelle partite perse"
+                        };
+
+                        var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        string[] desiredOrder = { "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+
+            <!-- ANALISI: Fuorigioco -->
+            <div class="tab-pane fade" id="tab-offsides" role="tabpanel">
+                @if (Model.Data.Offsides is null || Model.Data.Offsides.Metrics.Count == 0)
+                {
+                    <div class="text-muted">Nessuna analisi fuorigioco disponibile.</div>
+                }
+                else
+                {
+                    var metrics = Model.Data.Offsides.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
+                    );
+
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["Fatti"] = "Media fuorigioco commessi",
+                            ["Effettuati"] = "Media fuorigioco commessi",
+                            ["Subiti"] = "Media fuorigioco avversari",
+                            ["In Casa"] = "Media fuorigioco commessi in casa",
+                            ["Fuoricasa"] = "Media fuorigioco commessi in trasferta",
+                            ["Ultime 5"] = "Media fuorigioco (ultime 5 partite)",
+                            ["Partite Vinte"] = "Media fuorigioco nelle partite vinte",
+                            ["Partite Pareggiate"] = "Media fuorigioco nelle partite pareggiate",
+                            ["Partite Perse"] = "Media fuorigioco nelle partite perse"
+                        };
+
+                        var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        string[] desiredOrder = { "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+
+            <!-- ANALISI: Tiri -->
+            <div class="tab-pane fade" id="tab-shots" role="tabpanel">
+                @if (Model.Data.Shots is null || Model.Data.Shots.Metrics.Count == 0)
+                {
+                    <div class="text-muted">Nessuna analisi tiri disponibile.</div>
+                }
+                else
+                {
+                    var metrics = Model.Data.Shots.Metrics;
+
+                    bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                    k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                    k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
+                    );
+
+                    if (!hasSides)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped align-middle">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60%;">Metrica</th>
+                                        <th class="text-end">Valore</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var kv in metrics)
+                                    {
+                                        <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        // Mappa etichette "più parlanti"
+                        var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["Effettuati"] = "Media tiri effettuati",
+                            ["Subiti"] = "Media tiri subiti",
+                            ["In Casa"] = "Media tiri effettuati in casa",
+                            ["Fuoricasa"] = "Media tiri effettuati in trasferta",
+                            ["Ultime 5"] = "Media tiri (ultime 5 partite)",
+                            ["Partite Vinte"] = "Media tiri nelle partite vinte",
+                            ["Partite Pareggiate"] = "Media tiri nelle partite pareggiate",
+                            ["Partite Perse"] = "Media tiri nelle partite perse"
+                        };
+
+                        var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                        g => g.Key,
+                        g => new
+                        {
+                            Casa = g.FirstOrDefault(i =>
+                                    string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
+                            Ospite = g.FirstOrDefault(i =>
+                                    string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        },
+                        StringComparer.OrdinalIgnoreCase
+                        );
+
+                        // Ordine preferito (se non presente, vanno in coda in ordine alfabetico)
+                        string[] desiredOrder = new[] {
+                                "Effettuati","Subiti","In Casa","Fuoricasa",
+                                "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse"
+                                };
+
+                        var orderedKeys = groups.Keys
+                        .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                        .ThenBy(k => k);
+
+                        // Nomi squadre al posto di "Casa/Ospite"
+                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                        <div class="vstack gap-3">
+                            @foreach (var key in orderedKeys)
+                            {
+                                var row = groups[key];
+                                var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                                <div class="mb-2">
+                                    <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                    <div class="row g-2 pt-2">
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                                <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
 
         <!-- PRONOSTICI: Exchange -->
         <div class="tab-pane fade" id="tab-exchange" role="tabpanel">
