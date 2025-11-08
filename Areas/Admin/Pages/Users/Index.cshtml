@@ -18,67 +18,36 @@
             </div>
         }
 
-        <div class="card">
-            <div class="card-header">
-                <strong>Utenti registrati</strong>
+        <!-- SEZIONE: ATTIVI -->
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong>Utenti Attivi</strong>
+                <span class="badge bg-success">@Model.Users.Count(u => u.Status == "Attivo")</span>
             </div>
             <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle">
-                        <thead>
-                            <tr>
-                                <th>Email</th>
-                                <th>Piano</th>
-                                <th>Scadenza</th>
-                                <th>Approvato</th>
-                                <th>Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var user in Model.Users)
-                            {
-                                <tr>
-                                    <td>@user.Email</td>
-                                    <td>@user.Plan</td>
-                                    <td>@(user.PlanExpiresAtUtc?.ToString("dd/MM/yyyy") ?? "∞")</td>
-                                    <td>
-                                        @if (user.IsApproved)
-                                        {
-                                            <span class="badge bg-success">Sì</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-danger">No</span>
-                                        }
-                                    </td>
-                                    <td class="text-nowrap">
-                                        <form method="post"
-                                              action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
-                                              class="d-inline">
-                                            @Html.AntiForgeryToken()
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                                @(user.IsApproved ? "Blocca" : "Approva")
-                                            </button>
-                                        </form>
+                @Html.Partial("_UsersTable", Model.Users.Where(u => u.Status == "Attivo").ToList())
+            </div>
+        </div>
 
-                                        <form method="post"
-                                              action="/Admin/Users?handler=ChangePlan&id=@user.Id"
-                                              class="d-inline ms-1">
-                                            @Html.AntiForgeryToken()
-                                            <select name="plan" class="form-select form-select-sm d-inline w-auto align-middle">
-                                                @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
-                                                {
-                                                    <option value="@p" selected="@(p == user.Plan)">@p</option>
-                                                }
-                                            </select>
-                                            <button type="submit" class="btn btn-sm btn-outline-primary ms-1">Cambia</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+        <!-- SEZIONE: IN SCADENZA -->
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong>Utenti in scadenza (−3 giorni)</strong>
+                <span class="badge bg-warning text-dark">@Model.Users.Count(u => u.Status == "In scadenza")</span>
+            </div>
+            <div class="card-body">
+                @Html.Partial("_UsersTable", Model.Users.Where(u => u.Status == "In scadenza").ToList())
+            </div>
+        </div>
+
+        <!-- SEZIONE: SCADUTI -->
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong>Utenti scaduti</strong>
+                <span class="badge bg-danger">@Model.Users.Count(u => u.Status == "Scaduto")</span>
+            </div>
+            <div class="card-body">
+                @Html.Partial("_UsersTable", Model.Users.Where(u => u.Status == "Scaduto").ToList())
             </div>
         </div>
 
@@ -171,6 +140,15 @@
                     background: rgba(255,255,255,.10);
                 }
 
+            .admin-users-page .btn-outline-warning {
+                color: #ffd166;
+                border-color: #ffd166;
+            }
+
+                .admin-users-page .btn-outline-warning:hover {
+                    background: rgba(255,209,102,.12);
+                }
+
             a {
                 color: #7bd3ff;
             }
@@ -178,6 +156,11 @@
                 a:hover {
                     color: #9be0ff;
                 }
+
+            .status-badge {
+                font-size: .75rem;
+            }
         </style>
     </text>
 }
+
