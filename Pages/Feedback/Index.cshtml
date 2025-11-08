@@ -1,0 +1,122 @@
+﻿@page
+@model NextStakeWebApp.Pages.Feedback.IndexModel
+@{
+    ViewData["Title"] = "Invia il tuo feedback";
+    Layout = "/Pages/Shared/_Layout.cshtml";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div class="fw-semibold">📬 Invia il tuo feedback</div>
+                    <small class="text-muted">Bug, integrazioni, richieste</small>
+                </div>
+                <div class="card-body">
+                    @if (TempData["FeedbackOk"] is string ok)
+                    {
+                        <div class="alert alert-success">@ok</div>
+                    }
+
+                    <form method="post">
+                        <div class="mb-3">
+                            <label asp-for="Input.Category" class="form-label"></label>
+                            <select asp-for="Input.Category" class="form-select">
+                                <option value="bug">Baco / malfunzionamento</option>
+                                <option value="integrazione">Richiesta integrazione personalizzata</option>
+                                <option value="altro">Altro</option>
+                            </select>
+                            <span class="text-danger" asp-validation-for="Input.Category"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Input.Message" class="form-label"></label>
+                            <textarea asp-for="Input.Message" rows="7" class="form-control"
+                                      placeholder="Descrivi il problema o la richiesta nel modo più dettagliato possibile..."></textarea>
+                            <span class="text-danger" asp-validation-for="Input.Message"></span>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a class="btn btn-outline-secondary" asp-page="/Events/Index">Annulla</a>
+                            <button type="submit" class="btn btn-primary">Invia</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="text-muted small">
+                Il tuo nome utente e la tua email vengono inviati automaticamente insieme al messaggio per permetterci di ricontattarti.
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
+
+@section Styles {
+    <text>
+        <style>
+            /* Tema dark/glass come le altre pagine */
+            body {
+                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+                color: #e9edf3;
+                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            }
+
+            header, footer {
+                background: transparent !important;
+                border: none !important;
+            }
+
+            footer {
+                color: rgba(255,255,255,.6);
+            }
+
+            /* Card e componenti in stile glass */
+            .card,
+            .dropdown-menu,
+            .modal-content {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.16);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                color: #e9edf3;
+            }
+
+            .card-header {
+                background: rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255,255,255,0.14);
+                color: #f4f7fb;
+            }
+
+            .btn-primary {
+                background: #00baff;
+                border-color: #00baff;
+            }
+
+                .btn-primary:hover {
+                    background: #009cdc;
+                    border-color: #009cdc;
+                }
+
+            .form-control, .form-select {
+                background: rgba(255,255,255,.10);
+                border: 1px solid rgba(255,255,255,.24);
+                color: #fff;
+            }
+
+                .form-control:focus, .form-select:focus {
+                    border-color: #00c3ff;
+                    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+                }
+
+                .form-select option {
+                    color: #111;
+                    background: #fff;
+                }
+        </style>
+    </text>
+}

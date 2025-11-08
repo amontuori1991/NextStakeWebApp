@@ -42,6 +42,13 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-page="/Events/Index">Eventi</a>
                         </li>
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-page="/Feedback/Index">Invia il tuo feedback</a>
+                            </li>
+                        }
+
 
                         @{
                             var isSignedIn = User?.Identity?.IsAuthenticated ?? false;
@@ -66,7 +73,6 @@
                             <li class="nav-item">
                                 <a class="nav-link text-warning fw-bold" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
                             </li>
-
                         }
 
                      </ul>
