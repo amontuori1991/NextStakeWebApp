@@ -161,9 +161,143 @@
 
                 @if (Model.ShowBest)
                 {
-                    <!-- (Lasciata invariata la sezione Best salvo rendering orario) -->
-                    <!-- ... puoi mantenere la tua sezione Best attuale ... -->
+                    <div class="card mb-4 best-picks">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <div class="fw-semibold">🔥 Migliori pronostici</div>
+                            <small class="text-muted">Ordinati per data/ora</small>
+                        </div>
+                        <div class="card-body">
+                            @* Messaggio diagnostico (se impostato dal backend) *@
+                            @if (!string.IsNullOrWhiteSpace(Model.BestMessage))
+                            {
+                                <div class="alert alert-info mb-3">@Model.BestMessage</div>
+                            }
+
+                            @{
+                                var bestItems = (Model.BestPicks ?? new List<NextStakeWebApp.Models.BestPickRow>())
+                                .OrderBy(x => x.EventDate)
+                                .Select(r =>
+                                {
+                                    Model.AssetsByMatchId.TryGetValue(r.Id, out var a);
+
+                                    // Competition del tipo "NL - Eredivisie" -> split in CountryCode/LeagueName
+                                    var comp = r.Competition ?? "";
+                                    var split = comp.Split(" - ", 2, StringSplitOptions.TrimEntries);
+                                    var countryCode = split.Length > 0 ? split[0] : "";
+                                    var leagueName = split.Length > 1 ? split[1] : comp;
+
+                                    return new
+                                    {
+                                        R = r,
+                                        A = a,
+                                        Country = countryCode,
+                                        League = leagueName,
+                                        Flag = a?.LeagueFlag,
+                                        Logo = a?.LeagueLogo
+                                    };
+                                })
+                                .ToList();
+
+                                var gi = 0;
+                            }
+
+                            @if (bestItems.Count == 0)
+                            {
+                                <div class="alert alert-secondary mb-0">Nessun pronostico disponibile al momento.</div>
+                            }
+                            else
+                            {
+                                @foreach (var grp in bestItems.GroupBy(x => new { x.Country, x.League, x.Flag, x.Logo }))
+                                {
+                                    var gid = $"bestgrp-{++gi}";
+
+                                    <div class="mb-3 border rounded">
+                                        <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                                                type="button" data-bs-toggle="collapse" data-bs-target="#@gid"
+                                                aria-expanded="true" aria-controls="@gid">
+                                            <div class="d-flex align-items-center gap-2 py-2 px-3">
+                                                <span class="toggle-caret">▾</span>
+
+                                                @if (!string.IsNullOrWhiteSpace(grp.Key.Logo))
+                                                {
+                                                    <img src="@grp.Key.Logo" alt="league-logo" style="height:18px;width:auto;" />
+                                                }
+
+                                                <span class="fw-semibold">@grp.Key.League</span>
+
+                                                @if (!string.IsNullOrWhiteSpace(grp.Key.Country) || !string.IsNullOrWhiteSpace(grp.Key.Flag))
+                                                {
+                                                    <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
+                                                        ( @grp.Key.Country
+                                                        @if (!string.IsNullOrWhiteSpace(grp.Key.Flag))
+                                                        {
+                                                            <img src="@grp.Key.Flag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
+                                                        }
+                                                        )
+                                                    </small>
+                                                }
+                                            </div>
+                                        </button>
+
+                                        <div id="@gid" class="collapse show">
+                                            <div class="list-group list-group-flush">
+                                                @foreach (var bp in grp)
+                                                {
+                                                    // Nomi squadre dal campo "Match" tipo "Home - Away"
+                                                    var parts = (bp.R.Match ?? "").Split(" - ", 2, StringSplitOptions.TrimEntries);
+                                                    var homeName = parts.Length > 0 ? parts[0] : bp.R.Match;
+                                                    var awayName = parts.Length > 1 ? parts[1] : "";
+
+                                                    var ko = bp.R.EventDate.ToString("dd/MM HH:mm"); // mostrato come orario locale macchina/app
+
+                                                    <div class="list-group-item">
+                                                        <div class="match-item">
+                                                            <a href="/Match/Details?id=@bp.R.Id" class="match-grid">
+                                                                <div class="team home">
+                                                                    @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
+                                                                    {
+                                                                        <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
+                                                                    }
+                                                                    <span class="team-name">@homeName</span>
+                                                                </div>
+
+                                                                <div class="center">
+                                                                    <span class="vs-pill">vs</span>
+                                                                    <small class="text-muted mt-1">@ko</small>
+                                                                </div>
+
+                                                                <div class="team away">
+                                                                    <span class="team-name">@awayName</span>
+                                                                    @if (!string.IsNullOrWhiteSpace(bp.A?.AwayLogo))
+                                                                    {
+                                                                        <img src="@bp.A.AwayLogo" alt="away" class="team-logo" />
+                                                                    }
+                                                                </div>
+
+                                                                <div class="home-score">–</div>
+                                                                <div class="score-sep">:</div>
+                                                                <div class="away-score">–</div>
+                                                            </a>
+
+                                                            <div class="d-flex align-items-center">
+                                                                <a href="/Match/Details?id=@bp.R.Id"
+                                                                   target="_blank" rel="noopener"
+                                                                   class="btn btn-sm btn-outline-primary">
+                                                                    Apri evento ↗
+                                                                </a>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
                 }
+
 
                 @if (Model.Rows.Count == 0)
                 {
