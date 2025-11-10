@@ -15,5 +15,7 @@ namespace NextStakeWebApp.Models
 
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
+        public string? Theme { get; set; }
+
     }
 }

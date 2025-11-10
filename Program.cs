@@ -106,6 +106,7 @@ builder.Services.AddScoped<NextStakeWebApp.Services.IAiService, NextStakeWebApp.
 
 // Telegram
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<IMatchBannerService, MatchBannerService>();
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.AddSingleton<ITelegramService, TelegramService>();
 

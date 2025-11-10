@@ -1,4 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Data;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using Humanizer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,11 +13,6 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
-using System.Data;
-using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace NextStakeWebApp.Pages.Match
 {
@@ -25,6 +26,7 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ITelegramService _telegram;
         private readonly IConfiguration _config;
         private readonly IOpenAIService _openai;
+        private readonly IMatchBannerService _banner;
 
 
         public DetailsModel(
@@ -33,14 +35,16 @@ namespace NextStakeWebApp.Pages.Match
             UserManager<ApplicationUser> userManager,
             ITelegramService telegram,
             IConfiguration config,
-            IOpenAIService openai) // <--- AGGIUNTO
+            IOpenAIService openai,
+            IMatchBannerService banner) // <--- aggiungi
         {
             _read = read;
             _write = write;
             _userManager = userManager;
             _telegram = telegram;
             _config = config;
-            _openai = openai; // <--- AGGIUNTO
+            _openai = openai;
+            _banner = banner; // <--- aggiungi
         }
         [TempData]
         public string? StatusMessage { get; set; }
@@ -125,7 +129,9 @@ namespace NextStakeWebApp.Pages.Match
                     LeagueId = lg.Id,
                     Season = mm.Season,
                     HomeId = th.Id,
-                    AwayId = ta.Id
+                    AwayId = ta.Id,
+                    HomeLogo = th.Logo,  
+                    AwayLogo = ta.Logo  
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
 
@@ -220,46 +226,52 @@ namespace NextStakeWebApp.Pages.Match
             var linesTeams = BuildTeamLinesWeighted(W, dto.Home, dto.Away, goalsMg, shotsMg, cornersMg);
 
             // 5) Prompt AI: niente numeri in output, analisi breve + mercati correlati
+            // === NUOVO PROMPT MIGLIORATO (mezzi scaglioni + W/D/L chiari) ===
+            var homeWDL = CountWdl(homeSeq);
+            var awayWDL = CountWdl(awaySeq);
+
             var prompt = $@"
 Agisci come analista calcistico. Hai:
 - Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni) e stato di forma/rank.
 - Statistiche grezze (tiri, corner, falli, cartellini, fuorigioco, goal/over) già parsate (NON citare numeri).
 - Linee indicative pesate (soglie da usare per Over/Under anche di singola squadra).
 
+⚙️ REGOLE DURE E NON NEGOZIABILI
+- Quando citi linee di Totali o Team Totals, USA SOLO MEZZI SCAGLIONI: 0.5, 1.5, 2.5, 3.5, ecc. (mai 1.0 o 2.0).
+- Se la tua logica interna ti portasse a 1.0 / 2.0 / 3.0, arrotonda alla .5 più vicina e coerente col ragionamento (di default verso l'alto: 1.0→1.5, 2.0→2.5, ecc.).
+- Mappatura forma: W = vittoria, D = pareggio, L = sconfitta. NON considerare D come sconfitta.
+- Se menzioni la forma, usa descrizioni coerenti con la sequenza: evita frasi come '5 sconfitte di fila' quando la sequenza include pareggi.
+
 OBIETTIVO OUTPUT (max 9–12 righe totali, NO elenco puntato secco):
-1️⃣ Breve analisi del match (1–3 frasi): ritmo, equilibrio e contesto tattico, facendo emergere *perché* il match potrebbe svilupparsi in un certo modo (pressing, spazi, atteggiamento difensivo, ecc.).
-
-2️⃣ Analisi dei mercati consigliati (scrivila come un mini commento tecnico, NON solo elenco):
-   - Inizia con la **combo principale**, spiegando brevemente perché è coerente con i dati (es. “la tendenza difensiva del Pisa e la forma offensiva della Cremonese rendono plausibile un 2 + Over 1.5”).
-   - Poi analizza **2–3 mercati correlati**, uno per volta, con **motivazione esplicita** (es. “l’atteggiamento aggressivo di entrambe spinge verso Over 5.5 Corner”, oppure “l’arbitraggio tende a limitare i cartellini”).
-   - Se emerge un segnale netto di SQUADRA (corner/tiri/gol), aggiungi anche **un mercato singolo squadra** e spiega la logica (es. “la Cremonese crea molto sugli esterni → Team Over 1.0 Gol”).
-
-3️⃣ Usa un linguaggio tecnico ma fluido, tono da analista sportivo (NO frasi generiche tipo 'si prevede una partita equilibrata' senza motivazione).  
-4️⃣ Le soglie vanno citate naturalmente come riferimento (es. “sopra la linea dei 2.5 gol”, “oltre i 5.5 corner”).  
-5️⃣ Evita numeri grezzi o percentuali, ma rendi chiaro il *ragionamento* dietro ogni scelta.
-
-⚠️ Importante:
-- Le motivazioni devono essere LOGICAMENTE coerenti con la combo proposta.
-- Se il pronostico indica che una squadra perderà o subirà gol, evita di definirla “solida difensivamente”.
-- Se i dati mostrano una difesa solida ma il pronostico è Over, spiega il perché (es. “difesa in calo”, “pressing alto che lascia spazi”).
-- Se i dati mostrano un attacco debole ma il pronostico è GG o Over, giustifica con il contesto (es. “forma in crescita”, “avversario più vulnerabile fuori casa”).
+1️⃣ Breve analisi del match (1–3 frasi): ritmo, equilibrio e contesto tattico, spiegando *perché* (pressing, spazi, struttura difensiva, transizioni).
+2️⃣ Mercati consigliati (commento tecnico, non solo elenco):
+   - Parti dalla **combo principale**, motivandola (es. 'tendenza difensiva X + forma offensiva Y → 2 + Over 1.5').
+   - Poi 2–3 **mercati correlati** (corner/tiri/cartellini/totali), ognuno con motivazione chiara legata allo stile/atteggiamento.
+   - Se emerge un segnale netto di SQUADRA (corner/tiri/gol), aggiungi un **Team Over/Under** (sempre a .5) con logica esplicita.
+3️⃣ Linguaggio tecnico ma fluido. Evita frasi vaghe ('partita equilibrata') senza motivazione.
+4️⃣ Le soglie vanno citate naturalmente: 'sopra la linea dei 2.5 gol', 'oltre i 5.5 corner'. (Ricorda: SOLO .5)
+5️⃣ Niente numeri grezzi/percentuali; fai trasparire il ragionamento, non il dato.
 
 CONTESTO MATCH
 Lega: {dto.LeagueName}
 Partita: {dto.Home} vs {dto.Away}
 Calcio d'inizio (locale): {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}
 
+FORMA (ultime 5)
+- {dto.Home}: {homeSeqEmo}  (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
+- {dto.Away}: {awaySeqEmo}  (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
+
 DATI PROPRIETARI:
 {proprietaryContext}
 
-LINEE INDICATIVE (da usare per le soglie):
+LINEE INDICATIVE (da usare per le soglie, SOLO .5):
 {linesTotal}
 {linesTeams}
 
 STATISTICHE (solo per ragionamento, NON riportare numeri):
 {analysisContext}
-
 ";
+
 
 
 
@@ -269,6 +281,8 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
             {
                 var raw = await _openai.AskAsync(prompt);
                 aiText = string.IsNullOrWhiteSpace(raw) ? "" : raw.Trim();
+                aiText = NormalizeHalfLines(aiText);
+
             }
             catch (Exception ex)
             {
@@ -412,7 +426,6 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
             if (!User.HasClaim("plan", "1"))
                 return Forbid();
 
-
             if (string.IsNullOrWhiteSpace(preview))
             {
                 StatusMessage = "❌ Nessun contenuto da inviare. Genera prima l'anteprima.";
@@ -425,10 +438,52 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                 return RedirectToPage(new { id });
             }
 
-            await _telegram.SendMessageAsync(topicId, preview);
-            StatusMessage = "✅ Inviato su Telegram (Idee).";
+            var dto = await (
+                from mm in _read.Matches
+                join lg in _read.Leagues on mm.LeagueId equals lg.Id
+                join th in _read.Teams on mm.HomeId equals th.Id
+                join ta in _read.Teams on mm.AwayId equals ta.Id
+                where mm.Id == id
+                select new
+                {
+                    LeagueName = lg.Name ?? "",
+                    KickoffUtc = mm.Date,
+                    Home = th.Name ?? "",
+                    Away = ta.Name ?? "",
+                    HomeLogo = th.Logo,   // <--- servono per il banner
+                    AwayLogo = ta.Logo
+                }
+            ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null) return NotFound();
+
+            try
+            {
+                // genera il banner su wwwroot/temp/match_{id}.jpg
+                var bannerPath = await _banner.CreateAsync(
+                    dto.Home, dto.Away,
+                    dto.HomeLogo, dto.AwayLogo,
+                    dto.LeagueName,
+                    dto.KickoffUtc.ToLocalTime(),
+                    id
+                );
+
+                if (!string.IsNullOrWhiteSpace(bannerPath) && System.IO.File.Exists(bannerPath))
+                    await _telegram.SendPhotoAsync(topicId, bannerPath, preview); // upload file locale
+                else
+                    await _telegram.SendMessageAsync(topicId, preview);           // fallback solo testo
+
+                StatusMessage = "✅ Inviato su Telegram (Idee).";
+            }
+            catch
+            {
+                await _telegram.SendMessageAsync(topicId, preview);
+                StatusMessage = "⚠️ Immagine non generata, inviato solo testo su Telegram (Idee).";
+            }
+
             return RedirectToPage(new { id });
         }
+
 
         // =======================
         // GET: carica dati + analyses da Neon
@@ -517,7 +572,7 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
 
             return Page();
         }
-       
+
 
         // =======================
         // ⭐ Toggle preferito
@@ -539,7 +594,7 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
         // =======================
         // INVIO PRONOSTICI (topicName -> id da config)
         // =======================
-        
+
         public async Task<IActionResult> OnPostSendPredictionAsync(long id, string? topicName, string? customPick)
         {
             if (!User.HasClaim("plan", "1"))
@@ -591,7 +646,7 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
         // =======================
         // INVIO EXCHANGE (topicName -> id da config)
         // =======================
-       
+
         public async Task<IActionResult> OnPostSendExchangeAsync(long id, string customLay, string riskLevel, string? topicName)
         {
             if (!User.HasClaim("plan", "1"))
@@ -822,6 +877,39 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
 
 
         // Helper conversione field
+        // Conta W/D/L su una stringa tipo "WDLWD"
+        private static (int w, int d, int l) CountWdl(string seq)
+        {
+            if (string.IsNullOrWhiteSpace(seq)) return (0, 0, 0);
+            int w = 0, d = 0, l = 0;
+            foreach (var c in seq)
+            {
+                if (c == 'W' || c == 'w') w++;
+                else if (c == 'D' || c == 'd') d++;
+                else if (c == 'L' || c == 'l') l++;
+            }
+            return (w, d, l);
+        }
+
+        // Trasforma 'Over 1.0'/'Under 2.0' ecc. in scaglioni .5 (default verso l’alto)
+        private static string NormalizeHalfLines(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+
+            // Over/Under + spazio + X(.0)  -> porta a X.5
+            // Esempi: Over 1.0 -> Over 1.5 ; Under 2.0 -> Under 2.5
+            return System.Text.RegularExpressions.Regex.Replace(
+                text,
+                @"\b(Over|Under)\s+(\d+)(?:[.,]0)\b",
+                m =>
+                {
+                    var ou = m.Groups[1].Value; // Over / Under
+                    var n = int.Parse(m.Groups[2].Value);
+                    return $"{ou} {n}.5";
+                },
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+        }
 
         private static string FormSeqToEmojis(string seq)
         {
@@ -1270,25 +1358,25 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
         // EMOJI HELPER
         // =======================
         public static class EmojiHelper
-    {
-        public static string FromCountryCode(string? code)
         {
-            if (string.IsNullOrWhiteSpace(code))
-                return "🌍";
+            public static string FromCountryCode(string? code)
+            {
+                if (string.IsNullOrWhiteSpace(code))
+                    return "🌍";
 
-            var cc = code.Length > 2 && code.Contains('-')
-                ? code.Split('-')[0]
-                : code;
-            cc = cc.Trim().ToUpperInvariant();
+                var cc = code.Length > 2 && code.Contains('-')
+                    ? code.Split('-')[0]
+                    : code;
+                cc = cc.Trim().ToUpperInvariant();
 
-            if (cc.Length != 2) return "🌍";
-            int offset = 0x1F1E6;
-            return string.Concat(
-                char.ConvertFromUtf32(offset + (cc[0] - 'A')),
-                char.ConvertFromUtf32(offset + (cc[1] - 'A'))
-            );
+                if (cc.Length != 2) return "🌍";
+                int offset = 0x1F1E6;
+                return string.Concat(
+                    char.ConvertFromUtf32(offset + (cc[0] - 'A')),
+                    char.ConvertFromUtf32(offset + (cc[1] - 'A'))
+                );
+            }
         }
-    }
         // ===== NUMERIC LINE HELPERS =====
         private static decimal? ParseDec(string? s)
         {

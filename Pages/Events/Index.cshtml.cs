@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 
 namespace NextStakeWebApp.Pages.Events
 {
@@ -17,12 +19,20 @@ namespace NextStakeWebApp.Pages.Events
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
 
-        public IndexModel(ReadDbContext read, ApplicationDbContext write, UserManager<ApplicationUser> userManager)
+
+        private readonly SignInManager<ApplicationUser> _signInManager;
+
+        public IndexModel(ReadDbContext read,
+                          ApplicationDbContext write,
+                          UserManager<ApplicationUser> userManager,
+                          SignInManager<ApplicationUser> signInManager)   // <-- aggiungi
         {
             _read = read;
             _write = write;
             _userManager = userManager;
+            _signInManager = signInManager;                               // <-- aggiungi
         }
+
 
         // Giorno selezionato (giorno "Italia")
         public DateOnly SelectedDate { get; private set; } = DateOnly.FromDateTime(DateTime.Now);
@@ -211,6 +221,52 @@ namespace NextStakeWebApp.Pages.Events
                 await LoadBestPicksAsync();
 
             ViewData["Title"] = "Eventi";
+        }
+        public class ThemePayload { public string? Theme { get; set; } }
+
+        public async Task<IActionResult> OnPostSetThemeAsync()
+        {
+            // Legge JSON { "theme": "light|dark|system" }
+            using var reader = new StreamReader(Request.Body);
+            var json = await reader.ReadToEndAsync();
+            ThemePayload? payload = null;
+            try { payload = JsonSerializer.Deserialize<ThemePayload>(json); } catch { /* noop */ }
+
+            var theme = (payload?.Theme ?? "system").Trim().ToLowerInvariant();
+            if (theme != "light" && theme != "dark" && theme != "system")
+                theme = "system";
+
+            // 1) Persisti su COOKIE (vale per tutti, anche anonimi)
+            Response.Cookies.Append("theme", theme, new CookieOptions
+            {
+                Path = "/",
+                HttpOnly = false,
+                SameSite = SameSiteMode.Lax,
+                MaxAge = TimeSpan.FromDays(365)
+            });
+
+            // 2) (Opzionale) Persisti su DB per utenti loggati se hai ApplicationUser.Theme
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var user = await _userManager.GetUserAsync(User);
+                if (user != null)
+                {
+                    try
+                    {
+                        // Richiede proprietà pubblica string? Theme { get; set; } su ApplicationUser
+                        user.Theme = theme;
+                        await _userManager.UpdateAsync(user);
+                        // aggiorna i claims/cookie di login se necessario
+                        if (_signInManager != null) await _signInManager.RefreshSignInAsync(user);
+                    }
+                    catch
+                    {
+                        // Se non esiste la colonna o non vuoi salvare su DB, ignora l’errore
+                    }
+                }
+            }
+
+            return new JsonResult(new { ok = true, applied = theme });
         }
 
         private async Task LoadBestPicksAsync()
