@@ -39,49 +39,34 @@ namespace NextStakeWebApp.Services
 
         public async Task SendPhotoAsync(long topicId, string filePath, string? caption = null)
         {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("Foto da inviare non trovata", filePath);
+
             var client = _httpFactory.CreateClient();
+            var url = $"https://api.telegram.org/bot{_botToken}/sendPhoto";
 
-            // Caso 1: URL pubblico -> mantieni la tua chiamata JSON
-            if (Uri.TryCreate(filePath, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-            {
-                var url = $"https://api.telegram.org/bot{_botToken}/sendPhoto";
-                var payload = new
-                {
-                    chat_id = _chatId,
-                    message_thread_id = topicId,
-                    photo = filePath,
-                    caption = caption,
-                    parse_mode = "HTML"
-                };
-                var json = JsonSerializer.Serialize(payload);
-                var res = await client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
-                res.EnsureSuccessStatusCode();
-                return;
-            }
+            using var form = new MultipartFormDataContent();
 
-            // Caso 2: file locale -> upload multipart/form-data
-            if (!System.IO.File.Exists(filePath))
-                throw new FileNotFoundException("File immagine non trovato", filePath);
-
-            var form = new MultipartFormDataContent();
-            await using var fs = System.IO.File.OpenRead(filePath);
-            var streamContent = new StreamContent(fs);
-            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
-
+            // campi standard
             form.Add(new StringContent(_chatId), "chat_id");
             form.Add(new StringContent(topicId.ToString()), "message_thread_id");
+
             if (!string.IsNullOrWhiteSpace(caption))
             {
                 form.Add(new StringContent(caption), "caption");
                 form.Add(new StringContent("HTML"), "parse_mode");
             }
-            form.Add(streamContent, "photo", Path.GetFileName(filePath));
 
-            var apiUrl = $"https://api.telegram.org/bot{_botToken}/sendPhoto";
-            var resp = await client.PostAsync(apiUrl, form);
-            resp.EnsureSuccessStatusCode();
+            // allega il file come stream
+            var stream = File.OpenRead(filePath);
+            var fileContent = new StreamContent(stream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+            form.Add(fileContent, "photo", Path.GetFileName(filePath));
+
+            var res = await client.PostAsync(url, form);
+            res.EnsureSuccessStatusCode();
         }
+
 
     }
 }

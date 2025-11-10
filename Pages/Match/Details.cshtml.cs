@@ -484,6 +484,70 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
             return RedirectToPage(new { id });
         }
 
+        public async Task<IActionResult> OnPostSendAiPickWithImageAsync(long id, string preview)
+        {
+            if (!User.HasClaim("plan", "1"))
+                return Forbid();
+
+            if (string.IsNullOrWhiteSpace(preview))
+            {
+                StatusMessage = "❌ Nessun contenuto da inviare. Genera prima l'anteprima.";
+                return RedirectToPage(new { id });
+            }
+
+            if (!long.TryParse(_config["Telegram:Topics:Idee"], out var topicId) || topicId <= 0)
+            {
+                StatusMessage = "❌ Topic 'Idee' non configurato (Telegram:Topics:Idee).";
+                return RedirectToPage(new { id });
+            }
+
+            // Ricarico i metadati necessari per il banner (inclusi loghi)
+            var dto = await (
+                from mm in _read.Matches
+                join lg in _read.Leagues on mm.LeagueId equals lg.Id
+                join th in _read.Teams on mm.HomeId equals th.Id
+                join ta in _read.Teams on mm.AwayId equals ta.Id
+                where mm.Id == id
+                select new
+                {
+                    MatchId = mm.Id,
+                    LeagueName = lg.Name ?? "",
+                    Home = th.Name ?? "",
+                    Away = ta.Name ?? "",
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo,
+                    KickoffUtc = mm.Date
+                }
+            ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null)
+            {
+                StatusMessage = "❌ Match non trovato.";
+                return RedirectToPage(new { id });
+            }
+
+            // Genera banner (usa ora locale per coerenza col testo)
+            var bannerPath = await _banner.CreateAsync(
+                dto.Home, dto.Away,
+                dto.HomeLogo, dto.AwayLogo,
+                dto.LeagueName,
+                dto.KickoffUtc.ToLocalTime(),
+                dto.MatchId
+            );
+
+            // Invia la foto con caption breve (prima riga del preview)
+            // Telegram ha limiti: meglio una caption corta. Mettiamo header + 1 riga,
+            // e poi inviamo il resto come messaggio di testo a parte.
+            var caption = preview.Length > 900 ? preview[..900] + "…" : preview;
+
+            await _telegram.SendPhotoAsync(topicId, bannerPath, caption);
+
+            // Se vuoi, invia anche il testo completo in un messaggio separato:
+            // await _telegram.SendMessageAsync(topicId, preview);
+
+            StatusMessage = "✅ Immagine e testo inviati su Telegram (Idee).";
+            return RedirectToPage(new { id });
+        }
 
         // =======================
         // GET: carica dati + analyses da Neon

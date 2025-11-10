@@ -172,6 +172,11 @@
                         <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
                         <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
                     </form>
+                    <form method="post" asp-page-handler="SendAiPickWithImage">
+                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                        <input type="hidden" name="preview" value="@TempData["AiPreview"]" />
+                        <button class="btn btn-primary">Invia su Telegram (con immagine)</button>
+                    </form>
 
             </div>
         </div>
