@@ -229,52 +229,117 @@ namespace NextStakeWebApp.Pages.Match
             var awayWDL = CountWdl(awaySeq);
 
             var prompt = $@"
-Agisci come analista calcistico. Hai:
-- Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni) e stato di forma/rank.
-- Statistiche grezze (tiri, corner, falli, cartellini, fuorigioco, goal/over) già parsate (NON citare numeri).
-- Linee indicative pesate (soglie da usare per Over/Under anche di singola squadra).
-- Contesto di campionato (classifica, giornate rimanenti, lotta titolo/salvezza).
+Agisci come analista calcistico professionista. Devi generare un testo unico, discorsivo e fluido (NO sezioni separate, NO elenchi puntati).  
+Usa un linguaggio tecnico ma naturale, spiegando il ragionamento senza citare numeri grezzi o percentuali.
 
-⚙️ REGOLE DURE E NON NEGOZIABILI
-- Quando citi linee di Totali o Team Totals, USA SOLO MEZZI SCAGLIONI: 0.5, 1.5, 2.5, 3.5, ecc. (mai 1.0 o 2.0).
-- Se la tua logica interna ti portasse a 1.0 / 2.0 / 3.0, arrotonda alla .5 più vicina e coerente col ragionamento (di default verso l'alto: 1.0→1.5, 2.0→2.5, ecc.).
-- Mappatura forma: W = vittoria (+3), D = pareggio (+1), L = sconfitta (+0). NON considerare D come sconfitta.
-- Se menzioni la forma, usa descrizioni coerenti con la sequenza: evita frasi tipo '5 sconfitte di fila' quando la stringa contiene pareggi.
-- Tieni conto che la classifica usa 3 punti per vittoria, 1 per pareggio, 0 per sconfitta: nel finale di stagione ogni vittoria può cambiare molto più di un pari.
-- Usa SEMPRE il contesto campionato: se una squadra ha già vinto il titolo o è già retrocessa/praticamente salva, sottolinea il rischio di calo motivazionale, rotazioni o 'trappola' di fine stagione, soprattutto quando i numeri direbbero favorito secco.
+Hai a disposizione:
+- Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni).
+- Stato di forma (W/D/L), contesto classifica e motivazioni.
+- Statistiche già parsate: tiri, corner, falli, cartellini, fuorigioco, gol/over.
+- Linee indicative (totali e team totals).
+- Tutte le medie statistiche disponibili per: partite vinte, pareggiate, perse.
+- I dati completi del match e del campionato.
 
-OBIETTIVO OUTPUT (max 9–12 righe totali, NO elenco puntato secco):
-1️⃣ Breve analisi del match (1–3 frasi): ritmo, equilibrio e contesto tattico, spiegando *perché* (pressing, spazi, struttura difensiva, transizioni).
-2️⃣ Mercati consigliati (commento tecnico, non solo elenco):
-   - Parti dalla **combo principale**, motivandola (es. 'tendenza difensiva X + forma offensiva Y → 2 + Over 1.5').
-   - Poi 2–3 **mercati correlati** (corner/tiri/cartellini/totali), ognuno con motivazione chiara legata allo stile/atteggiamento.
-   - Se emerge un segnale netto di SQUADRA (corner/tiri/gol), aggiungi un **Team Over/Under** (sempre a .5) con logica esplicita.
-3️⃣ Linguaggio tecnico ma fluido. Evita frasi vaghe ('partita equilibrata') senza motivazione.
-4️⃣ Le soglie vanno citate naturalmente: 'sopra la linea dei 2.5 gol', 'oltre i 5.5 corner'. (Ricorda: SOLO .5)
-5️⃣ Niente numeri grezzi/percentuali; fai trasparire il ragionamento, non il dato.
+──────────────────────────────────────────────
+🔒 REGOLE OBBLIGATORIE E NON NEGOZIABILI
+──────────────────────────────────────────────
 
+📌 LINEE .5
+Usa SOLO linee con .5 (0.5, 1.5, 2.5, 3.5, ecc.).  
+Se la tua logica ti portasse a 1.0 / 2.0 / 3.0, arrotonda sempre alla .5 più vicina verso l’alto (1.0→1.5, 2.0→2.5, ecc.).
+📌 USO DEI NUMERI NEL TESTO
+Puoi SEMPRE citare linee come 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, ecc.  
+Questi NON sono considerati numeri vietati.
+
+I numeri che NON puoi usare sono:
+- medie reali
+- totali statistici grezzi
+- valori estratti dalle tabelle
+
+Puoi invece esprimere senza problemi:
+- linee goal (es. oltre 2.5)
+- linee corner (es. sopra 6.5)
+- linee tiri (es. oltre 12.5)
+- team totals (es. Over 1.5 squadra)
+
+Le linee sono consentite e fanno parte del pronostico.
+
+
+📌 MAPPATURA FORMA
+W = +3, D = +1, L = 0.  
+NON trattare un pareggio come una sconfitta.  
+Quando descrivi la forma, sii coerente con la sequenza: niente errori tipo “sconfitte consecutive” se ci sono pareggi.
+
+📌 CONTESTO CAMPIONATO
+Tieni sempre conto della classifica, delle giornate rimanenti, delle motivazioni (titolo, salvezza, qualificazioni).  
+Se una squadra è matematicamente salva/promossa/qualificata, evidenzia il possibile calo, rotazioni o rischi di “trappola”.
+
+──────────────────────────────────────────────
+📌 REGOLA STATISTICA V/P/L (OBBLIGATORIA)
+Usa le medie delle statistiche SOLO nella categoria corretta in base al pronostico:
+
+➡️ Se una squadra è FAVORITA  
+Utilizza come riferimento le statistiche delle PARTITE VINTE.
+
+➡️ Se una squadra è SFAVORITA  
+Utilizza come riferimento le statistiche delle PARTITE PERSE.
+
+➡️ Se il pronostico è UNA DOPPIA CHANCE (1X o X2)  
+Usa come base le PARTITE PAREGGIATE, integrate con quelle coerenti:
+- 1X → medie delle PAREGGIATE + VINTE  
+- X2 → medie delle PAREGGIATE + PERSE  
+
+➡️ NON citare mai le medie reali.  
+➡️ NON proporre una linea identica alla media: scegli SEMPRE la linea finale 1 o 2 step (con .5) sopra o sotto.  
+➡️ La linea selezionata deve essere coerente con le linee indicative già fornite: puoi muoverti solo ±1 step da quelle.
+
+Questa regola vale per:
+- tiri totali
+- corner totali
+- falli
+- cartellini
+- fuorigioco
+- e tutti i team totals.
+
+──────────────────────────────────────────────
+📌 STILE E COSTRUZIONE DEL TESTO
+Il tuo output deve essere un testo unico, fluido, senza intestazioni numerate.  
+Il flusso del testo deve includere, in modo naturale:
+
+- una lettura tattica del match (ritmo, spazi, pressing, atteggiamento);
+- motivazioni derivate da forma, classifica e contesto;
+- una combinazione principale (esito + linea gol / team total) motivata dal quadro statistico e tattico;
+- 2–3 mercati correlati integrati naturalmente nel discorso: goal, corner, tiri, cartellini;
+- eventuale team total (sopra o sotto la .5 corretta) quando c’è un segnale statistico forte;
+- nessun numero grezzo, nessuna media esplicita.
+
+La logica deve emergere dal contesto, mai dai valori grezzi.
+
+──────────────────────────────────────────────
 CONTESTO MATCH
 Lega: {dto.LeagueName}
 Partita: {dto.Home} vs {dto.Away}
-Calcio d'inizio (locale): {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}
+Calcio d'inizio (locale): {dto.KickoffUtc:yyyy-MM-dd HH:mm}
 
 FORMA (ultime 5)
 - {dto.Home}: {homeSeqEmo}  (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
 - {dto.Away}: {awaySeqEmo}  (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
 
-CONTESTO CAMPIONATO (3 punti vittoria / 1 pareggio / 0 sconfitta):
+CONTESTO CAMPIONATO:
 {leagueContext}
 
 DATI PROPRIETARI:
 {proprietaryContext}
 
-LINEE INDICATIVE (da usare per le soglie, SOLO .5):
+LINEE INDICATIVE (usa solo .5):
 {linesTotal}
 {linesTeams}
 
 STATISTICHE (solo per ragionamento, NON riportare numeri):
 {analysisContext}
+
 ";
+
 
             // 6) Chiamata AI
             string aiText;
