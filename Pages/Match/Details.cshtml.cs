@@ -111,7 +111,6 @@ namespace NextStakeWebApp.Pages.Match
             if (!User.HasClaim("plan", "1"))
                 return Forbid();
 
-
             // 1) Metadati match
             var dto = await (
                 from mm in _read.Matches
@@ -142,6 +141,7 @@ namespace NextStakeWebApp.Pages.Match
             var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
             var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
             var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
+            var remainingRounds = await GetRemainingMatchesAsync(dto.LeagueId, dto.Season);
 
             string ToFormSeq(List<FormRow> rows) => string.Join("", rows.Select(r => r.Result));
             var homeSeq = homeForm.Count > 0 ? ToFormSeq(homeForm) : "—";
@@ -166,17 +166,17 @@ namespace NextStakeWebApp.Pages.Match
             int? awayRank = standings.FirstOrDefault(s => s.TeamId == dto.AwayId)?.Rank;
 
             // 3) Parse robusto del payload analitico (tollerante a chiavi/label)
-            //    -> Costruiamo un "contesto analitico" sintetico SOLO per l'AI (non verrà mostrato).
             string analysisContext = BuildAnalysisContextForAi(analysisPayload, dto.Home, dto.Away);
 
-            // 4) Prepariamo un contesto proprietario compatto per dare ancoraggio all'AI
+            // 3-bis) Contesto di campionato (title race / salvezza / trappole)
+            string leagueContext = BuildLeagueContextForAi(standings, dto.HomeId, dto.AwayId, remainingRounds);
+
+            // 4) Contesto proprietario compatto
             string proprietaryContext = p is null
                 ? $"(nessun pronostico interno disponibile)\nForma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}\nForma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}"
                 : $"Esito: {p.Esito}\nGG/NG: {p.GG_NG}\nOver/Under: {p.OverUnderRange}\nMG Casa: {p.MultigoalCasa}\nMG Ospite: {p.MultigoalOspite}\nGoal simulati: {p.GoalSimulatoCasa}-{p.GoalSimulatoOspite} (Tot: {p.TotaleGoalSimulati})\nForma {dto.Home}: {homeSeq} | Rank: {(homeRank?.ToString() ?? "—")}\nForma {dto.Away}: {awaySeq} | Rank: {(awayRank?.ToString() ?? "—")}";
 
-
             // 4.bis) Ricava anche le linee numeriche indicative dai blocchi analitici JSON
-            // Linee totali
             JsonObject? goalsObj = null, cornersObj = null, cardsObj = null, shotsObj = null;
             try
             {
@@ -195,7 +195,6 @@ namespace NextStakeWebApp.Pages.Match
             var teamLinesCandidates = BuildTeamCandidates(goalsObj, cornersObj, cardsObj, shotsObj, p, dto.Home, dto.Away);
             var teamLines = BuildTeamLines(goalsObj, cornersObj, cardsObj, shotsObj, p);
 
-
             try
             {
                 if (!string.IsNullOrWhiteSpace(analysisPayload))
@@ -210,11 +209,11 @@ namespace NextStakeWebApp.Pages.Match
             catch { /* payload non essenziale per le linee */ }
 
             var lines = BuildIndicativeLines(goalsObj, cornersObj, cardsObj, shotsObj, p);
+
             // 5-bis) Calcolo pesato linee indicative (totali + singola squadra)
             var W = GetWeightsFromPrediction(p);
             var linesTotal = BuildIndicativeLinesWeighted(W, goals: null, shots: null, corners: null, cards: null, fouls: null, offsides: null);
 
-            // Passa i tuoi gruppi reali (se li hai già caricati sopra in questo handler)
             var goalsMg = await RunAnalysisAsync("NextMatchGoals_Analyses", dto.LeagueId, dto.Season, (int)id);
             var shotsMg = await RunAnalysisAsync("NextMatchShots_Analyses", dto.LeagueId, dto.Season, (int)id);
             var cornersMg = await RunAnalysisAsync("NextMatchCorners_Analyses", dto.LeagueId, dto.Season, (int)id);
@@ -226,7 +225,6 @@ namespace NextStakeWebApp.Pages.Match
             var linesTeams = BuildTeamLinesWeighted(W, dto.Home, dto.Away, goalsMg, shotsMg, cornersMg);
 
             // 5) Prompt AI: niente numeri in output, analisi breve + mercati correlati
-            // === NUOVO PROMPT MIGLIORATO (mezzi scaglioni + W/D/L chiari) ===
             var homeWDL = CountWdl(homeSeq);
             var awayWDL = CountWdl(awaySeq);
 
@@ -235,12 +233,15 @@ Agisci come analista calcistico. Hai:
 - Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni) e stato di forma/rank.
 - Statistiche grezze (tiri, corner, falli, cartellini, fuorigioco, goal/over) già parsate (NON citare numeri).
 - Linee indicative pesate (soglie da usare per Over/Under anche di singola squadra).
+- Contesto di campionato (classifica, giornate rimanenti, lotta titolo/salvezza).
 
 ⚙️ REGOLE DURE E NON NEGOZIABILI
 - Quando citi linee di Totali o Team Totals, USA SOLO MEZZI SCAGLIONI: 0.5, 1.5, 2.5, 3.5, ecc. (mai 1.0 o 2.0).
 - Se la tua logica interna ti portasse a 1.0 / 2.0 / 3.0, arrotonda alla .5 più vicina e coerente col ragionamento (di default verso l'alto: 1.0→1.5, 2.0→2.5, ecc.).
-- Mappatura forma: W = vittoria, D = pareggio, L = sconfitta. NON considerare D come sconfitta.
-- Se menzioni la forma, usa descrizioni coerenti con la sequenza: evita frasi come '5 sconfitte di fila' quando la sequenza include pareggi.
+- Mappatura forma: W = vittoria (+3), D = pareggio (+1), L = sconfitta (+0). NON considerare D come sconfitta.
+- Se menzioni la forma, usa descrizioni coerenti con la sequenza: evita frasi tipo '5 sconfitte di fila' quando la stringa contiene pareggi.
+- Tieni conto che la classifica usa 3 punti per vittoria, 1 per pareggio, 0 per sconfitta: nel finale di stagione ogni vittoria può cambiare molto più di un pari.
+- Usa SEMPRE il contesto campionato: se una squadra ha già vinto il titolo o è già retrocessa/praticamente salva, sottolinea il rischio di calo motivazionale, rotazioni o 'trappola' di fine stagione, soprattutto quando i numeri direbbero favorito secco.
 
 OBIETTIVO OUTPUT (max 9–12 righe totali, NO elenco puntato secco):
 1️⃣ Breve analisi del match (1–3 frasi): ritmo, equilibrio e contesto tattico, spiegando *perché* (pressing, spazi, struttura difensiva, transizioni).
@@ -261,6 +262,9 @@ FORMA (ultime 5)
 - {dto.Home}: {homeSeqEmo}  (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
 - {dto.Away}: {awaySeqEmo}  (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
 
+CONTESTO CAMPIONATO (3 punti vittoria / 1 pareggio / 0 sconfitta):
+{leagueContext}
+
 DATI PROPRIETARI:
 {proprietaryContext}
 
@@ -272,9 +276,6 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
 {analysisContext}
 ";
 
-
-
-
             // 6) Chiamata AI
             string aiText;
             try
@@ -282,7 +283,6 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                 var raw = await _openai.AskAsync(prompt);
                 aiText = string.IsNullOrWhiteSpace(raw) ? "" : raw.Trim();
                 aiText = NormalizeHalfLines(aiText);
-
             }
             catch (Exception ex)
             {
@@ -297,7 +297,7 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                 return RedirectToPage(new { id });
             }
 
-            // 7) Header e preview finale: niente più dump/indicatori.
+            // 7) Header e preview finale
             var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
             var header =
                 $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
@@ -317,14 +317,14 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
 
                 try
                 {
-                    var root = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                    var root = JsonNode.Parse(json)!.AsObject();
 
                     string ReadBlock(string blockName, params string[] alias)
                     {
                         var obj = root
                             .Where(kv => string.Equals(kv.Key, blockName, StringComparison.OrdinalIgnoreCase)
                                 || alias.Any(a => string.Equals(kv.Key, a, StringComparison.OrdinalIgnoreCase)))
-                            .Select(kv => kv.Value as System.Text.Json.Nodes.JsonObject)
+                            .Select(kv => kv.Value as JsonObject)
                             .FirstOrDefault();
 
                         if (obj is null || obj.Count == 0) return "";
@@ -364,12 +364,12 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                         }
 
                         string[] desiredOrder = new[] {
-                "Effettuati","Battuti","Fatti","Subiti","In Casa","Fuoricasa",
-                "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse",
-                "% Over 1.5 Casa","% Over 1.5 Trasferta","% Over 1.5 Totale",
-                "% Over 2.5 Casa","% Over 2.5 Trasferta","% Over 2.5 Totale",
-                "% Over 3.5 Casa","% Over 3.5 Trasferta","% Over 3.5 Totale"
-            };
+                    "Effettuati","Battuti","Fatti","Subiti","In Casa","Fuoricasa",
+                    "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse",
+                    "% Over 1.5 Casa","% Over 1.5 Trasferta","% Over 1.5 Totale",
+                    "% Over 2.5 Casa","% Over 2.5 Trasferta","% Over 2.5 Totale",
+                    "% Over 3.5 Casa","% Over 3.5 Trasferta","% Over 3.5 Totale"
+                };
 
                         var rows = pairs.Keys
                             .OrderBy(k => { var i = Array.IndexOf(desiredOrder, k); return i < 0 ? int.MaxValue : i; })
@@ -395,20 +395,20 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                     }
 
                     var parts = new List<string>
-        {
-            ReadBlock("goals", "goal", "goalAttesi"),
-            ReadBlock("shots", "tiri"),
-            ReadBlock("corners", "corner"),
-            ReadBlock("fouls", "falli"),
-            ReadBlock("cards", "cartellini"),
-            ReadBlock("offsides", "fuorigioco")
-        };
+            {
+                ReadBlock("goals", "goal", "goalAttesi"),
+                ReadBlock("shots", "tiri"),
+                ReadBlock("corners", "corner"),
+                ReadBlock("fouls", "falli"),
+                ReadBlock("cards", "cartellini"),
+                ReadBlock("offsides", "fuorigioco")
+            };
 
                     var filtered = parts.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
                     if (filtered.Count == 0) return "(nessuna sezione analitica riconosciuta)";
 
                     var ctx = string.Join("\n\n", filtered);
-                    if (ctx.Length > 1200) ctx = ctx.Substring(0, 1200) + "...";
+                    if (ctx.Length > 1200) ctx = ctx[..1200] + "...";
                     return ctx;
                 }
                 catch
@@ -416,7 +416,107 @@ STATISTICHE (solo per ragionamento, NON riportare numeri):
                     return "(errore nel parsing del payload analitico)";
                 }
             }
+
+            static string BuildLeagueContextForAi(List<TableStandingRow> standings, long homeId, long awayId, int remainingRounds)
+            {
+                if (standings == null || standings.Count == 0)
+                    return "(nessun contesto di classifica disponibile)";
+
+                var ordered = standings.OrderBy(s => s.Rank).ToList();
+                var n = ordered.Count;
+
+                var home = ordered.FirstOrDefault(s => s.TeamId == homeId);
+                var away = ordered.FirstOrDefault(s => s.TeamId == awayId);
+
+                int maxPlayed = ordered.Max(s => s.Played);
+                int totalRounds = maxPlayed + Math.Max(remainingRounds, 0);
+                if (totalRounds <= 0) totalRounds = maxPlayed;
+
+                var first = ordered.First();
+                var second = ordered.Skip(1).FirstOrDefault();
+                int lead = second != null ? first.Points - second.Points : 0;
+
+                bool titleLocked = remainingRounds > 0 && lead > 3 * remainingRounds;
+                bool titleAlmost = remainingRounds > 0 && !titleLocked && lead >= 2 * remainingRounds;
+
+                int bottomSlots = Math.Min(3, Math.Max(1, n / 4)); // 3 o ~25% della lega
+                if (bottomSlots >= n) bottomSlots = Math.Max(1, n - 1);
+
+                int lastSafeIndex = n - bottomSlots - 1;
+                if (lastSafeIndex < 0) lastSafeIndex = 0;
+                var lastSafe = ordered[lastSafeIndex];
+                var relegationTeams = ordered.Skip(n - bottomSlots).ToList();
+
+                bool IsRelegated(TableStandingRow t)
+                {
+                    if (remainingRounds <= 0) return t.Rank > lastSafe.Rank;
+                    int matchesLeft = Math.Max(0, totalRounds - t.Played);
+                    int maxPossible = t.Points + matchesLeft * 3;
+                    return maxPossible < lastSafe.Points;
+                }
+
+                bool IsSafe(TableStandingRow t)
+                {
+                    if (remainingRounds <= 0) return t.Rank <= lastSafe.Rank;
+                    int matchesLeft = Math.Max(0, totalRounds - t.Played);
+                    int worstSafePoints = t.Points; // ci basta confrontare con il migliore tra i retrocessi
+                    int bestReleg = relegationTeams.Count > 0 ? relegationTeams.Max(x => x.Points) : 0;
+                    int maxRelegPossible = bestReleg + remainingRounds * 3;
+                    return worstSafePoints > maxRelegPossible;
+                }
+
+                string Status(TableStandingRow? t)
+                {
+                    if (t is null) return "status non disponibile";
+
+                    var tags = new List<string>();
+
+                    // titolo / parte alta
+                    if (titleLocked && t.TeamId == first.TeamId)
+                        tags.Add("titolo già in tasca, possibile gestione ritmi e rotazioni");
+                    else if (titleAlmost && t.TeamId == first.TeamId)
+                        tags.Add("titolo molto vicino, ma ancora bisogno di chiudere il discorso");
+                    else if (!titleLocked && t.Rank <= 3)
+                        tags.Add("zona alta, ancora motivazioni per titolo/Europa");
+
+                    // salvezza / retrocessione
+                    if (IsRelegated(t))
+                        tags.Add("situazione praticamente compromessa in zona retrocessione");
+                    else if (!IsSafe(t) && t.Rank >= lastSafe.Rank - 1)
+                        tags.Add("piena lotta salvezza, ogni punto pesa tantissimo");
+                    else if (IsSafe(t))
+                        tags.Add("zona tranquilla, lontana dalla retrocessione");
+
+                    if (tags.Count == 0)
+                        return "situazione di classifica relativamente neutra";
+
+                    return string.Join("; ", tags);
+                }
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Giornate rimanenti stimate: {remainingRounds}.");
+
+                if (home != null)
+                {
+                    int homeLeft = Math.Max(0, totalRounds - home.Played);
+                    sb.AppendLine($"{home.TeamName}: {home.Rank}ª con {home.Points} punti, circa {homeLeft} gare ancora da giocare → {Status(home)}.");
+                }
+
+                if (away != null)
+                {
+                    int awayLeft = Math.Max(0, totalRounds - away.Played);
+                    sb.AppendLine($"{away.TeamName}: {away.Rank}ª con {away.Points} punti, circa {awayLeft} gare ancora da giocare → {Status(away)}.");
+                }
+
+                if (titleLocked)
+                    sb.AppendLine("Il titolo è di fatto assegnato: attenzione a possibili cali di intensità della capolista nelle ultime partite.");
+                else if (titleAlmost)
+                    sb.AppendLine("La corsa al titolo è vicina alla chiusura: la capolista potrebbe voler evitare rischi inutili ma resta motivata.");
+
+                return sb.ToString().TrimEnd();
+            }
         }
+
 
 
 
