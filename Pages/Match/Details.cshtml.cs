@@ -130,8 +130,8 @@ namespace NextStakeWebApp.Pages.Match
                     Season = mm.Season,
                     HomeId = th.Id,
                     AwayId = ta.Id,
-                    HomeLogo = th.Logo,  
-                    AwayLogo = ta.Logo  
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
 

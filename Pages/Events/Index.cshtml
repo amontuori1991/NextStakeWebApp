@@ -268,10 +268,13 @@
                                                                 <div class="team home">
                                                                     @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
                                                                     {
-                                                                        <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
+                                                                        <span class="team-logo-box">
+                                                                            <img src="@bp.A.HomeLogo" alt="home" class="team-logo" />
+                                                                        </span>
                                                                     }
                                                                     <span class="team-name">@homeName</span>
                                                                 </div>
+
 
                                                                 <div class="center">
                                                                     <span class="vs-pill">vs</span>
@@ -282,9 +285,12 @@
                                                                     <span class="team-name">@awayName</span>
                                                                     @if (!string.IsNullOrWhiteSpace(bp.A?.AwayLogo))
                                                                     {
-                                                                        <img src="@bp.A.AwayLogo" alt="away" class="team-logo" />
+                                                                        <span class="team-logo-box">
+                                                                            <img src="@bp.A.AwayLogo" alt="away" class="team-logo" />
+                                                                        </span>
                                                                     }
                                                                 </div>
+
 
                                                                 <div class="home-score">–</div>
                                                                 <div class="score-sep">:</div>
@@ -364,10 +370,13 @@
                                                     <div class="team home">
                                                         @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
                                                         {
-                                                            <img src="@r.HomeLogo" alt="home" class="team-logo" />
+                                                            <span class="team-logo-box">
+                                                                <img src="@r.HomeLogo" alt="home" class="team-logo" />
+                                                            </span>
                                                         }
                                                         <span class="team-name">@r.Home</span>
                                                     </div>
+
 
                                                     <div class="center">
                                                         <span class="vs-pill">vs</span>
@@ -379,9 +388,12 @@
                                                         <span class="team-name">@r.Away</span>
                                                         @if (!string.IsNullOrWhiteSpace(r.AwayLogo))
                                                         {
-                                                            <img src="@r.AwayLogo" alt="away" class="team-logo" />
+                                                            <span class="team-logo-box">
+                                                                <img src="@r.AwayLogo" alt="away" class="team-logo" />
+                                                            </span>
                                                         }
                                                     </div>
+
 
                                                     <div class="home-score" data-fixture="@r.MatchId" data-side="home">@homeScoreStr</div>
                                                     <div class="score-sep">:</div>
@@ -1137,10 +1149,22 @@
                     justify-self: start;
                 }
 
-            .team-logo {
-                height: 18px;
-                width: auto;
+            /* Box fisso per i loghi */
+            .team-logo-box {
+                width: 24px;
+                height: 24px;
+                flex: 0 0 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
+
+                .team-logo-box .team-logo {
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                    display: block;
+                }
 
             .team-name {
                 white-space: nowrap;
@@ -1195,31 +1219,27 @@
                 --live-color: var(--live);
                 --live-color-soft: var(--live-soft);
             }
+
             @@keyframes livePulse {
-                0%
+                0% {
+                    color: var(--live-color);
+                    opacity: .95
+                }
 
-            {
-                color: var(--live-color);
-                opacity: .95
+                100% {
+                    color: var(--live-color-soft);
+                    opacity: 1
+                }
             }
 
-            100% {
-                color: var(--live-color-soft);
-                opacity: 1
-            }
-
-            }
             @@keyframes blinkDot {
-                0%
+                0% {
+                    opacity: .55
+                }
 
-            {
-                opacity: .55
-            }
-
-            100% {
-                opacity: 1
-            }
-
+                100% {
+                    opacity: 1
+                }
             }
 
             .is-live {
@@ -1242,50 +1262,46 @@
                 content: ' •';
                 animation: blinkDot 1s ease-in-out infinite alternate;
             }
+
             @@media (prefers-reduced-motion: reduce) {
-                .is-live, .live-minute.is-live
-
-            {
-                animation: none !important;
-            }
-
+                .is-live, .live-minute.is-live {
+                    animation: none !important;
+                }
             }
 
             /* Mobile tweaks */
             @@media (max-width: 576px) {
-                .team
+                .team {
+                    flex-direction: column;
+                    align-items: center;
+                    text-align: center;
+                }
 
-            {
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-            }
+                .team-logo-box {
+                    width: 28px;
+                    height: 28px;
+                    margin-bottom: 2px;
+                }
 
-            .team-logo {
-                height: 24px;
-                margin-bottom: 2px;
-            }
+                .team-name {
+                    white-space: normal;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                    max-width: 100%;
+                    line-height: 1.1;
+                }
 
-            .team-name {
-                white-space: normal;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                max-width: 100%;
-                line-height: 1.1;
-            }
+                .vs-pill {
+                    font-size: .65rem;
+                    padding: .08rem .35rem;
+                }
 
-            .vs-pill {
-                font-size: .65rem;
-                padding: .08rem .35rem;
-            }
-
-            .match-grid {
-                row-gap: .35rem;
-            }
-
+                .match-grid {
+                    row-gap: .35rem;
+                }
             }
 
             /* Overlay loading (riuso) */
