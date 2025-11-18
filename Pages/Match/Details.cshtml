@@ -228,11 +228,19 @@
                 H2H
             </button>
         </li>
-        <li class="nav-item group-pron">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-odds" type="button" role="tab">
-                Quote
-            </button>
-        </li>
+<li class="nav-item group-pron">
+    <button class="nav-link"
+            id="tab-odds-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#tab-odds"
+            type="button"
+            role="tab"
+            aria-controls="tab-odds"
+            aria-selected="false">
+        Quote
+    </button>
+</li>
+
 
         <!-- Gruppo: ANALISI -->
         <li class="nav-item group-anal">
@@ -604,15 +612,58 @@
 
 
 
-        <!-- PRONOSTICI: Quote (placeholder) -->
-        <div class="tab-pane fade" id="tab-odds" role="tabpanel">
-            <div class="alert alert-secondary">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                    <strong>Quote</strong>: integrazione in arrivo. Qui mostreremo le quote dei bookmaker.
-                </div>
-            </div>
+<!-- PRONOSTICI: Quote -->
+<div class="tab-pane fade" id="tab-odds" role="tabpanel" aria-labelledby="tab-odds-tab">
+    @if (Model.Data.Odds == null || !Model.Data.Odds.Any())
+    {
+        <p class="text-muted">Nessuna quota disponibile per questa partita.</p>
+    }
+    else
+    {
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <label for="betid-filter" class="mb-0 fw-semibold">Filtra per BetId:</label>
+            <select id="betid-filter" class="form-select form-select-sm" style="max-width: 200px;">
+                <option value="">Tutti</option>
+                @foreach (var betId in Model.Data.BetIds)
+                {
+                    <option value="@betId">@betId</option>
+                }
+            </select>
         </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle" id="odds-table">
+                <thead>
+                    <tr>
+                        <th>Bookmaker</th>
+                        <th>BetId</th>
+                        <th>Descrizione</th>
+                        <th>Value</th>
+                        <th>Quota</th>
+                        <th>Aggiornata</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in Model.Data.Odds
+                        .OrderBy(x => x.BetId)
+                        .ThenBy(x => x.Description))
+                    {
+                        <tr data-betid="@o.BetId">
+                            <td>@o.Bookmaker</td>
+                            <td>@o.BetId</td>
+                            <td>@o.Description</td>
+                            <td>@o.Value</td>
+                            <td>@o.Odd.ToString("0.00")</td>
+                            <td>@o.DateUpdated.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+
 
             <!-- ANALISI: Corner -->
             <div class="tab-pane fade" id="tab-corners" role="tabpanel">
@@ -1305,6 +1356,25 @@
 
     @section Scripts {
         <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
+        <script>
+        (function () {
+            const select = document.getElementById('betid-filter');
+            const rows = document.querySelectorAll('#odds-table tbody tr');
+            if (!select || !rows.length) return;
+
+            select.addEventListener('change', function () {
+                const val = this.value;
+                rows.forEach(row => {
+                    const rowBetId = row.getAttribute('data-betid');
+                    if (!val || rowBetId === val) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        })();
+    </script>
     }
 </div>
 @section Styles {

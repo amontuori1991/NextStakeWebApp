@@ -12,6 +12,7 @@ namespace NextStakeWebApp.Data
         public DbSet<League> Leagues => Set<League>();
         public DbSet<Team> Teams => Set<Team>();
         public DbSet<Standing> Standings => Set<Standing>();
+        public DbSet<Odds> Odds { get; set; } = null!;
 
         // Rimane un DbSet anche se keyless, per poter fare query LINQ
         public DbSet<Analysis> Analyses => Set<Analysis>();
@@ -27,8 +28,23 @@ namespace NextStakeWebApp.Data
             modelBuilder.Entity<Standing>().ToTable("standings", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<BestPickRow>().HasNoKey();
 
+            // 🔹 Mapping tabella odds (Postgres: "odds", tutta minuscola)
+            modelBuilder.Entity<Odds>(entity =>
+            {
+                entity.HasNoKey();                           // tabella senza PK
+                entity.ToTable("odds", t => t.ExcludeFromMigrations());
 
-            // 👇 Analyses è una tabella senza PK: la mappiamo come keyless
+                // Mapping colonne (opzionale ma pulito)
+                entity.Property(o => o.Id).HasColumnName("id");
+                entity.Property(o => o.Bookmaker).HasColumnName("bookmaker");
+                entity.Property(o => o.Betid).HasColumnName("betid");
+                entity.Property(o => o.Description).HasColumnName("description");
+                entity.Property(o => o.Value).HasColumnName("value");
+                entity.Property(o => o.Odd).HasColumnName("odd");
+                entity.Property(o => o.Dateupd).HasColumnName("dateupd");
+            });
+
+            // 🔹 Analyses è una tabella senza PK: la mappiamo come keyless
             modelBuilder.Entity<Analysis>(eb =>
             {
                 eb.HasNoKey();

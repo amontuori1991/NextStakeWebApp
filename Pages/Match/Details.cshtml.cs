@@ -86,6 +86,10 @@ namespace NextStakeWebApp.Pages.Match
             public List<FormRow> AwayForm { get; set; } = new();
             public List<TableStandingRow> Standings { get; set; } = new();
 
+            public List<OddsRow> Odds { get; set; } = new();
+            public List<int> BetIds { get; set; } = new();
+
+
         }
         public class TableStandingRow
         {
@@ -100,6 +104,15 @@ namespace NextStakeWebApp.Pages.Match
             public int GF { get; set; }
             public int GA { get; set; }
             public int Diff { get; set; }
+        }
+        public class OddsRow
+        {
+            public int Bookmaker { get; set; }       // es. 8 = Bet365 (per ora numero)
+            public int BetId { get; set; }           // tipo quota (numeric)
+            public string? Description { get; set; } // campo description
+            public string? Value { get; set; }       // campo Value
+            public decimal Odd { get; set; }         // campo odd (es. 6.50)
+            public DateTime DateUpdated { get; set; }// campo dateupd
         }
 
         // Handler: genera con AI e invia su 'Idee'
@@ -804,6 +817,30 @@ STATISTICHE (ragionamento, NON citare numeri):
             var cards = await RunAnalysisAsync("NextMatchCards_Analyses", dto.LeagueId, dto.Season, (int)id);
             var fouls = await RunAnalysisAsync("NextMatchFouls_Analyses", dto.LeagueId, dto.Season, (int)id);
             var offsides = await RunAnalysisAsync("NextMatchOffsides_Analyses", dto.LeagueId, dto.Season, (int)id);
+            // =======================
+            // QUOTE da Neon (tabella odds)
+            // =======================
+            // ATTENZIONE: se i nomi delle colonne nella entity differiscono (Id, Bookmaker, Betid, Description, Value, Odd, Dateupd),
+            // adeguali qui di conseguenza.
+            var odds = await (
+                from o in _read.Odds
+                where o.Id == dto.MatchId   // Id = matchid
+                select new OddsRow
+                {
+                    Bookmaker = o.Bookmaker,
+                    BetId = o.Betid,
+                    Description = o.Description,
+                    Value = o.Value,
+                    Odd = (decimal)o.Odd,
+                    DateUpdated = o.Dateupd
+                }
+            ).AsNoTracking().ToListAsync();
+
+            var betIds = odds
+                .Select(o => o.BetId)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
 
             Data = new VM
             {
@@ -835,7 +872,9 @@ STATISTICHE (ragionamento, NON citare numeri):
 
                 HomeForm = homeForm,
                 AwayForm = awayForm,
-                Standings = standings
+                Standings = standings,
+                Odds = odds,
+                BetIds = betIds
             };
 
             return Page();
