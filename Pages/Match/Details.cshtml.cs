@@ -138,6 +138,7 @@ namespace NextStakeWebApp.Pages.Match
 
             // 2) Dati proprietari + forma + classifica
             var p = await LoadPredictionAsync(id);
+            var esitoProprietario = p?.Esito ?? "X";
             var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
             var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
             var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
@@ -164,6 +165,18 @@ namespace NextStakeWebApp.Pages.Match
 
             int? homeRank = standings.FirstOrDefault(s => s.TeamId == dto.HomeId)?.Rank;
             int? awayRank = standings.FirstOrDefault(s => s.TeamId == dto.AwayId)?.Rank;
+            // ESITO proprietario (da Prediction) e squadra favorita
+            var esito = (p?.Esito ?? "").Trim().ToUpperInvariant();
+
+            string favoriteTeam = esito switch
+            {
+                "1" => dto.Home,
+                "1X" => dto.Home,
+                "2" => dto.Away,
+                "X2" => dto.Away,
+                _ => "Nessuna (match aperto)"
+            };
+
 
             // 3) Parse robusto del payload analitico (tollerante a chiavi/label)
             string analysisContext = BuildAnalysisContextForAi(analysisPayload, dto.Home, dto.Away);
@@ -223,107 +236,130 @@ namespace NextStakeWebApp.Pages.Match
 
             linesTotal = BuildIndicativeLinesWeighted(W, goalsMg, shotsMg, cornersMg, cardsMg, foulsMg, offsMg);
             var linesTeams = BuildTeamLinesWeighted(W, dto.Home, dto.Away, goalsMg, shotsMg, cornersMg);
+            // SEGNALI sintetici per corner, cartellini, falli, fuorigioco, tiri
+            var (aiSignalsBlock, tgSignalsBlock) = BuildSignalsBlocks(
+                cornersMg,
+                cardsMg,
+                foulsMg,
+                offsMg,
+                shotsMg
+            );
+
+            // Candidati team-total (gol/corner/tiri ecc.) costruiti da JSON analitico
+            var teamCandidatesText = BuildTeamCandidates(
+                goalsObj,
+                cornersObj,
+                cardsObj,
+                shotsObj,
+                p,
+                dto.Home,
+                dto.Away
+            );
 
             // 5) Prompt AI: niente numeri in output, analisi breve + mercati correlati
             var homeWDL = CountWdl(homeSeq);
             var awayWDL = CountWdl(awaySeq);
 
+         
+
             var prompt = $@"
-Agisci come analista calcistico professionista. Devi generare un testo unico, discorsivo e fluido (NO sezioni separate, NO elenchi puntati).  
-Usa un linguaggio tecnico ma naturale, spiegando il ragionamento senza citare numeri grezzi o percentuali.
+Agisci come analista calcistico professionista. Devi generare un testo UNICO, discorsivo e fluido (NO sezioni, NO punti elenco), con linguaggio tecnico ma naturale.
 
 Hai a disposizione:
 - Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni).
 - Stato di forma (W/D/L), contesto classifica e motivazioni.
 - Statistiche già parsate: tiri, corner, falli, cartellini, fuorigioco, gol/over.
 - Linee indicative (totali e team totals).
-- Tutte le medie statistiche disponibili per: partite vinte, pareggiate, perse.
-- I dati completi del match e del campionato.
+- Tutte le medie statistiche disponibili per V/P/L.
+- I dati completi del match.
+- L’esito proprietario che determina in modo ASSOLUTO chi è favorita.
 
 ──────────────────────────────────────────────
-🔒 REGOLE OBBLIGATORIE E NON NEGOZIABILI
+🔒 REGOLE NON NEGOZIABILI
 ──────────────────────────────────────────────
 
-📌 LINEE .5
-Usa SOLO linee con .5 (0.5, 1.5, 2.5, 3.5, ecc.).  
-Se la tua logica ti portasse a 1.0 / 2.0 / 3.0, arrotonda sempre alla .5 più vicina verso l’alto (1.0→1.5, 2.0→2.5, ecc.).
-📌 USO DEI NUMERI NEL TESTO
-Puoi SEMPRE citare linee come 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, ecc.  
+📌 1) USO DELLE LINEE
+Usa solo linee con .5 (1.5, 2.5, 3.5, 4.5…).  
+Se il ragionamento porta a linee intere, arrotonda verso l’alto.
+
+📌 2) NUMERI VIETATI
+Non puoi usare numeri reali delle statistiche.  
+Sono ammessi SOLO:
+- linee gol (2.5, 3.5…)
+- linee corner (6.5, 8.5…)
+- linee tiri (9.5, 11.5…)
+- team totals (Over 1.5 squadra…)
 Questi NON sono considerati numeri vietati.
 
-I numeri che NON puoi usare sono:
-- medie reali
-- totali statistici grezzi
-- valori estratti dalle tabelle
-
-Puoi invece esprimere senza problemi:
-- linee goal (es. oltre 2.5)
-- linee corner (es. sopra 6.5)
-- linee tiri (es. oltre 12.5)
-- team totals (es. Over 1.5 squadra)
-
-Le linee sono consentite e fanno parte del pronostico.
-
-
-📌 MAPPATURA FORMA
+📌 3) MAPPATURA FORMA
 W = +3, D = +1, L = 0.  
-NON trattare un pareggio come una sconfitta.  
-Quando descrivi la forma, sii coerente con la sequenza: niente errori tipo “sconfitte consecutive” se ci sono pareggi.
+Descrivi correttamente la sequenza senza errori.
 
-📌 CONTESTO CAMPIONATO
-Tieni sempre conto della classifica, delle giornate rimanenti, delle motivazioni (titolo, salvezza, qualificazioni).  
-Se una squadra è matematicamente salva/promossa/qualificata, evidenzia il possibile calo, rotazioni o rischi di “trappola”.
+📌 4) FAVORITA/SFAVORITA — OBBLIGO ASSOLUTO
+La squadra favorita NON va dedotta.
+Devi usare ESATTAMENTE l’esito proprietario:
+
+- 1  → favorita CASA
+- 2  → favorita TRASFERTA
+- 1X → favorita CASA
+- X2 → favorita TRASFERTA
+- X  → nessuna favorita
+- 12 → partita aperta (entrambe aggressive)
+
+NON interpretare mai la favorita in base a forma, ranking o qualità.
+
+📌 5) LOGICA STATISTICA V/P/L (OBBLIGATORIA)
+Usa le medie corrette in base all’esito:
+
+- FAVORITA → medie delle VITTORIE
+- SFAVORITA → medie delle SCONFITTE
+- 1X → casa: mix VINTE + PAREGGIATE / ospite: PERSE
+- X2 → ospite: mix VINTE + PAREGGIATE / casa: PERSE
+- X → entrambe PAREGGIATE
+- 12 → mix VINTE/PERSE per entrambe
+
+📌 6) CALCOLO LOGICO DELLE LINEE (TIRI, CORNER, ECC.)
+Il totale del match NON è quello di una singola squadra.
+Ragiona così:
+
+- Esito 1 → (casa V) + (ospite P)
+- Esito 2 → (ospite V) + (casa P)
+- Esito 1X → (casa V/P mix) + (ospite P)
+- Esito X2 → (ospite V/P mix) + (casa P)
+- Esito X → P/P
+- Esito 12 → V/P + V/P
+
+Dopo aver individuato il profilo:
+→ scegli SEMPRE una linea finale 1 o 2 step (.5) più bassa o più alta.
 
 ──────────────────────────────────────────────
-📌 REGOLA STATISTICA V/P/L (OBBLIGATORIA)
-Usa le medie delle statistiche SOLO nella categoria corretta in base al pronostico:
-
-➡️ Se una squadra è FAVORITA  
-Utilizza come riferimento le statistiche delle PARTITE VINTE.
-
-➡️ Se una squadra è SFAVORITA  
-Utilizza come riferimento le statistiche delle PARTITE PERSE.
-
-➡️ Se il pronostico è UNA DOPPIA CHANCE (1X o X2)  
-Usa come base le PARTITE PAREGGIATE, integrate con quelle coerenti:
-- 1X → medie delle PAREGGIATE + VINTE  
-- X2 → medie delle PAREGGIATE + PERSE  
-
-➡️ NON citare mai le medie reali.  
-➡️ NON proporre una linea identica alla media: scegli SEMPRE la linea finale 1 o 2 step (con .5) sopra o sotto.  
-➡️ La linea selezionata deve essere coerente con le linee indicative già fornite: puoi muoverti solo ±1 step da quelle.
-
-Questa regola vale per:
-- tiri totali
-- corner totali
-- falli
-- cartellini
-- fuorigioco
-- e tutti i team totals.
-
+🔒 OBBLIGO DI CONTENUTI (NON PUOI CHIUDERE IL TESTO SENZA)
 ──────────────────────────────────────────────
-📌 STILE E COSTRUZIONE DEL TESTO
-Il tuo output deve essere un testo unico, fluido, senza intestazioni numerate.  
-Il flusso del testo deve includere, in modo naturale:
 
-- una lettura tattica del match (ritmo, spazi, pressing, atteggiamento);
-- motivazioni derivate da forma, classifica e contesto;
-- una combinazione principale (esito + linea gol / team total) motivata dal quadro statistico e tattico;
-- 2–3 mercati correlati integrati naturalmente nel discorso: goal, corner, tiri, cartellini;
-- eventuale team total (sopra o sotto la .5 corretta) quando c’è un segnale statistico forte;
-- nessun numero grezzo, nessuna media esplicita.
+Il testo NON è valido finché NON contiene **tutti** questi elementi:
 
-La logica deve emergere dal contesto, mai dai valori grezzi.
+✔️ **1 mercato sui GOL** (Over/Under X.5)  
+✔️ **1 mercato sui CORNER** (Over/Under X.5)  
+✔️ **1 mercato sui TIRI** (Over/Under X.5)  
+
+Devono essere inseriti in modo naturale nel flusso e coerenti con:
+- l’esito proprietario,
+- la logica V/P/L,
+- le linee indicative.
+
+Finché questi 3 elementi non appaiono nel testo, l’analisi non è considerata completa.
 
 ──────────────────────────────────────────────
 CONTESTO MATCH
 Lega: {dto.LeagueName}
 Partita: {dto.Home} vs {dto.Away}
+Esito proprietario: {esitoProprietario}
 Calcio d'inizio (locale): {dto.KickoffUtc:yyyy-MM-dd HH:mm}
 
+
 FORMA (ultime 5)
-- {dto.Home}: {homeSeqEmo}  (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
-- {dto.Away}: {awaySeqEmo}  (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
+- {dto.Home}: {homeSeqEmo} (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
+- {dto.Away}: {awaySeqEmo} (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
 
 CONTESTO CAMPIONATO:
 {leagueContext}
@@ -331,14 +367,17 @@ CONTESTO CAMPIONATO:
 DATI PROPRIETARI:
 {proprietaryContext}
 
-LINEE INDICATIVE (usa solo .5):
+LINEE INDICATIVE:
 {linesTotal}
 {linesTeams}
 
-STATISTICHE (solo per ragionamento, NON riportare numeri):
+STATISTICHE (ragionamento, NON citare numeri):
 {analysisContext}
 
 ";
+
+
+
 
 
             // 6) Chiamata AI
