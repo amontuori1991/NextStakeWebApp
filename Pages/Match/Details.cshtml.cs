@@ -133,6 +133,7 @@ namespace NextStakeWebApp.Pages.Match
                 where mm.Id == id
                 select new
                 {
+                    MatchId = mm.Id,           // 👈 AGGIUNTO
                     LeagueName = lg.Name,
                     CountryCode = lg.CountryCode,
                     KickoffUtc = mm.Date,
@@ -146,6 +147,7 @@ namespace NextStakeWebApp.Pages.Match
                     AwayLogo = ta.Logo
                 }
             ).AsNoTracking().FirstOrDefaultAsync();
+
 
             if (dto is null) return NotFound();
 
@@ -273,102 +275,188 @@ namespace NextStakeWebApp.Pages.Match
             var homeWDL = CountWdl(homeSeq);
             var awayWDL = CountWdl(awaySeq);
 
-         
+            // 5) Integra QUOTE (Odds) dentro il payload JSON che verrà passato all'AI
+            // blocchi suggerimenti interni per mercati statistici (corner/tiri/cartellini...)
+            string cornerSuggestionsInternal = "CORNERS_SUGGERITI_INTERNO: (non disponibile)";
+            string shotsSuggestionsInternal = "SHOTS_SUGGERITI_INTERNO: (non disponibile)";
+            string cardsSuggestionsInternal = "CARDS_SUGGERITI_INTERNO: (non disponibile)";
+            // (se in futuro vorrai anche falli/fuorigioco, li riusiamo)
+
+            try
+            {
+                // 5.a) Ricarico le odds dal DB per questo match
+                var oddsForAi = await (
+                    from o in _read.Odds
+                    where o.Id == dto.MatchId      // 👈 STESSA LOGICA DI OnGetAsync
+                    select new
+                    {
+                        o.Bookmaker,
+                        o.Betid,
+                        o.Description,
+                        o.Value,
+                        o.Odd,
+                        o.Dateupd
+                    }
+                ).AsNoTracking().ToListAsync();
+
+                // mappo in List<OddsRow> per riutilizzare la stessa struttura
+                var oddsRowsForAi = oddsForAi
+                    .Select(o => new OddsRow
+                    {
+                        Bookmaker = o.Bookmaker,
+                        BetId = o.Betid,
+                        Description = o.Description,
+                        Value = o.Value,
+                        Odd = (decimal)o.Odd,
+                        DateUpdated = o.Dateupd
+                    })
+                    .ToList();
+
+                // 🔹 Suggerimenti CORNER (usa logica vittorie/perse + quote reali)
+                // 🔹 Suggerimenti CORNER (usa linee indicative + quote reali)
+                cornerSuggestionsInternal = BuildCornerSuggestions(
+                    lines,       // linee totali (gol/corner/cartellini/tiri)
+                    teamLines,   // linee per squadra
+                    oddsRowsForAi,
+                    esitoProprietario,
+                    dto.Home,
+                    dto.Away
+                );
+
+
+                // 🔹 Suggerimenti TIRI (usa linee indicative + quote reali)
+                // "lines" e "teamLines" li hai già calcolati poco sopra con:
+                // var lines = BuildIndicativeLines(...);
+                // var teamLines = BuildTeamLines(...);
+                shotsSuggestionsInternal = BuildShotsSuggestions(
+                    lines,
+                    teamLines,
+                    oddsRowsForAi,
+                    dto.Home,
+                    dto.Away
+                );
+
+                // 🔹 Suggerimenti CARTELLINI: per ora solo totali (nessun split squadra)
+                cardsSuggestionsInternal = BuildCardsSuggestions(
+                    lines,
+                    oddsRowsForAi
+                );
+
+
+
+
+                // Se vuoi essere più preciso sul matchid usa:
+                // where o.Id == dto.MatchId
+
+                // 5.b) Parse del payload esistente (se vuoto, creo un root vuoto)
+                JsonObject rootPayload;
+                if (!string.IsNullOrWhiteSpace(analysisPayload))
+                {
+                    var parsed = JsonNode.Parse(analysisPayload);
+                    rootPayload = parsed as JsonObject ?? new JsonObject();
+                }
+                else
+                {
+                    rootPayload = new JsonObject();
+                }
+
+                // 5.c) Costruisco l'array JSON delle odds
+                var oddsArray = new JsonArray();
+
+                foreach (var o in oddsForAi)
+                {
+                    var obj = new JsonObject
+                    {
+                        ["Bookmaker"] = o.Bookmaker,       // int (es. 8 = Bet365)
+                        ["BetId"] = o.Betid,
+                        ["Description"] = o.Description,
+                        ["Value"] = o.Value,
+                        ["Odd"] = o.Odd,
+                        ["DateUpdated"] = o.Dateupd
+                    };
+
+                    oddsArray.Add(obj);
+                }
+
+                // 5.d) Inietto l'array "odds" nel payload
+                rootPayload["odds"] = oddsArray;
+
+                // 5.e) Aggiorno la stringa analysisPayload che viene passata al prompt
+                analysisPayload = rootPayload.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = false
+                });
+            }
+            catch
+            {
+                // Se qualcosa va storto, non bloccare la generazione: semplicemente niente odds nel payload
+            }
 
             var prompt = $@"
-Agisci come analista calcistico professionista. Devi generare un testo UNICO, discorsivo e fluido (NO sezioni, NO punti elenco), con linguaggio tecnico ma naturale.
+Agisci come analista calcistico professionista. Devi generare un testo UNICO, discorsivo e fluido (NO sezioni, NO punti elenco), con linguaggio tecnico ma naturale, rivolto a un pubblico che già mastica scommesse e statistiche.
 
 Hai a disposizione:
 - Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni).
 - Stato di forma (W/D/L), contesto classifica e motivazioni.
 - Statistiche già parsate: tiri, corner, falli, cartellini, fuorigioco, gol/over.
-- Linee indicative (totali e team totals).
+- Linee indicative interne (totale match e per squadra).
+- SUGGERIMENTI calcolati a backend (corner, tiri, cartellini).
+- Le QUOTE reali (odds) con le linee di mercato (gol, corner, tiri, team totals).
 - Tutte le medie statistiche disponibili per V/P/L.
 - I dati completi del match.
 - L’esito proprietario che determina in modo ASSOLUTO chi è favorita.
 
 ──────────────────────────────────────────────
-🔒 REGOLE NON NEGOZIABILI
+REGOLE NON NEGOZIABILI
 ──────────────────────────────────────────────
 
-📌 1) USO DELLE LINEE
-Usa solo linee con .5 (1.5, 2.5, 3.5, 4.5…).  
-Se il ragionamento porta a linee intere, arrotonda verso l’alto.
-
-📌 2) NUMERI VIETATI
-Non puoi usare numeri reali delle statistiche.  
-Sono ammessi SOLO:
-- linee gol (2.5, 3.5…)
-- linee corner (6.5, 8.5…)
-- linee tiri (9.5, 11.5…)
-- team totals (Over 1.5 squadra…)
-Questi NON sono considerati numeri vietati.
-
-📌 3) MAPPATURA FORMA
-W = +3, D = +1, L = 0.  
-Descrivi correttamente la sequenza senza errori.
-
-📌 4) FAVORITA/SFAVORITA — OBBLIGO ASSOLUTO
-La squadra favorita NON va dedotta.
-Devi usare ESATTAMENTE l’esito proprietario:
-
-- 1  → favorita CASA
-- 2  → favorita TRASFERTA
-- 1X → favorita CASA
-- X2 → favorita TRASFERTA
-- X  → nessuna favorita
-- 12 → partita aperta (entrambe aggressive)
-
-NON interpretare mai la favorita in base a forma, ranking o qualità.
-
-📌 5) LOGICA STATISTICA V/P/L (OBBLIGATORIA)
-Usa le medie corrette in base all’esito:
-
-- FAVORITA → medie delle VITTORIE
-- SFAVORITA → medie delle SCONFITTE
-- 1X → casa: mix VINTE + PAREGGIATE / ospite: PERSE
-- X2 → ospite: mix VINTE + PAREGGIATE / casa: PERSE
-- X → entrambe PAREGGIATE
-- 12 → mix VINTE/PERSE per entrambe
-
-📌 6) CALCOLO LOGICO DELLE LINEE (TIRI, CORNER, ECC.)
-Il totale del match NON è quello di una singola squadra.
-Ragiona così:
-
-- Esito 1 → (casa V) + (ospite P)
-- Esito 2 → (ospite V) + (casa P)
-- Esito 1X → (casa V/P mix) + (ospite P)
-- Esito X2 → (ospite V/P mix) + (casa P)
-- Esito X → P/P
-- Esito 12 → V/P + V/P
-
-Dopo aver individuato il profilo:
-→ scegli SEMPRE una linea finale 1 o 2 step (.5) più bassa o più alta.
-
-──────────────────────────────────────────────
-🔒 OBBLIGO DI CONTENUTI (NON PUOI CHIUDERE IL TESTO SENZA)
-──────────────────────────────────────────────
-
-Il testo NON è valido finché NON contiene **tutti** questi elementi:
-
-✔️ **1 mercato sui GOL** (Over/Under X.5)  
-✔️ **1 mercato sui CORNER** (Over/Under X.5)  
-✔️ **1 mercato sui TIRI** (Over/Under X.5)  
-
-Devono essere inseriti in modo naturale nel flusso e coerenti con:
-- l’esito proprietario,
-- la logica V/P/L,
-- le linee indicative.
-
-Finché questi 3 elementi non appaiono nel testo, l’analisi non è considerata completa.
+0) NON inventare numeri di quote, handicap o linee. Le quote esistono solo se sono presenti nel blocco JSON ""odds"". Se non trovi una quota, NON la scrivi.
+1) NON inventare linee Over/Under (X.5) che non siano:
+   - ricavate in modo coerente dalle linee indicative interne OPPURE
+   - presenti nelle quote reali in ""odds"" OPPURE
+   - presenti esplicitamente nei suggerimenti interni (corner/tiri/cartellini).
+2) NON cambiare mai direzione (Over/Under) rispetto ai suggerimenti interni calcolati a backend:
+   - se un suggerimento interno dice Over 9.5 corner totali a quota 1.80,
+     tu NON puoi proporre Under 9.5 corner,
+     né Under su una linea equivalente/collegata (tipo 9.0 o 10.0) contro quell’indicazione.
+3) Se i suggerimenti interni su corner/tiri/cartellini sono presenti, li devi considerare PRIORITARI:
+   - non li puoi ignorare;
+   - non puoi ribaltarne il senso;
+   - non puoi proporre un mercato opposto sugli stessi corner/tiri/cartellini.
+4) Il tuo compito NON è cercare nuove idee, ma rendere discorsive e coerenti
+   le indicazioni statistiche e i suggerimenti interni calcolati dal backend.
+5) Quando parli di favorita/sfavorita devi SEMPRE seguire l’ESITO PROPRIETARIO, non le tue deduzioni.
+6) NON citare mai numeri grezzi di medie (tipo ""13.5 corner di media"", ""18 tiri"", ""5.44 corner""):
+   - puoi parlare di volumi (alto/basso), intensità, pressione, dominanza, ecc.,
+   - i numeri precisi devono comparire SOLO dentro linee Over/Under e/o quote, se esistono.
+7) Se non trovi una quota o una linea coerente per un certo mercato (gol/corner/tiri):
+   - puoi restare più generico nel testo discorsivo,
+   - ma nelle tre righe finali GOL/CORNER/TIRI devi comunque proporre una linea X.5 sensata
+     (basandoti sulle linee indicative interne) SENZA inventare la quota.
+8) Se i dati interni indicano chiaramente un volume atteso MOLTO superiore alla linea del book,
+   non puoi scrivere frasi che lo contraddicono (esempio: se la somma attesa di corner è ben sopra 12
+   e il book offre Over 9.5, NON puoi dire che ""potrebbe rimanere sotto 9.5 corner"").
+9) Se non sei sicuro fra due opzioni, segui SEMPRE la direzione implicita nei suggerimenti interni.
+10) Tutto ciò che arriva dai blocchi:
+   - CORNERS_SUGGERITI_INTERNO
+   - SHOTS_SUGGERITI_INTERNO
+   - CARDS_SUGGERITI_INTERNO
+   viene considerato come una sorta di ""pre-pick"" vincolante: puoi solo riscriverlo in modo discorsivo, non modificarne la sostanza.
+11) Se il blocco CARDS_SUGGERITI_INTERNO contiene la frase
+    ""NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI"",
+    ti è VIETATO proporre Over/Under sui cartellini:
+    - niente mercati cartellini nel testo discorsivo,
+    - niente mercati cartellini nelle tre righe finali.
+    Puoi solo fare un cenno generico al fatto che il match potrebbe essere
+    più o meno nervoso, ma SENZA associare una linea o un Over/Under.
 
 ──────────────────────────────────────────────
 CONTESTO MATCH
+──────────────────────────────────────────────
 Lega: {dto.LeagueName}
 Partita: {dto.Home} vs {dto.Away}
 Esito proprietario: {esitoProprietario}
 Calcio d'inizio (locale): {dto.KickoffUtc:yyyy-MM-dd HH:mm}
-
 
 FORMA (ultime 5)
 - {dto.Home}: {homeSeqEmo} (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
@@ -377,18 +465,115 @@ FORMA (ultime 5)
 CONTESTO CAMPIONATO:
 {leagueContext}
 
-DATI PROPRIETARI:
+DATI PROPRIETARI (riassunto):
 {proprietaryContext}
 
-LINEE INDICATIVE:
+LINEE INDICATIVE INTERNE (totali):
 {linesTotal}
+
+LINEE INDICATIVE PER SQUADRA (gol/corner/tiri):
 {linesTeams}
 
-STATISTICHE (ragionamento, NON citare numeri):
+──────────────────────────────────────────────
+SUGGERIMENTI CALCOLATI A BACKEND (VINCOLANTI)
+──────────────────────────────────────────────
+
+Questi blocchi contengono i suggerimenti pre-calcolati dal backend.
+
+NON puoi:
+- cambiare Over in Under (o viceversa) sulle stesse linee;
+- cambiare la linea (es. da 9.5 a 7.5) se espressamente indicata;
+- ignorare completamente questi mercati.
+
+Puoi solo trasformarli in un commento discorsivo e coerente.
+
+SUGGERIMENTI CORNER (VINCOLANTI, NON MODIFICARE IL SENSO):
+{cornerSuggestionsInternal}
+
+SUGGERIMENTI TIRI (VINCOLANTI, NON MODIFICARE IL SENSO):
+{shotsSuggestionsInternal}
+
+SUGGERIMENTI CARTELLINI (VINCOLANTI, NON MODIFICARE IL SENSO):
+{cardsSuggestionsInternal}
+
+──────────────────────────────────────────────
+STATISTICHE (CONTESTO, NO NUMERI GREZZI)
+──────────────────────────────────────────────
+Usa questo blocco per farti un’idea del modo in cui le squadre producono
+gol, tiri, corner, falli, cartellini e fuorigioco. NON riportare i numeri così come sono, ma trasformali in concetti (ritmo alto/basso, pressione, pericolosità, ecc.):
+
 {analysisContext}
 
-";
+SEGNALI SINTETICI (corner/cartellini/falli/fuorigioco/tiri) – SOLO PER IL TUO RAGIONAMENTO:
+{aiSignalsBlock}
 
+CANDIDATI TEAM TOTAL (gol/corner/tiri) – SOLO PER IL TUO RAGIONAMENTO, NON COPIARE ALLA LETTERA:
+{teamCandidatesText}
+
+──────────────────────────────────────────────
+PAYLOAD JSON COMPLETO (STATISTICHE + ODDS)
+NON citarlo nel testo, usalo solo per il ragionamento:
+{analysisPayload}
+
+──────────────────────────────────────────────
+FORMATO DELLA RISPOSTA (OBBLIGATORIO)
+──────────────────────────────────────────────
+
+1️⃣ TESTO DISCORSIVO PRINCIPALE
+Scrivi un unico blocco di 5–12 frasi, SENZA punti elenco, dove:
+
+- Spieghi perché {dto.Home} o {dto.Away} è favorita in base all’ESITO PROPRIETARIO (non dedurre da altro).
+- Colleghi forma, classifica e stile di gioco alle aspettative su:
+  - andamento del match,
+  - gol,
+  - volume di tiri,
+  - volume di corner.
+- Cita almeno una volta {dto.Home} e almeno una volta {dto.Away} quando parli di favorita/sfavorita.
+- Se i suggerimenti interni indicano un mercato forte (es. Over corner, Over tiri, ecc.),
+  inserisci nel testo un riferimento coerente (es. ""è lecito attendersi una partita con molti corner a favore di..."").
+
+2️⃣ TRE RIGHE FINALI STRUTTURATE
+Alla FINE del testo discorsivo, su tre righe separate, DEVI aggiungere ESATTAMENTE questo schema:
+
+GOL: [descrizione mercato sui gol con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
+CORNER: [descrizione mercato sui corner con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
+TIRI: [descrizione mercato sui tiri con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
+
+Regole per queste tre righe:
+
+- Ogni riga DEVE iniziare con la parola esatta: ""GOL:"", ""CORNER:"", ""TIRI:"".
+- Ogni riga DEVE contenere una linea con .5 (1.5, 2.5, 3.5, 9.5, 10.5, ecc.).
+- Specifica sempre se si tratta di:
+  - gol/corner/tiri TOTALI oppure
+  - gol/corner/tiri di una singola squadra (es. {dto.Home} o {dto.Away}).
+- Se nel payload ""odds"" esiste una quota per quella linea e per quel mercato:
+  - scrivi: ""a quota X.XX su Bet365"" (es. ""Over 2.5 gol totali a quota 1.85 su Bet365"").
+  - NON inventare mai Bet365 se il bookmaker è diverso o assente.
+- Se NON trovi una quota per quella linea:
+  - NON inventare la quota numerica,
+  - NON nominare Bet365 o altri bookmaker,
+  - scrivi solo la linea (es. ""Over 2.5 gol totali"").
+
+- Se i suggerimenti interni impongono una certa direzione (es. Over corner totali):
+  - la riga CORNER DEVE essere coerente con quella direzione (non puoi proporre l’Under sulla stessa linea).
+- In caso di dubbio fra più linee possibili, scegli quella che:
+  - è coerente con i suggerimenti interni,
+  - è realmente presente in ""odds"" (se stai usando anche la quota).
+
+3️⃣ CHECK FINALE PRIMA DI RESTITUIRE LA RISPOSTA
+
+Prima di concludere, verifica che:
+
+- Nel testo compaiano correttamente {dto.Home} e {dto.Away}.
+- Non hai scritto frasi che contraddicono chiaramente i suggerimenti interni
+  (es. testo che parla di pochi corner quando i suggerimenti interni spingono forte per Over corner).
+- La riga GOL contiene: Over/Under X.5 gol totali o di squadra.
+- La riga CORNER contiene: Over/Under X.5 corner totali o di squadra.
+- La riga TIRI contiene: Over/Under X.5 tiri totali o di squadra.
+- Se citi una QUOTA X.XX, quella linea esiste davvero dentro ""odds"".
+- Non ci sono numeri di medie grezze (tiri medi, corner medi, ecc.) fuori dalle linee e dalle quote.
+
+RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
 
 
 
@@ -1660,6 +1845,353 @@ STATISTICHE (ragionamento, NON citare numeri):
 
             return (ai.ToString().TrimEnd(), tg.ToString().TrimEnd());
         }
+        // ==========================================
+        // 🔹 CORNER: suggerimenti interni (totali + team)
+        // ==========================================
+        /// <summary>
+        /// Costruisce 2–3 suggerimenti sui corner usando:
+        /// - Esito proprietario (per capire favorita/sfavorita),
+        /// - Analisi corner (medie nelle VITTORIE/PERSE, casa/trasferta),
+        /// - Quote reali da tabella Odds.
+        ///
+        /// Restituisce una stringa tipo:
+        /// CORNERS_SUGGERITI_INTERNO:
+        /// - Totali: Over 9.5 corner totali a quota 1.80
+        /// - Bodo/Glimt: Over 5.5 corner a quota 1.73
+        /// - KFUM Oslo: Over 3.5 corner a quota 1.91 (borderline)
+        ///
+        /// Questa stringa va passata al prompt con l’obbligo:
+        /// "NON cambiare linea/direzione/quote, riscrivi solo in modo discorsivo".
+        /// </summary>
+        // ==========================================
+        // 🔹 CORNER: suggerimenti interni (totali + team)
+        // ==========================================
+        // ==========================================
+        // 🔹 CORNER: suggerimenti interni (totali + team) da linee + odds
+        // ==========================================
+        private static string BuildCornerSuggestions(
+            IndicativeLines baseLines,
+            TeamIndicativeLines teamLines,
+            List<OddsRow> odds,
+            string esitoProprietario,
+            string homeName,
+            string awayName)
+        {
+            if (odds is null || odds.Count == 0)
+                return "CORNERS_SUGGERITI_INTERNO: (nessun mercato corner disponibile)";
+
+            decimal expectedTotalCorners = baseLines.Corners;
+            decimal expectedHomeCorners = teamLines.HomeCorners;
+            decimal expectedAwayCorners = teamLines.AwayCorners;
+
+            // 1) chi è favorita secondo il modello proprietario?
+            esitoProprietario = (esitoProprietario ?? "").Trim().ToUpperInvariant();
+            bool favHome = esitoProprietario is "1" or "1X";
+            bool favAway = esitoProprietario is "2" or "X2";
+
+            // 2) helper parsing linea da stringa "Over 9.5"
+            static bool TryParseLine(string? value, out decimal line)
+            {
+                line = 0m;
+                if (string.IsNullOrWhiteSpace(value)) return false;
+
+                var parts = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var last = parts[^1].Replace(',', '.');
+
+                return decimal.TryParse(
+                    last,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out line
+                );
+            }
+
+            // 3) scegli Over/Under in base a quanto l'expected è distante dalla linea
+            static (string direction, decimal line, decimal odd, bool borderline)? ChooseSide(
+                decimal expected,
+                IEnumerable<OddsRow> candidates,
+                decimal minDeltaStrong = 0.75m,
+                decimal minDeltaBorder = 0.30m)
+            {
+                (string direction, decimal line, decimal odd, bool borderline)? best = null;
+                decimal bestScore = 0m;
+
+                foreach (var o in candidates)
+                {
+                    if (!TryParseLine(o.Value, out var line)) continue;
+
+                    bool isOver = o.Value!.Trim().StartsWith("Over", StringComparison.OrdinalIgnoreCase);
+                    decimal delta = isOver ? expected - line : line - expected;
+
+                    if (delta < minDeltaBorder) continue;
+
+                    bool borderline = delta < minDeltaStrong;
+
+                    if (delta > bestScore)
+                    {
+                        bestScore = delta;
+                        best = (isOver ? "Over" : "Under", line, o.Odd, borderline);
+                    }
+                }
+
+                return best;
+            }
+
+            // 4) separa mercati totali / casa / trasferta
+            var totalOdds = odds
+                .Where(o =>
+                    (o.Description ?? "").IndexOf("Corners", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (o.Description ?? "").IndexOf("Over", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (o.Description ?? "").IndexOf("Under", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (o.Description ?? "").IndexOf("Home", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    (o.Description ?? "").IndexOf("Away", StringComparison.OrdinalIgnoreCase) < 0
+                )
+                .ToList();
+
+            var homeOdds = odds
+                .Where(o =>
+                    (o.Description ?? "").IndexOf("Corners", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (
+                        (o.Description ?? "").IndexOf("Home", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        (o.Value ?? "").IndexOf(homeName, StringComparison.OrdinalIgnoreCase) >= 0
+                    )
+                )
+                .ToList();
+
+            var awayOdds = odds
+                .Where(o =>
+                    (o.Description ?? "").IndexOf("Corners", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    (
+                        (o.Description ?? "").IndexOf("Away", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        (o.Value ?? "").IndexOf(awayName, StringComparison.OrdinalIgnoreCase) >= 0
+                    )
+                )
+                .ToList();
+
+            // 5) pick totali
+            var totalPick = totalOdds.Count > 0
+                ? ChooseSide(expectedTotalCorners, totalOdds)
+                : null;
+
+            // 6) pick squadra (uso comunque le expected singole)
+            var homePick = (homeOdds.Count > 0 && expectedHomeCorners > 0m)
+                ? ChooseSide(expectedHomeCorners, homeOdds, 0.50m, 0.20m)
+                : null;
+
+            var awayPick = (awayOdds.Count > 0 && expectedAwayCorners > 0m)
+                ? ChooseSide(expectedAwayCorners, awayOdds, 0.50m, 0.20m)
+                : null;
+
+            if (totalPick is null && homePick is null && awayPick is null)
+                return "CORNERS_SUGGERITI_INTERNO: (nessun edge chiaro rispetto alle linee di mercato)";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("CORNERS_SUGGERITI_INTERNO:");
+
+            if (totalPick is not null)
+            {
+                var (dir, line, odd, borderline) = totalPick.Value;
+                var note = borderline ? " (edge più sottile)" : "";
+                sb.AppendLine($"- Totali: {dir} {line:0.0} corner totali a quota {odd:0.00}{note}");
+            }
+
+            if (homePick is not null)
+            {
+                var (dir, line, odd, borderline) = homePick.Value;
+                var note = borderline ? " (borderline)" : "";
+                sb.AppendLine($"- {homeName}: {dir} {line:0.0} corner a quota {odd:0.00}{note}");
+            }
+
+            if (awayPick is not null)
+            {
+                var (dir, line, odd, borderline) = awayPick.Value;
+                var note = borderline ? " (borderline)" : "";
+                sb.AppendLine($"- {awayName}: {dir} {line:0.0} corner a quota {odd:0.00}{note}");
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        // ==========================================
+        // 🔹 TIRI: suggerimenti (totali + team) da linee indicative + odds
+        // ==========================================
+        private static string BuildShotsSuggestions(
+            IndicativeLines baseLines,
+            TeamIndicativeLines teamLines,
+            List<OddsRow> odds,
+            string homeName,
+            string awayName)
+        {
+            if (odds is null || odds.Count == 0)
+                return "SHOTS_SUGGERITI_INTERNO: (nessun mercato tiri disponibile)";
+
+            decimal expectedTotalShots = baseLines.Shots;
+            decimal expectedHomeShots = teamLines.HomeShots;
+            decimal expectedAwayShots = teamLines.AwayShots;
+
+            static bool TryParseLine(string? value, out decimal line)
+            {
+                line = 0m;
+                if (string.IsNullOrWhiteSpace(value)) return false;
+                var parts = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var last = parts[^1].Replace(',', '.');
+                return decimal.TryParse(last, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out line);
+            }
+
+            static (string direction, decimal line, decimal odd)? ChooseSideShots(
+                decimal expected,
+                IEnumerable<OddsRow> candidates,
+                decimal minDelta = 1.0m)
+            {
+                (string direction, decimal line, decimal odd)? best = null;
+                decimal bestScore = 0m;
+
+                foreach (var o in candidates)
+                {
+                    if (!TryParseLine(o.Value, out var line)) continue;
+
+                    bool isOver = o.Value!.Trim().StartsWith("Over", StringComparison.OrdinalIgnoreCase);
+                    decimal delta = isOver ? expected - line : line - expected;
+
+                    if (delta < minDelta) continue;
+
+                    if (delta > bestScore)
+                    {
+                        bestScore = delta;
+                        best = (isOver ? "Over" : "Under", line, o.Odd);
+                    }
+                }
+
+                return best;
+            }
+
+            // cerco totali / casa / ospite in Description
+            var totalOdds = odds
+                .Where(o => (o.Description ?? "").IndexOf("Shots", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            (o.Description ?? "").IndexOf("Home", StringComparison.OrdinalIgnoreCase) < 0 &&
+                            (o.Description ?? "").IndexOf("Away", StringComparison.OrdinalIgnoreCase) < 0)
+                .ToList();
+
+            var homeOdds = odds
+                .Where(o => (o.Description ?? "").IndexOf("Shots", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            (o.Description ?? "").IndexOf("Home", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            var awayOdds = odds
+                .Where(o => (o.Description ?? "").IndexOf("Shots", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            (o.Description ?? "").IndexOf("Away", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            var totalPick = (totalOdds.Count > 0)
+                ? ChooseSideShots(expectedTotalShots, totalOdds)
+                : null;
+
+            var homePick = (homeOdds.Count > 0 && expectedHomeShots > 0m)
+                ? ChooseSideShots(expectedHomeShots, homeOdds, 0.7m)
+                : null;
+
+            var awayPick = (awayOdds.Count > 0 && expectedAwayShots > 0m)
+                ? ChooseSideShots(expectedAwayShots, awayOdds, 0.7m)
+                : null;
+
+            if (totalPick is null && homePick is null && awayPick is null)
+                return "SHOTS_SUGGERITI_INTERNO: (nessun edge chiaro sui tiri)";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("SHOTS_SUGGERITI_INTERNO:");
+
+            if (totalPick is not null)
+            {
+                var (dir, line, odd) = totalPick.Value;
+                sb.AppendLine($"- Totali: {dir} {line:0.0} tiri totali a quota {odd:0.00}");
+            }
+
+            if (homePick is not null)
+            {
+                var (dir, line, odd) = homePick.Value;
+                sb.AppendLine($"- {homeName}: {dir} {line:0.0} tiri a quota {odd:0.00}");
+            }
+
+            if (awayPick is not null)
+            {
+                var (dir, line, odd) = awayPick.Value;
+                sb.AppendLine($"- {awayName}: {dir} {line:0.0} tiri a quota {odd:0.00}");
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+        // ==========================================
+        // 🔹 CARTELLINI: solo totali (per ora) da linee + odds
+        // ==========================================
+        private static string BuildCardsSuggestions(
+            IndicativeLines baseLines,
+            List<OddsRow> odds)
+        {
+            if (odds is null || odds.Count == 0)
+                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (nessuna quota disponibile)";
+
+
+            decimal expectedCards = baseLines.Cards;
+
+            static bool TryParseLine(string? value, out decimal line)
+            {
+                line = 0m;
+                if (string.IsNullOrWhiteSpace(value)) return false;
+                var parts = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var last = parts[^1].Replace(',', '.');
+                return decimal.TryParse(last, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out line);
+            }
+
+            static (string direction, decimal line, decimal odd)? ChooseSideCards(
+                decimal expected,
+                IEnumerable<OddsRow> candidates,
+                decimal minDelta = 0.5m)
+            {
+                (string direction, decimal line, decimal odd)? best = null;
+                decimal bestScore = 0m;
+
+                foreach (var o in candidates)
+                {
+                    if (!TryParseLine(o.Value, out var line)) continue;
+
+                    bool isOver = o.Value!.Trim().StartsWith("Over", StringComparison.OrdinalIgnoreCase);
+                    decimal delta = isOver ? expected - line : line - expected;
+
+                    if (delta < minDelta) continue;
+
+                    if (delta > bestScore)
+                    {
+                        bestScore = delta;
+                        best = (isOver ? "Over" : "Under", line, o.Odd);
+                    }
+                }
+
+                return best;
+            }
+
+            var cardsOdds = odds
+                .Where(o => (o.Description ?? "").IndexOf("Cards", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            if (cardsOdds.Count == 0)
+                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (nessuna linea cartellini nelle quote)";
+
+
+            var pick = ChooseSideCards(expectedCards, cardsOdds);
+
+            if (pick is null || expectedCards < 2.0m)
+                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (volume atteso basso / nessun edge)";
+
+
+            var (dirFinal, lineFinal, oddFinal) = pick.Value;
+
+            return
+                $"CARDS_SUGGERITI_INTERNO:\n" +
+                $"- Totali: {dirFinal} {lineFinal:0.0} cartellini totali a quota {oddFinal:0.00}";
+        }
+
 
         // =======================
         // EMOJI HELPER
@@ -1684,18 +2216,30 @@ STATISTICHE (ragionamento, NON citare numeri):
                 );
             }
         }
+
         // ===== NUMERIC LINE HELPERS =====
         private static decimal? ParseDec(string? s)
         {
+            // Usa la versione robusta che abbiamo definito sopra (TryParseDec),
+            // che pulisce % , testo extra, parentesi, ecc.
+            var d = TryParseDec(s);
+            if (d.HasValue) return d;
+
+            // Fallback di sicurezza (quasi mai usato, ma non fa male)
             if (string.IsNullOrWhiteSpace(s)) return null;
             s = s.Trim().Replace("%", "");
-            // gestisci virgola italiana
-            if (decimal.TryParse(s, System.Globalization.NumberStyles.Any, new System.Globalization.CultureInfo("it-IT"), out var it))
+
+            if (decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+                new System.Globalization.CultureInfo("it-IT"), out var it))
                 return it;
-            if (decimal.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var inv))
+
+            if (decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var inv))
                 return inv;
+
             return null;
         }
+
 
         // Trova coppie "Fatti/Effettuati" e "Subiti/Concessi" per HOME e AWAY in un JsonObject di metriche.
         private static (decimal? fattiHome, decimal? subitiHome, decimal? fattiAway, decimal? subitiAway) ExtractForAgainst(JsonObject? obj)
@@ -1976,9 +2520,14 @@ STATISTICHE (ragionamento, NON citare numeri):
             var cornersLine = Quantize(totalCorners, 0.5m, 7.5m, 12.5m); // range tipico 7.5–12.5
 
             // 3) Cartellini
+            // 3) Cartellini
             var (caFh, caSh, caFa, caSa) = ExtractForAgainst(cards);
             var totalCards = Blend(caFh, caSa) + Blend(caFa, caSh);
-            var cardsLine = Quantize(totalCards, 0.5m, 3.5m, 7.5m); // 4.5–6.5 tipico, lasciamo margine
+
+            // Se i dati dicono pochissimi cartellini, NON forziamo il minimo a 3.5.
+            // Range più realistico: da 1.5 a 7.5.
+            var cardsLine = Quantize(totalCards, 0.5m, 1.5m, 7.5m);
+
 
             // 4) Tiri
             var (sFh, sSh, sFa, sSa) = ExtractForAgainst(shots);

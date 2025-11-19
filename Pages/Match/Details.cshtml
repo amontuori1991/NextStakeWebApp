@@ -3,6 +3,7 @@
 @using System.Text.Json
 @using System.Text.Encodings.Web
 @using System.Text.Unicode
+@using System.Linq
 
 @{
     ViewData["Title"] = "Dettaglio Match";
@@ -93,45 +94,66 @@
         </script>
 
 
-    @{
-            var aiPayloadObj = new
+@{
+    var aiPayloadObj = new
+    {
+        matchId = Model.Data.MatchId,
+        leagueId = Model.Data.LeagueId,
+        season = Model.Data.Season,
+        home = Model.Data.Home,
+        away = Model.Data.Away,
+
+        // Statistiche analisi
+        goals = Model.Data.Goals?.Metrics,
+        shots = Model.Data.Shots?.Metrics,
+        corners = Model.Data.Corners?.Metrics,
+        fouls = Model.Data.Fouls?.Metrics,
+        cards = Model.Data.Cards?.Metrics,
+        offsides = Model.Data.Offsides?.Metrics,
+
+        // 🔥 Pronostico proprietario
+        prediction = new
+        {
+            esito = Model.Data.Prediction?.Esito,
+            ggNg = Model.Data.Prediction?.GG_NG,
+            overUnder = Model.Data.Prediction?.OverUnderRange,
+            combo = Model.Data.Prediction?.ComboFinale,
+            goalSimCasa = Model.Data.Prediction?.GoalSimulatoCasa,
+            goalSimOspite = Model.Data.Prediction?.GoalSimulatoOspite
+        },
+
+        // 🧠 Quote (linee) passate all'IA
+        // Ogni elemento ha:
+        // - Description (es. "Corners Over Under", "Home Corners Over/Under", "Away Corners Over/Under")
+        // - Value (es. "Over 9.5", "Under 9.5")
+        // - Odd (quota numerica)
+        odds = Model.Data.Odds?
+            .Select(o => new
             {
-                matchId = Model.Data.MatchId,
-                leagueId = Model.Data.LeagueId,
-                season = Model.Data.Season,
-                home = Model.Data.Home,
-                away = Model.Data.Away,
+                o.Bookmaker,
+                o.BetId,
+                o.Description,
+                o.Value,
+                o.Odd,
+                DateUpdated = o.DateUpdated.ToString("O") // ISO 8601
+            })
+            .ToList()
+    };
 
-                // Statistiche analisi
-                goals = Model.Data.Goals?.Metrics,
-                shots = Model.Data.Shots?.Metrics,
-                corners = Model.Data.Corners?.Metrics,
-                fouls = Model.Data.Fouls?.Metrics,
-                cards = Model.Data.Cards?.Metrics,
-                offsides = Model.Data.Offsides?.Metrics,
-
-                // 🔥 Pronostico proprietario
-                prediction = new
-                {
-                    esito = Model.Data.Prediction?.Esito,
-                    ggNg = Model.Data.Prediction?.GG_NG,
-                    overUnder = Model.Data.Prediction?.OverUnderRange,
-                    combo = Model.Data.Prediction?.ComboFinale,
-                    goalSimCasa = Model.Data.Prediction?.GoalSimulatoCasa,
-                    goalSimOspite = Model.Data.Prediction?.GoalSimulatoOspite
-                }
-            };
-
-
-        // Encoder “safe” che non scappa i caratteri latini/italiani
-        var aiPayloadJson = JsonSerializer.Serialize(
+    // Encoder “safe” che non scappa i caratteri latini/italiani
+    var aiPayloadJson = JsonSerializer.Serialize(
         aiPayloadObj,
         new JsonSerializerOptions
         {
-            Encoder = JavaScriptEncoder.Create(UnicodeRanges.BasicLatin, UnicodeRanges.Latin1Supplement, UnicodeRanges.LatinExtendedA)
+            Encoder = JavaScriptEncoder.Create(
+                UnicodeRanges.BasicLatin,
+                UnicodeRanges.Latin1Supplement,
+                UnicodeRanges.LatinExtendedA
+            )
         }
-        );
-    }
+    );
+}
+
 
     <!-- Azioni -->
     <div class="mb-3 d-flex gap-2">
