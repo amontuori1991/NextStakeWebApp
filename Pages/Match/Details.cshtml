@@ -305,60 +305,133 @@
     <div class="tab-content border-start border-end border-bottom p-3">
         <!-- PRONOSTICI: Pronostici consigliati -->
         <div class="tab-pane fade show active" id="tab-picks" role="tabpanel">
-            @if (Model.Data.Prediction is null)
-            {
-                <div class="text-muted">Nessun pronostico disponibile.</div>
-            }
-            else
-            {
-                var p = Model.Data.Prediction;
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <ul class="list-group">
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <ul class="list-group">
-                            <li class="list-group-item d-flex justify-content-between">
-                                <span><strong>Goal simulati</strong></span>
-                                <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
-                            <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
-                                <li class="list-group-item d-flex justify-content-between">
-                                    <span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span>
-                                </li>
-                        </ul>
-                    </div>
-                </div>
+     @if (Model.Data.Prediction is null)
+    {
+        <div class="text-muted">Nessun pronostico disponibile.</div>
+    }
+    else
+    {
+        var p = Model.Data.Prediction;
 
-                    @if (User.HasClaim("plan", "1"))
-                    {
-                        <form method="post" asp-page-handler="SendPrediction" class="mt-3">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
-
-                            <div class="row g-2 align-items-end">
-                                <div class="col-md-8">
-                                    <label class="form-label">Pronostico Consigliato (modificabile prima dell'invio)</label>
-                                    <input name="customPick" class="form-control" value="@Model.Data.Prediction?.ComboFinale" />
-                                </div>
-                                <div class="col-md-4 text-end">
-                                    <button type="submit" class="btn btn-success w-100">🚀 Invia su Telegram</button>
-                                </div>
-                            </div>
-                        </form>
-                    }
-                }
+        <div class="row g-3">
+            <div class="col-md-6">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Esito</strong></span><span>@p.Esito</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>GG/NG</strong></span><span>@p.GG_NG</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Over/Under</strong></span><span>@p.OverUnderRange</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Combo</strong></span><span>@p.ComboFinale</span></li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span><strong>Goal simulati</strong></span>
+                        <span>@p.GoalSimulatoCasa - @p.GoalSimulatoOspite (Tot: @p.TotaleGoalSimulati)</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 1.5</strong></span><span>@p.Over1_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 2.5</strong></span><span>@p.Over2_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>% Over 3.5</strong></span><span>@p.Over3_5%</span></li>
+                    <li class="list-group-item d-flex justify-content-between"><span><strong>Multigoal Casa</strong></span><span>@p.MultigoalCasa</span></li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span><strong>Multigoal Ospite</strong></span><span>@p.MultigoalOspite</span>
+                    </li>
+                </ul>
+            </div>
         </div>
 
+        @* 🔹 Quote collegate ai pronostici (solo BetId indicati) *@
+        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+        {
+            var allowedBetIds = new[] { 1, 2, 3, 5, 6, 7, 8, 10, 12, 13, 14, 16, 17, 25, 26, 27, 28, 34, 35, 36, 39, 47, 48, 49, 50, 72 };
+
+            var filteredOdds = Model.Data.Odds
+                .Where(o => allowedBetIds.Contains(o.BetId))
+                .ToList();
+
+            if (filteredOdds.Any())
+            {
+                var markets = filteredOdds
+                    .GroupBy(o => new { o.BetId, o.Description })
+                    .OrderBy(g => g.Key.BetId)
+                    .ToList();
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        Quote correlate ai pronostici
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center mb-3">
+                            <div class="col-md-6">
+                                <label for="pronostici-odds-select" class="form-label mb-1 fw-semibold">
+                                    Seleziona mercato
+                                </label>
+                                <select id="pronostici-odds-select" class="form-select form-select-sm">
+                                    <option value="">-- Seleziona un mercato --</option>
+                                    @foreach (var market in markets)
+                                    {
+                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                        <option value="@key">
+                                            @desc (@market.Key.BetId)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+<div class="table-responsive d-none" id="pronostici-odds-wrapper">
+    <table class="table table-sm table-striped align-middle mb-0" id="pronostici-odds-table">
+        <thead>
+            <tr>
+                <th scope="col">Selezione</th>
+                <th scope="col">Quota</th>
+                <th scope="col">Bookmaker</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var market in markets)
+            {
+                var key = $"{market.Key.BetId}_{market.Key.Description}";
+                foreach (var o in market.OrderBy(o => o.Value))
+                {
+                    <tr data-market-key="@key">
+                        <td>@o.Value</td>
+                        <td>@o.Odd.ToString("0.00")</td>
+                        <td>@o.Bookmaker</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+                    </div>
+                </div>
+            }
+        }
+
+        @* 🔹 Form invio su Telegram (rimane come prima) *@
+        @if (User.HasClaim("plan", "1"))
+        {
+            <form method="post" asp-page-handler="SendPrediction" class="mt-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-8">
+                        <label class="form-label">Pronostico Consigliato (modificabile prima dell'invio)</label>
+                        <input name="customPick" class="form-control" value="@Model.Data.Prediction?.ComboFinale" />
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button type="submit" class="btn btn-success w-100">🚀 Invia su Telegram</button>
+                    </div>
+                </div>
+            </form>
+        }
+    }
+
+</div>
         <!-- PRONOSTICI: H2H (tutti) -->
         <div class="tab-pane fade" id="tab-h2h-all" role="tabpanel">
             <div class="card card-body text-center">
@@ -1330,7 +1403,7 @@
         </div>
     </div>
 
-    <!-- Script per gruppi -->
+     <!-- Script per gruppi -->
     <script>
         (function () {
             const btnPron = document.getElementById('btnGroupPron');
@@ -1366,19 +1439,20 @@
         })();
     </script>
 
+    </div> <!-- chiude .container -->
+</div> <!-- chiude .details-page -->
 
+<!-- Overlay caricamento AI -->
+<div id="aiLoadingOverlay" class="loading-overlay d-none" aria-hidden="true">
+    <div class="loading-panel">
+        <div class="spinner-border" role="status" aria-label="Caricamento"></div>
+        <div id="aiLoadingMessage" class="fw-semibold">Caricamento…</div>
     </div>
-    <!-- Overlay caricamento AI -->
-    <div id="aiLoadingOverlay" class="loading-overlay d-none" aria-hidden="true">
-        <div class="loading-panel">
-            <div class="spinner-border" role="status" aria-label="Caricamento"></div>
-            <div id="aiLoadingMessage" class="fw-semibold">Caricamento…</div>
-        </div>
-    </div>
+</div>
 
-    @section Scripts {
-        <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
-        <script>
+@section Scripts {
+    <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
+    <script>
         (function () {
             const select = document.getElementById('betid-filter');
             const rows = document.querySelectorAll('#odds-table tbody tr');
@@ -1396,9 +1470,37 @@
                 });
             });
         })();
+
+        (function () {
+            const select  = document.getElementById('pronostici-odds-select');
+            const wrapper = document.getElementById('pronostici-odds-wrapper');
+            const rows    = document.querySelectorAll('#pronostici-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updatePronosticiOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updatePronosticiOdds);
+            updatePronosticiOdds();
+        })();
     </script>
-    }
-</div>
+}
+
 @section Styles {
     <text>
         <style>
@@ -1560,6 +1662,54 @@
                 .loading-panel .spinner-border {
                     color: #fff;
                 }
+
+                            /* Fix leggibilità opzioni select in tema scuro */
+            .details-page .form-select option {
+                background-color: #1a2230;
+                color: #e9edf3;
+            }
+            /* Evita che i tab si tengano l'altezza massima mai avuta (buco sotto i contenuti) */
+.details-page .tab-content,
+.details-page .tab-pane {
+    min-height: 0 !important;
+    height: auto !important;
+}
+/* 🔨 Hard reset di altezze e margini sulla pagina dettagli */
+.details-page {
+    min-height: 0 !important;
+    height: auto !important;
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Il container centrale non deve forzare altezza */
+.details-page > .container {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 1rem !important;
+}
+
+/* I tab non devono tenersi l'altezza “massima” mai avuta */
+.details-page .tab-content {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0.5rem !important;
+}
+
+/* Stessa cosa per ogni tab-pane */
+.details-page .tab-pane {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-bottom: 0 !important;
+}
+
+/* Elimina eventuali margini collassati sotto l’ultimo elemento */
+.details-page .tab-pane > :last-child {
+    margin-bottom: 0 !important;
+}
+
         </style>
     </text>
 }
