@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -1132,6 +1133,83 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
 
             await _telegram.SendMessageAsync(topicId, message);
             TempData["StatusMessage"] = "✅ Pronostico inviato su Telegram.";
+            return RedirectToPage(new { id });
+        }
+        public async Task<IActionResult> OnPostSendOddsIdeaAsync(
+            long id,
+            string topicName,
+            int betId,
+            string marketDescription,
+            string selectionValue,
+            string odd)
+        {
+            // 🔐 Controllo plan = 1
+            var hasPlan1 = User.HasClaim(c =>
+                (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
+
+            if (!hasPlan1)
+                return Forbid();
+
+            // 🎯 Recupero Topic Telegram (come fai negli altri handler)
+            if (string.IsNullOrWhiteSpace(topicName))
+                topicName = "PronosticiDaPubblicare";
+
+            long.TryParse(_config[$"Telegram:Topics:{topicName}"], out var topicId);
+
+            // 📌 Carico i dati della partita ESATTAMENTE come in OnPostSendExchangeAsync
+            var dto = await (
+                from mm in _read.Matches
+                join lg in _read.Leagues on mm.LeagueId equals lg.Id
+                join th in _read.Teams on mm.HomeId equals th.Id
+                join ta in _read.Teams on mm.AwayId equals ta.Id
+                where mm.Id == id
+                select new
+                {
+                    LeagueName = lg.Name,
+                    CountryCode = lg.CountryCode,
+                    KickoffUtc = mm.Date,
+                    Home = th.Name ?? "",
+                    Away = ta.Name ?? ""
+                }
+            ).AsNoTracking().FirstOrDefaultAsync();
+
+            if (dto is null)
+            {
+                TempData["StatusMessage"] = "Partita non trovata per l’invio della quota.";
+                return RedirectToPage(new { id });
+            }
+
+            string flag = EmojiHelper.FromCountryCode(dto.CountryCode);
+
+            // Format della quota
+            if (!decimal.TryParse(
+                odd,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out var oddDec))
+            {
+                oddDec = 0;
+            }
+
+            string oddFormatted = oddDec.ToString("0.00", CultureInfo.InvariantCulture);
+
+            // 📄 Pronostico da inviare
+            string pronostico = string.IsNullOrWhiteSpace(marketDescription)
+                ? selectionValue
+                : $"{selectionValue} {marketDescription}";
+
+            // 📝 Messaggio Telegram
+            string message =
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"⚽️ {dto.Home} - {dto.Away}\n" +
+                $"Pronostico: {pronostico} - Quota: {oddFormatted}";
+
+            // 📲 Invio Telegram usando IL TUO servizio
+            await _telegram.SendMessageAsync(topicId, message);
+
+            TempData["StatusMessage"] = "Quota inviata al canale Idee!";
             return RedirectToPage(new { id });
         }
 
@@ -2519,7 +2597,7 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
             var totalCorners = Blend(cFh, cSa) + Blend(cFa, cSh);
             var cornersLine = Quantize(totalCorners, 0.5m, 7.5m, 12.5m); // range tipico 7.5–12.5
 
-            // 3) Cartellini
+            // 3) Cartellinipublic class DetailsModel : PageModel
             // 3) Cartellini
             var (caFh, caSh, caFa, caSa) = ExtractForAgainst(cards);
             var totalCards = Blend(caFh, caSa) + Blend(caFa, caSh);

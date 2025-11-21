@@ -386,6 +386,7 @@
                 <th scope="col">Selezione</th>
                 <th scope="col">Quota</th>
                 <th scope="col">Bookmaker</th>
+                <th scope="col" class="text-end">Telegram</th>
             </tr>
         </thead>
         <tbody>
@@ -398,12 +399,39 @@
                         <td>@o.Value</td>
                         <td>@o.Odd.ToString("0.00")</td>
                         <td>@o.Bookmaker</td>
+                        <td class="text-end">
+                            @* 🔐 Bottone visibile solo a chi ha plan = 1, come gli altri tasti *@
+                            @if (User.HasClaim("plan", "1"))
+                            {
+                                <form method="post"
+                                      asp-page-handler="SendOddsIdea"
+                                      class="d-inline">
+                                    @Html.AntiForgeryToken()
+
+                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                    @* stesso topic che usi per l’invio pronostico *@
+                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                    <input type="hidden" name="selectionValue" value="@o.Value" />
+                                    <input type="hidden" name="odd" value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-success"
+                                            title="Invia">
+                                        🚀
+                                    </button>
+                                </form>
+                            }
+                        </td>
                     </tr>
                 }
             }
         </tbody>
     </table>
 </div>
+
 
                     </div>
                 </div>
