@@ -398,7 +398,17 @@
                     <tr data-market-key="@key">
                         <td>@o.Value</td>
                         <td>@o.Odd.ToString("0.00")</td>
-                        <td>@o.Bookmaker</td>
+                        <td>
+    @* Mostra logo Bet365 se l'id è 8, altrimenti fallback al valore grezzo *@
+    @if (o.Bookmaker == 8)
+    {
+        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+    }
+    else
+    {
+        @o.Bookmaker
+    }
+</td>
                         <td class="text-end">
                             @* 🔐 Bottone visibile solo a chi ha plan = 1, come gli altri tasti *@
                             @if (User.HasClaim("plan", "1"))
@@ -1736,6 +1746,12 @@
 /* Elimina eventuali margini collassati sotto l’ultimo elemento */
 .details-page .tab-pane > :last-child {
     margin-bottom: 0 !important;
+}
+.details-page .bookmaker-logo {
+    height: 30px;      /* abbastanza piccolo da non alzare la riga */
+    width: auto;
+    display: inline-block;
+    vertical-align: middle;
 }
 
         </style>
