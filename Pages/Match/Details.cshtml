@@ -1108,8 +1108,8 @@
         decimal? pronCornersAway = null;
         decimal? pronCornersTotal = null;
 
-        var esitoCorners = Model.Data.Prediction?.Esito;
-        var cornersMetrics = Model.Data.Corners?.Metrics;
+        var esitoCorners    = Model.Data.Prediction?.Esito?.Trim().ToUpperInvariant();
+        var cornersMetrics  = Model.Data.Corners?.Metrics;
 
         if (!string.IsNullOrWhiteSpace(esitoCorners) && cornersMetrics != null && cornersMetrics.Count > 0)
         {
@@ -1128,14 +1128,14 @@
                     {
                         if (raw is null) continue;
 
-                        // 🔧 Parsing + normalizzazione scala
+                        var s = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture) ?? "";
                         if (decimal.TryParse(
-                                Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture),
+                                s,
                                 System.Globalization.NumberStyles.Any,
                                 System.Globalization.CultureInfo.InvariantCulture,
                                 out var val))
                         {
-                            // Se è evidentemente una media "x100" (es. 420 → 4.20)
+                            // Se la media è salvata "x100" (es. 420 → 4.20)
                             if (val > 50m) val /= 100m;
                             return val;
                         }
@@ -1145,40 +1145,70 @@
                 return null;
             };
 
-            var homeWon  = getCornersMetric("Partite Vinte",      "Home");
-            var homeDraw = getCornersMetric("Partite Pareggiate", "Home");
-            var homeLost = getCornersMetric("Partite Perse",      "Home");
+            // Medie per risultato
+            var homeWon   = getCornersMetric("Partite Vinte",      "Home");
+            var homeDraw  = getCornersMetric("Partite Pareggiate", "Home");
+            var homeLost  = getCornersMetric("Partite Perse",      "Home");
 
-            var awayWon  = getCornersMetric("Partite Vinte",      "Away");
-            var awayDraw = getCornersMetric("Partite Pareggiate", "Away");
-            var awayLost = getCornersMetric("Partite Perse",      "Away");
+            var awayWon   = getCornersMetric("Partite Vinte",      "Away");
+            var awayDraw  = getCornersMetric("Partite Pareggiate", "Away");
+            var awayLost  = getCornersMetric("Partite Perse",      "Away");
+
+            // Medie per contesto campo (a favore)
+            // Casa: corner fatti in casa
+            var homeHome  = getCornersMetric("In Casa",            "Home");
+            // Ospite: corner fatti in trasferta
+            var awayAway  = getCornersMetric("Fuoricasa",          "Away");
 
             switch (esitoCorners)
             {
                 case "1":
-                    pronCornersHome = homeWon;
-                    pronCornersAway = awayLost;
-                    break;
+                    // Casa favorita → (vittorie + corner fatti in casa) / 2
+                    if (homeWon.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeWon ?? 0m) + (homeHome ?? 0m)) / 2m;
 
-                case "1X":
-                    if (homeWon.HasValue || homeDraw.HasValue)
-                        pronCornersHome = ((homeWon ?? 0m) + (homeDraw ?? 0m)) / 2m;
-
-                    if (awayLost.HasValue || awayDraw.HasValue)
-                        pronCornersAway = ((awayLost ?? 0m) + (awayDraw ?? 0m)) / 2m;
-                    break;
-
-                case "X2":
-                    if (homeLost.HasValue || homeDraw.HasValue)
-                        pronCornersHome = ((homeLost ?? 0m) + (homeDraw ?? 0m)) / 2m;
-
-                    if (awayWon.HasValue || awayDraw.HasValue)
-                        pronCornersAway = ((awayWon ?? 0m) + (awayDraw ?? 0m)) / 2m;
+                    // Ospite sfavorita → (sconfitte + corner fatti in trasferta) / 2
+                    if (awayLost.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayLost ?? 0m) + (awayAway ?? 0m)) / 2m;
                     break;
 
                 case "2":
-                    pronCornersHome = homeLost;
-                    pronCornersAway = awayWon;
+                    // Casa sfavorita → (sconfitte + corner fatti in casa) / 2
+                    if (homeLost.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeLost ?? 0m) + (homeHome ?? 0m)) / 2m;
+
+                    // Ospite favorita → (vittorie + corner fatti in trasferta) / 2
+                    if (awayWon.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayWon ?? 0m) + (awayAway ?? 0m)) / 2m;
+                    break;
+
+                case "1X":
+                    // Casa: (vittorie + pareggi + corner fatti in casa) / 3
+                    if (homeWon.HasValue || homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeHome ?? 0m)) / 3m;
+
+                    // Ospite: (sconfitte + pareggi + corner fatti in trasferta) / 3
+                    if (awayLost.HasValue || awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayAway ?? 0m)) / 3m;
+                    break;
+
+                case "X2":
+                    // Casa: (sconfitte + pareggi + corner fatti in casa) / 3
+                    if (homeLost.HasValue || homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeLost ?? 0m) + (homeDraw ?? 0m) + (homeHome ?? 0m)) / 3m;
+
+                    // Ospite: (vittorie + pareggi + corner fatti in trasferta) / 3
+                    if (awayWon.HasValue || awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayWon ?? 0m) + (awayDraw ?? 0m) + (awayAway ?? 0m)) / 3m;
+                    break;
+
+                case "X":
+                    // Se vuoi considerare anche X: media tra pareggi e contesto campo
+                    if (homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeDraw ?? 0m) + (homeHome ?? 0m)) / 2m;
+
+                    if (awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayDraw ?? 0m) + (awayAway ?? 0m)) / 2m;
                     break;
             }
 
@@ -1186,6 +1216,7 @@
                 pronCornersTotal = pronCornersHome + pronCornersAway;
         }
     }
+
 
     @if (pronCornersHome.HasValue || pronCornersAway.HasValue || pronCornersTotal.HasValue)
     {
@@ -1914,6 +1945,113 @@
                     Calcolati da Esito (@esitoFouls) usando le medie falli nelle partite vinte / pareggiate / perse.
                 </small>
             </div>
+                @* 🔹 QUOTE FALLI (da Odds, Description LIKE '%Foul%') *@
+    @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+    {
+        var foulOdds = Model.Data.Odds
+            .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                        && o.Description.IndexOf("foul", StringComparison.OrdinalIgnoreCase) >= 0)
+            .ToList();
+
+        if (foulOdds.Any())
+        {
+            var foulMarkets = foulOdds
+                .GroupBy(o => new { o.BetId, o.Description })
+                .OrderBy(g => g.Key.BetId)
+                .ToList();
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    Quote Falli (dati dai bookmaker)
+                </div>
+
+                <div class="card-body">
+
+                    <div class="row g-3 align-items-center mb-3">
+                        <div class="col-md-6">
+                            <label for="foul-odds-select" class="form-label mb-1 fw-semibold">
+                                Seleziona mercato Falli
+                            </label>
+                            <select id="foul-odds-select" class="form-select form-select-sm">
+                                <option value="">-- Seleziona un mercato --</option>
+                                @foreach (var market in foulMarkets)
+                                {
+                                    var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                    var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                    <option value="@key">
+                                        @desc (@market.Key.BetId)
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive d-none" id="foul-odds-wrapper">
+                        <table class="table table-sm table-striped align-middle mb-0" id="foul-odds-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Selezione</th>
+                                    <th scope="col">Quota</th>
+                                    <th scope="col">Bookmaker</th>
+                                    <th scope="col" class="text-end">Telegram</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var market in foulMarkets)
+                                {
+                                    var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                    foreach (var o in market.OrderBy(o => o.Value))
+                                    {
+                                        <tr data-market-key="@key">
+                                            <td>@o.Value</td>
+                                            <td>@o.Odd.ToString("0.00")</td>
+                                            <td>
+                                                @if (o.Bookmaker == 8)
+                                                {
+                                                    <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                }
+                                                else
+                                                {
+                                                    @o.Bookmaker
+                                                }
+                                            </td>
+                                            <td class="text-end">
+                                                @if (User.HasClaim("plan", "1"))
+                                                {
+                                                    <form method="post"
+                                                          asp-page-handler="SendOddsIdea"
+                                                          class="d-inline">
+                                                        @Html.AntiForgeryToken()
+
+                                                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                        <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                        <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                        <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                        <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                        <input type="hidden" name="odd"
+                                                               value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                        <button type="submit"
+                                                                class="btn btn-sm btn-outline-success"
+                                                                title="Invia su Telegram">
+                                                            🚀
+                                                        </button>
+                                                    </form>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        }
+    }
+
         </div>
     }
 
@@ -2134,6 +2272,113 @@
                     Calcolati da Esito (@esitoOffs) usando le medie fuorigioco nelle partite vinte / pareggiate / perse.
                 </small>
             </div>
+                @* 🔹 QUOTE FUORIGIOCO (da Odds, Description LIKE '%Offside%') *@
+    @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+    {
+        var offsidesOdds = Model.Data.Odds
+            .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                        && o.Description.IndexOf("offside", StringComparison.OrdinalIgnoreCase) >= 0)
+            .ToList();
+
+        if (offsidesOdds.Any())
+        {
+            var offsidesMarkets = offsidesOdds
+                .GroupBy(o => new { o.BetId, o.Description })
+                .OrderBy(g => g.Key.BetId)
+                .ToList();
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    Quote Fuorigioco (dati dai bookmaker)
+                </div>
+
+                <div class="card-body">
+
+                    <div class="row g-3 align-items-center mb-3">
+                        <div class="col-md-6">
+                            <label for="offsides-odds-select" class="form-label mb-1 fw-semibold">
+                                Seleziona mercato Fuorigioco
+                            </label>
+                            <select id="offsides-odds-select" class="form-select form-select-sm">
+                                <option value="">-- Seleziona un mercato --</option>
+                                @foreach (var market in offsidesMarkets)
+                                {
+                                    var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                    var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                    <option value="@key">
+                                        @desc (@market.Key.BetId)
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive d-none" id="offsides-odds-wrapper">
+                        <table class="table table-sm table-striped align-middle mb-0" id="offsides-odds-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Selezione</th>
+                                    <th scope="col">Quota</th>
+                                    <th scope="col">Bookmaker</th>
+                                    <th scope="col" class="text-end">Telegram</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var market in offsidesMarkets)
+                                {
+                                    var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                    foreach (var o in market.OrderBy(o => o.Value))
+                                    {
+                                        <tr data-market-key="@key">
+                                            <td>@o.Value</td>
+                                            <td>@o.Odd.ToString("0.00")</td>
+                                            <td>
+                                                @if (o.Bookmaker == 8)
+                                                {
+                                                    <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                }
+                                                else
+                                                {
+                                                    @o.Bookmaker
+                                                }
+                                            </td>
+                                            <td class="text-end">
+                                                @if (User.HasClaim("plan", "1"))
+                                                {
+                                                    <form method="post"
+                                                          asp-page-handler="SendOddsIdea"
+                                                          class="d-inline">
+                                                        @Html.AntiForgeryToken()
+
+                                                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                        <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                        <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                        <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                        <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                        <input type="hidden" name="odd"
+                                                               value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                        <button type="submit"
+                                                                class="btn btn-sm btn-outline-success"
+                                                                title="Invia su Telegram">
+                                                            🚀
+                                                        </button>
+                                                    </form>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        }
+    }
+
         </div>
     }
 
@@ -2822,6 +3067,63 @@
 
             select.addEventListener('change', updateCornerOdds);
             updateCornerOdds();
+        })();
+                // 🔹 FALLI – filtro quote per mercato
+        (function () {
+            const select  = document.getElementById('foul-odds-select');
+            const wrapper = document.getElementById('foul-odds-wrapper');
+            const rows    = document.querySelectorAll('#foul-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateFoulOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateFoulOdds);
+            updateFoulOdds();
+        })();
+
+        // 🔹 FUORIGIOCO – filtro quote per mercato
+        (function () {
+            const select  = document.getElementById('offsides-odds-select');
+            const wrapper = document.getElementById('offsides-odds-wrapper');
+            const rows    = document.querySelectorAll('#offsides-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateOffsidesOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateOffsidesOdds);
+            updateOffsidesOdds();
         })();
 
         // 🔹 Analisi → Goal Attesi → Odds
