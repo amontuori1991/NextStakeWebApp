@@ -1105,115 +1105,236 @@
                     Calcolati da Esito (@esitoCorners) usando le medie corner nelle partite vinte / pareggiate / perse.
                 </small>
             </div>
-        </div>
-    }
-
-    @if (Model.Data.Corners is null || Model.Data.Corners.Metrics.Count == 0)
-    {
-        <div class="text-muted">Nessuna analisi corner disponibile.</div>
-    }
-    else
-    {
-        var metrics = Model.Data.Corners.Metrics;
-
-        bool hasSides = metrics.Keys.Any(k =>
-            k != null && (
-                k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
-                k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
-            )
-        );
-
-        if (!hasSides)
-        {
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle">
-                    <thead>
-                        <tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var kv in metrics)
-                        {
-                            <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-        else
-        {
-            var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Battuti"] = "Media corner battuti",
-                ["Effettuati"] = "Media corner a favore",
-                ["Subiti"] = "Media corner concessi",
-                ["In Casa"] = "Media corner a favore in casa",
-                ["Fuoricasa"] = "Media corner a favore in trasferta",
-                ["Ultime 5"] = "Media corner (ultime 5 partite)",
-                ["Partite Vinte"] = "Media corner nelle partite vinte",
-                ["Partite Pareggiate"] = "Media corner nelle partite pareggiate",
-                ["Partite Perse"] = "Media corner nelle partite perse"
-            };
-
-            var groups = metrics
-                .Select(kv =>
+                           @* 🔹 QUOTE CORNER (da Odds, Description LIKE '%Corner%') *@
+                @if (Model.Data.Odds != null && Model.Data.Odds.Any())
                 {
-                    var key = kv.Key?.Trim() ?? "";
-                    var lastDash = key.LastIndexOf('-');
-                    var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
-                    var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
-                    return new { baseName, side, value = kv.Value };
-                })
-                .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    g => g.Key,
-                    g => new
+                    var cornerOdds = Model.Data.Odds
+                        .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                                    && o.Description.IndexOf("corner", StringComparison.OrdinalIgnoreCase) >= 0)
+                        .ToList();
+
+                    if (cornerOdds.Any())
                     {
-                        Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
-                    },
-                    StringComparer.OrdinalIgnoreCase
-                );
+                        var cornerMarkets = cornerOdds
+                            .GroupBy(o => new { o.BetId, o.Description })
+                            .OrderBy(g => g.Key.BetId)
+                            .ToList();
 
-            string[] desiredOrder = { "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
-            var orderedKeys = groups.Keys
-                .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
-                .ThenBy(k => k);
-
-            var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
-            var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
-
-            <div class="vstack gap-3">
-                @foreach (var key in orderedKeys)
-                {
-                    var row = groups[key];
-                    var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
-
-                    <div class="mb-2">
-                        <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
-                        <div class="row g-2 pt-2">
-                            <div class="col-6">
-                                <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                    <span>@homeName</span><span class="fw-bold">@row.Casa</span>
-                                </div>
+                        <div class="card mt-4">
+                            <div class="card-header">
+                                Quote Corner (dati dai bookmaker)
                             </div>
-                            <div class="col-6">
-                                <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                    <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                            <div class="card-body">
+                                <div class="row g-3 align-items-center mb-3">
+                                    <div class="col-md-6">
+                                        <label for="corner-odds-select" class="form-label mb-1 fw-semibold">
+                                            Seleziona mercato Corner
+                                        </label>
+                                        <select id="corner-odds-select" class="form-select form-select-sm">
+                                            <option value="">-- Seleziona un mercato --</option>
+                                            @foreach (var market in cornerMarkets)
+                                            {
+                                                var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                                var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                                <option value="@key">
+                                                    @desc (@market.Key.BetId)
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive d-none" id="corner-odds-wrapper">
+                                    <table class="table table-sm table-striped align-middle mb-0" id="corner-odds-table">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Selezione</th>
+                                                <th scope="col">Quota</th>
+                                                <th scope="col">Bookmaker</th>
+                                                <th scope="col" class="text-end">Telegram</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var market in cornerMarkets)
+                                            {
+                                                var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                                foreach (var o in market.OrderBy(o => o.Value))
+                                                {
+                                                    <tr data-market-key="@key">
+                                                        <td>@o.Value</td>
+                                                        <td>@o.Odd.ToString("0.00")</td>
+                                                        <td>
+                                                            @if (o.Bookmaker == 8)
+                                                            {
+                                                                <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                            }
+                                                            else
+                                                            {
+                                                                @o.Bookmaker
+                                                            }
+                                                        </td>
+                                                        <td class="text-end">
+                                                            @if (User.HasClaim("plan", "1"))
+                                                            {
+                                                                <form method="post"
+                                                                      asp-page-handler="SendOddsIdea"
+                                                                      class="d-inline">
+                                                                    @Html.AntiForgeryToken()
+
+                                                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                                    <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                                    <input type="hidden" name="odd" value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                                    <button type="submit"
+                                                                            class="btn btn-sm btn-outline-success"
+                                                                            title="Invia">
+                                                                        🚀
+                                                                    </button>
+                                                                </form>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
+                    }
+                }
+        </div>
+    }
+
+ @if (Model.Data.Corners is null || Model.Data.Corners.Metrics.Count == 0)
+            {
+                <div class="text-muted">Nessuna analisi corner disponibile.</div>
+            }
+            else
+            {
+                var metrics = Model.Data.Corners.Metrics;
+
+                bool hasSides = metrics.Keys.Any(k =>
+                    k != null && (
+                        k.EndsWith("-Home", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith("-Away", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith(" - Home", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith(" - Away", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith("-Casa", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith("-Ospite", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith(" - Casa", StringComparison.OrdinalIgnoreCase) ||
+                        k.EndsWith(" - Ospite", StringComparison.OrdinalIgnoreCase)
+                    )
+                );
+
+                // 🔹 BLOCCO METRICHE (come prima)
+                if (!hasSides)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width:60%;">Metrica</th>
+                                    <th class="text-end">Valore</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var kv in metrics)
+                                {
+                                    <tr>
+                                        <td>@kv.Key</td>
+                                        <td class="text-end">@kv.Value</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 }
-            </div>
-        }
-    }
-</div>
+                else
+                {
+                    var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["Battuti"]            = "Media corner battuti",
+                        ["Effettuati"]         = "Media corner a favore",
+                        ["Subiti"]             = "Media corner concessi",
+                        ["In Casa"]            = "Media corner a favore in casa",
+                        ["Fuoricasa"]          = "Media corner a favore in trasferta",
+                        ["Ultime 5"]           = "Media corner (ultime 5 partite)",
+                        ["Partite Vinte"]      = "Media corner nelle partite vinte",
+                        ["Partite Pareggiate"] = "Media corner nelle partite pareggiate",
+                        ["Partite Perse"]      = "Media corner nelle partite perse"
+                    };
+
+                    var groups = metrics
+                        .Select(kv =>
+                        {
+                            var key = kv.Key?.Trim() ?? "";
+                            var lastDash = key.LastIndexOf('-');
+                            var baseName = lastDash > 0 ? key.Substring(0, lastDash).Trim() : key;
+                            var side = lastDash > 0 ? key[(lastDash + 1)..].Trim() : "";
+                            return new { baseName, side, value = kv.Value };
+                        })
+                        .GroupBy(x => x.baseName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                            g => g.Key,
+                            g => new
+                            {
+                                Casa = g.FirstOrDefault(i =>
+                                    string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase)
+                                )?.value ?? "—",
+                                Ospite = g.FirstOrDefault(i =>
+                                    string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase)
+                                )?.value ?? "—"
+                            },
+                            StringComparer.OrdinalIgnoreCase
+                        );
+
+                    string[] desiredOrder = { "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                    var orderedKeys = groups.Keys
+                        .OrderBy(k =>
+                        {
+                            var idx = Array.IndexOf(desiredOrder, k);
+                            return idx < 0 ? int.MaxValue : idx;
+                        })
+                        .ThenBy(k => k);
+
+                    var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
+                    var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+
+                    <div class="vstack gap-3">
+                        @foreach (var key in orderedKeys)
+                        {
+                            var row = groups[key];
+                            var niceLabel = labelMap.TryGetValue(key, out var label) ? label : key;
+
+                            <div class="mb-2">
+                                <div class="fw-semibold border-bottom pb-1">@niceLabel</div>
+                                <div class="row g-2 pt-2">
+                                    <div class="col-6">
+                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                            <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="p-2 bg-light rounded d-flex justify-content-between">
+                                            <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+ 
+            }
+        </div>
 
 
 
@@ -2289,6 +2410,35 @@
             select.addEventListener('change', updatePronosticiOdds);
             updatePronosticiOdds();
         })();
+
+                (function () {
+            const select  = document.getElementById('corner-odds-select');
+            const wrapper = document.getElementById('corner-odds-wrapper');
+            const rows    = document.querySelectorAll('#corner-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateCornerOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateCornerOdds);
+            updateCornerOdds();
+        })();
+
     </script>
 }
 
