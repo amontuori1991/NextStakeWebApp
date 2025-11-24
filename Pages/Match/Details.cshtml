@@ -721,6 +721,114 @@
                             Calcolati dall'esito (@esitoGoals) usando le medie xG
                             nelle partite vinte / pareggiate / perse.
                         </div>
+
+                        @* 🔹 QUOTE GOAL (da Odds, Description LIKE '%goal%') *@
+@if (Model.Data.Odds != null && Model.Data.Odds.Any())
+{
+    var goalOdds = Model.Data.Odds
+        .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                    && o.Description.IndexOf("goal", StringComparison.OrdinalIgnoreCase) >= 0)
+        .ToList();
+
+    if (goalOdds.Any())
+    {
+        var goalMarkets = goalOdds
+            .GroupBy(o => new { o.BetId, o.Description })
+            .OrderBy(g => g.Key.BetId)
+            .ToList();
+
+        <div class="card mt-4">
+            <div class="card-header">
+                Quote Goal (dati dai bookmaker)
+            </div>
+
+            <div class="card-body">
+
+                <div class="row g-3 align-items-center mb-3">
+                    <div class="col-md-6">
+                        <label for="goal-odds-select" class="form-label mb-1 fw-semibold">
+                            Seleziona mercato Goal
+                        </label>
+                        <select id="goal-odds-select" class="form-select form-select-sm">
+                            <option value="">-- Seleziona un mercato --</option>
+                            @foreach (var market in goalMarkets)
+                            {
+                                var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                <option value="@key">
+                                    @desc (@market.Key.BetId)
+                                </option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-responsive d-none" id="goal-odds-wrapper">
+                    <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Selezione</th>
+                                <th scope="col">Quota</th>
+                                <th scope="col">Bookmaker</th>
+                                <th scope="col" class="text-end">Telegram</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var market in goalMarkets)
+                            {
+                                var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                foreach (var o in market.OrderBy(o => o.Value))
+                                {
+                                    <tr data-market-key="@key">
+                                        <td>@o.Value</td>
+                                        <td>@o.Odd.ToString("0.00")</td>
+                                        <td>
+                                            @if (o.Bookmaker == 8)
+                                            {
+                                                <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                            }
+                                            else
+                                            {
+                                                @o.Bookmaker
+                                            }
+                                        </td>
+
+                                        <td class="text-end">
+                                            @if (User.HasClaim("plan", "1"))
+                                            {
+                                                <form method="post"
+                                                      asp-page-handler="SendOddsIdea"
+                                                      class="d-inline">
+                                                    @Html.AntiForgeryToken()
+
+                                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                    <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                    <input type="hidden" name="odd"
+                                                           value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Invia su Telegram">
+                                                        🚀
+                                                    </button>
+                                                </form>
+                                            }
+                                        </td>
+
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    }
+}
+
                     }
 
                     @* 🔹 Tabella / box delle metriche come prima *@
@@ -2365,6 +2473,7 @@
 @section Scripts {
     <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
     <script>
+        // 🔹 Filtro BetId nel tab Quote
         (function () {
             const select = document.getElementById('betid-filter');
             const rows = document.querySelectorAll('#odds-table tbody tr');
@@ -2383,6 +2492,7 @@
             });
         })();
 
+        // 🔹 Pronostici → Odds (già esistente)
         (function () {
             const select  = document.getElementById('pronostici-odds-select');
             const wrapper = document.getElementById('pronostici-odds-wrapper');
@@ -2411,7 +2521,8 @@
             updatePronosticiOdds();
         })();
 
-                (function () {
+        // 🔹 Analisi → Corner → Odds
+        (function () {
             const select  = document.getElementById('corner-odds-select');
             const wrapper = document.getElementById('corner-odds-wrapper');
             const rows    = document.querySelectorAll('#corner-odds-table tbody tr');
@@ -2439,8 +2550,37 @@
             updateCornerOdds();
         })();
 
+        // 🔹 Analisi → Goal Attesi → Odds
+        (function () {
+            const select  = document.getElementById('goal-odds-select');
+            const wrapper = document.getElementById('goal-odds-wrapper');
+            const rows    = document.querySelectorAll('#goal-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateGoalOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateGoalOdds);
+            updateGoalOdds();
+        })();
     </script>
 }
+
 
 @section Styles {
     <text>
