@@ -2239,7 +2239,7 @@
         decimal? pronShotsAway = null;
         decimal? pronShotsTotal = null;
 
-        var esitoShots = Model.Data.Prediction?.Esito;
+        var esitoShots  = Model.Data.Prediction?.Esito;
         var shotsMetrics = Model.Data.Shots?.Metrics;
 
         if (!string.IsNullOrWhiteSpace(esitoShots) && shotsMetrics != null && shotsMetrics.Count > 0)
@@ -2316,6 +2316,7 @@
         }
     }
 
+    @* 🔹 Box pronostico tiri *@
     @if (pronShotsHome.HasValue || pronShotsAway.HasValue || pronShotsTotal.HasValue)
     {
         <div class="row g-3 mb-3">
@@ -2343,8 +2344,114 @@
                 </small>
             </div>
         </div>
+
+        @* 🔹 QUOTE TIRI (da Odds, Description LIKE '%shot%') *@
+        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+        {
+            var shotsOdds = Model.Data.Odds
+                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                            && o.Description.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            if (shotsOdds.Any())
+            {
+                var shotsMarkets = shotsOdds
+                    .GroupBy(o => new { o.BetId, o.Description })
+                    .OrderBy(g => g.Key.BetId)
+                    .ToList();
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        Quote Tiri (dati dai bookmaker)
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center mb-3">
+                            <div class="col-md-6">
+                                <label for="shots-odds-select" class="form-label mb-1 fw-semibold">
+                                    Seleziona mercato Tiri
+                                </label>
+                                <select id="shots-odds-select" class="form-select form-select-sm">
+                                    <option value="">-- Seleziona un mercato --</option>
+                                    @foreach (var market in shotsMarkets)
+                                    {
+                                        var key  = $"{market.Key.BetId}_{market.Key.Description}";
+                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                        <option value="@key">
+                                            @desc (@market.Key.BetId)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive d-none" id="shots-odds-wrapper">
+                            <table class="table table-sm table-striped align-middle mb-0" id="shots-odds-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Selezione</th>
+                                        <th scope="col">Quota</th>
+                                        <th scope="col">Bookmaker</th>
+                                        <th scope="col" class="text-end">Telegram</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var market in shotsMarkets)
+                                    {
+                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                        foreach (var o in market.OrderBy(o => o.Value))
+                                        {
+                                            <tr data-market-key="@key">
+                                                <td>@o.Value</td>
+                                                <td>@o.Odd.ToString("0.00")</td>
+                                                <td>
+                                                    @if (o.Bookmaker == 8)
+                                                    {
+                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                    }
+                                                    else
+                                                    {
+                                                        @o.Bookmaker
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    @if (User.HasClaim("plan", "1"))
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="SendOddsIdea"
+                                                              class="d-inline">
+                                                            @Html.AntiForgeryToken()
+
+                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                            <input type="hidden" name="odd"
+                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                            <button type="submit"
+                                                                    class="btn btn-sm btn-outline-success"
+                                                                    title="Invia">
+                                                                🚀
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+            }
+        }
     }
 
+    @* 🔹 Tabella metrica tiri *@
     @if (Model.Data.Shots is null || Model.Data.Shots.Metrics.Count == 0)
     {
         <div class="text-muted">Nessuna analisi tiri disponibile.</div>
@@ -2368,7 +2475,7 @@
 
         if (!hasSides)
         {
-            <div class="table-responsive">
+            <div class="table-responsive mt-3">
                 <table class="table table-sm table-striped align-middle">
                     <thead>
                         <tr>
@@ -2389,14 +2496,14 @@
         {
             var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Effettuati"] = "Media tiri effettuati",
-                ["Subiti"] = "Media tiri subiti",
-                ["In Casa"] = "Media tiri effettuati in casa",
-                ["Fuoricasa"] = "Media tiri effettuati in trasferta",
-                ["Ultime 5"] = "Media tiri (ultime 5 partite)",
-                ["Partite Vinte"] = "Media tiri nelle partite vinte",
-                ["Partite Pareggiate"] = "Media tiri nelle partite pareggiate",
-                ["Partite Perse"] = "Media tiri nelle partite perse"
+                ["Effettuati"]       = "Media tiri effettuati",
+                ["Subiti"]           = "Media tiri subiti",
+                ["In Casa"]          = "Media tiri effettuati in casa",
+                ["Fuoricasa"]        = "Media tiri effettuati in trasferta",
+                ["Ultime 5"]         = "Media tiri (ultime 5 partite)",
+                ["Partite Vinte"]    = "Media tiri nelle partite vinte",
+                ["Partite Pareggiate"]= "Media tiri nelle partite pareggiate",
+                ["Partite Perse"]    = "Media tiri nelle partite perse"
             };
 
             var groups = metrics
@@ -2435,7 +2542,7 @@
             var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
             var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
 
-            <div class="vstack gap-3">
+            <div class="vstack gap-3 mt-3">
                 @foreach (var key in orderedKeys)
                 {
                     var row = groups[key];
@@ -2582,6 +2689,36 @@
 
             document.addEventListener('DOMContentLoaded', () => showGroup('pron'));
         })();
+
+                // 🔹 Analisi → Tiri → Odds
+        (function () {
+            const select  = document.getElementById('shots-odds-select');
+            const wrapper = document.getElementById('shots-odds-wrapper');
+            const rows    = document.querySelectorAll('#shots-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateShotsOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateShotsOdds);
+            updateShotsOdds();
+        })();
+
     </script>
 
     </div> <!-- chiude .container -->
