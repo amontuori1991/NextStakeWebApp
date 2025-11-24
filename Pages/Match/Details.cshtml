@@ -1458,35 +1458,47 @@
 
         if (!string.IsNullOrWhiteSpace(esitoCards) && cardsMetrics != null && cardsMetrics.Count > 0)
         {
-            Func<string, string, decimal?> getCardsMetric = (baseName, side) =>
+ Func<string, string, decimal?> getCardsMetric = (baseName, side) =>
+{
+    var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
+        ? new[] { "Home", "Casa" }
+        : new[] { "Away", "Ospite" };
+
+    foreach (var sc in sideCandidates)
+    {
+        var key1 = baseName + "-" + sc;
+        var key2 = baseName + " - " + sc;
+
+        if (cardsMetrics.TryGetValue(key1, out var raw) || cardsMetrics.TryGetValue(key2, out raw))
+        {
+            if (raw is null) continue;
+
+            var rawStr = Convert.ToString(raw) ?? string.Empty;
+
+            var cultureLocal = System.Globalization.CultureInfo.CurrentCulture;
+            var cultureInv   = System.Globalization.CultureInfo.InvariantCulture;
+
+            decimal val;
+
+            // 1️⃣ Prima prova a leggere usando la cultura locale (it-IT: "0,27" => 0.27)
+            if (!decimal.TryParse(rawStr, System.Globalization.NumberStyles.Any, cultureLocal, out val))
             {
-                var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
-                    ? new[] { "Home", "Casa" }
-                    : new[] { "Away", "Ospite" };
+                // 2️⃣ Se fallisce, prova Invariant ("0.27" => 0.27)
+                if (!decimal.TryParse(rawStr, System.Globalization.NumberStyles.Any, cultureInv, out val))
+                    continue;
+            }
 
-                foreach (var sc in sideCandidates)
-                {
-                    var key1 = baseName + "-" + sc;
-                    var key2 = baseName + " - " + sc;
+            // 3️⃣ Eventuale normalizzazione scala (se qualche valore fosse rimasto tipo 420 => 4.20)
+            if (val > 25m) // soglia di sicurezza per cartellini medi
+                val /= 100m;
 
-                    if (cardsMetrics.TryGetValue(key1, out var raw) || cardsMetrics.TryGetValue(key2, out raw))
-                    {
-                        if (raw is null) continue;
+            return val;
+        }
+    }
 
-                        if (decimal.TryParse(
-                                Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture),
-                                System.Globalization.NumberStyles.Any,
-                                System.Globalization.CultureInfo.InvariantCulture,
-                                out var val))
-                        {
-                            if (val > 50m) val /= 100m;
-                            return val;
-                        }
-                    }
-                }
+    return null;
+};
 
-                return null;
-            };
 
             var homeWon  = getCardsMetric("Partite Vinte",      "Home");
             var homeDraw = getCardsMetric("Partite Pareggiate", "Home");
