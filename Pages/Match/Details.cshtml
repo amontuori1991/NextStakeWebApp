@@ -1530,6 +1530,7 @@
         }
     }
 
+    @* 🔹 Box pronostico cartellini *@
     @if (pronCardsHome.HasValue || pronCardsAway.HasValue || pronCardsTotal.HasValue)
     {
         <div class="row g-3 mb-3">
@@ -1557,8 +1558,114 @@
                 </small>
             </div>
         </div>
+
+        @* 🔹 QUOTE CARTELLINI (da Odds, Description LIKE '%card%') *@
+        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+        {
+            var cardsOdds = Model.Data.Odds
+                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                            && o.Description.IndexOf("card", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            if (cardsOdds.Any())
+            {
+                var cardsMarkets = cardsOdds
+                    .GroupBy(o => new { o.BetId, o.Description })
+                    .OrderBy(g => g.Key.BetId)
+                    .ToList();
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        Quote Cartellini (dati dai bookmaker)
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center mb-3">
+                            <div class="col-md-6">
+                                <label for="card-odds-select" class="form-label mb-1 fw-semibold">
+                                    Seleziona mercato Cartellini
+                                </label>
+                                <select id="card-odds-select" class="form-select form-select-sm">
+                                    <option value="">-- Seleziona un mercato --</option>
+                                    @foreach (var market in cardsMarkets)
+                                    {
+                                        var key  = $"{market.Key.BetId}_{market.Key.Description}";
+                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                        <option value="@key">
+                                            @desc (@market.Key.BetId)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive d-none" id="card-odds-wrapper">
+                            <table class="table table-sm table-striped align-middle mb-0" id="card-odds-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Selezione</th>
+                                        <th scope="col">Quota</th>
+                                        <th scope="col">Bookmaker</th>
+                                        <th scope="col" class="text-end">Telegram</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var market in cardsMarkets)
+                                    {
+                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                        foreach (var o in market.OrderBy(o => o.Value))
+                                        {
+                                            <tr data-market-key="@key">
+                                                <td>@o.Value</td>
+                                                <td>@o.Odd.ToString("0.00")</td>
+                                                <td>
+                                                    @if (o.Bookmaker == 8)
+                                                    {
+                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                    }
+                                                    else
+                                                    {
+                                                        @o.Bookmaker
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    @if (User.HasClaim("plan", "1"))
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="SendOddsIdea"
+                                                              class="d-inline">
+                                                            @Html.AntiForgeryToken()
+
+                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                            <input type="hidden" name="odd"
+                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                            <button type="submit"
+                                                                    class="btn btn-sm btn-outline-success"
+                                                                    title="Invia">
+                                                                🚀
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+            }
+        }
     }
 
+    @* 🔹 Tabella metrica cartellini (come prima) *@
     @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
     {
         <div class="text-muted">Nessuna analisi cartellini disponibile.</div>
@@ -1582,13 +1689,21 @@
 
         if (!hasSides)
         {
-            <div class="table-responsive">
+            <div class="table-responsive mt-3">
                 <table class="table table-sm table-striped align-middle">
-                    <thead><tr><th style="width:60%;">Metrica</th><th class="text-end">Valore</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th style="width:60%;">Metrica</th>
+                            <th class="text-end">Valore</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var kv in metrics)
                         {
-                            <tr><td>@kv.Key</td><td class="text-end">@kv.Value</td></tr>
+                            <tr>
+                                <td>@kv.Key</td>
+                                <td class="text-end">@kv.Value</td>
+                            </tr>
                         }
                     </tbody>
                 </table>
@@ -1598,17 +1713,17 @@
         {
             var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Fatti"] = "Media cartellini ottenuti",
-                ["Gialli"] = "Media cartellini gialli",
-                ["Rossi"] = "Media cartellini rossi",
-                ["Effettuati"] = "Media cartellini a favore",
-                ["Subiti"] = "Media cartellini avversari",
-                ["In Casa"] = "Media cartellini a favore in casa",
-                ["Fuoricasa"] = "Media cartellini a favore in trasferta",
-                ["Ultime 5"] = "Media cartellini (ultime 5 partite)",
-                ["Partite Vinte"] = "Media cartellini nelle partite vinte",
-                ["Partite Pareggiate"] = "Media cartellini nelle partite pareggiate",
-                ["Partite Perse"] = "Media cartellini nelle partite perse"
+                ["Fatti"]             = "Media cartellini ottenuti",
+                ["Gialli"]            = "Media cartellini gialli",
+                ["Rossi"]             = "Media cartellini rossi",
+                ["Effettuati"]        = "Media cartellini a favore",
+                ["Subiti"]            = "Media cartellini avversari",
+                ["In Casa"]           = "Media cartellini a favore in casa",
+                ["Fuoricasa"]         = "Media cartellini a favore in trasferta",
+                ["Ultime 5"]          = "Media cartellini (ultime 5 partite)",
+                ["Partite Vinte"]     = "Media cartellini nelle partite vinte",
+                ["Partite Pareggiate"]= "Media cartellini nelle partite pareggiate",
+                ["Partite Perse"]     = "Media cartellini nelle partite perse"
             };
 
             var groups = metrics
@@ -1625,21 +1740,31 @@
                     g => g.Key,
                     g => new
                     {
-                        Casa = g.FirstOrDefault(i => string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase))?.value ?? "—",
-                        Ospite = g.FirstOrDefault(i => string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) || string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase))?.value ?? "—"
+                        Casa = g.FirstOrDefault(i =>
+                            string.Equals(i.side, "Casa", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(i.side, "Home", StringComparison.OrdinalIgnoreCase)
+                        )?.value ?? "—",
+                        Ospite = g.FirstOrDefault(i =>
+                            string.Equals(i.side, "Ospite", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(i.side, "Away", StringComparison.OrdinalIgnoreCase)
+                        )?.value ?? "—"
                     },
                     StringComparer.OrdinalIgnoreCase
                 );
 
             string[] desiredOrder = { "Gialli", "Rossi", "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
             var orderedKeys = groups.Keys
-                .OrderBy(k => { var idx = Array.IndexOf(desiredOrder, k); return idx < 0 ? int.MaxValue : idx; })
+                .OrderBy(k =>
+                {
+                    var idx = Array.IndexOf(desiredOrder, k);
+                    return idx < 0 ? int.MaxValue : idx;
+                })
                 .ThenBy(k => k);
 
             var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
             var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
 
-            <div class="vstack gap-3">
+            <div class="vstack gap-3 mt-3">
                 @foreach (var key in orderedKeys)
                 {
                     var row = groups[key];
@@ -2492,7 +2617,7 @@
             });
         })();
 
-        // 🔹 Pronostici → Odds (già esistente)
+        // 🔹 Pronostici → Odds
         (function () {
             const select  = document.getElementById('pronostici-odds-select');
             const wrapper = document.getElementById('pronostici-odds-wrapper');
@@ -2578,8 +2703,38 @@
             select.addEventListener('change', updateGoalOdds);
             updateGoalOdds();
         })();
+
+        // 🔹 Analisi → Cartellini → Odds
+        (function () {
+            const select  = document.getElementById('card-odds-select');
+            const wrapper = document.getElementById('card-odds-wrapper');
+            const rows    = document.querySelectorAll('#card-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateCardOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateCardOdds);
+            updateCardOdds();
+        })();
     </script>
 }
+
 
 
 @section Styles {
