@@ -576,7 +576,7 @@
                     return null;
                 }
 
-                // 🔹 Recupero medie xG (in realtà goal medi, ma li usiamo come “goal attesi”)
+                // 🔹 Medie per risultato (xG medi in partite vinte / pareggiate / perse)
                 var homeWon  = getGoalsMetric("Partite Vinte",      "Home");
                 var homeDraw = getGoalsMetric("Partite Pareggiate", "Home");
                 var homeLost = getGoalsMetric("Partite Perse",      "Home");
@@ -585,6 +585,17 @@
                 var awayDraw = getGoalsMetric("Partite Pareggiate", "Away");
                 var awayLost = getGoalsMetric("Partite Perse",      "Away");
 
+                // 🔹 Medie per contesto campo (nuovi campi)
+                // Casa: goal fatti in casa, goal subiti in casa / trasferta
+                var homeScoredHome      = getGoalsMetric("Fatti in Casa",       "Home"); // H segnati in casa
+                var homeConcededHome    = getGoalsMetric("Subiti in Casa",      "Home"); // H subiti in casa
+                var homeConcededAway    = getGoalsMetric("Subiti in Trasferta", "Home"); // H subiti in trasferta
+
+                // Ospite: goal fatti in trasferta, goal subiti in casa / trasferta
+                var awayScoredAway      = getGoalsMetric("Fatti in Trasferta",  "Away"); // A segnati in trasferta
+                var awayConcededHome    = getGoalsMetric("Subiti in Casa",      "Away"); // A subiti in casa
+                var awayConcededAway    = getGoalsMetric("Subiti in Trasferta", "Away"); // A subiti in trasferta
+
                 decimal? pronXgHome = null;
                 decimal? pronXgAway = null;
 
@@ -592,70 +603,73 @@
                     && (homeWon.HasValue || homeDraw.HasValue || homeLost.HasValue
                         || awayWon.HasValue || awayDraw.HasValue || awayLost.HasValue))
                 {
-                    switch (esitoGoals)
-                    {
-                        case "1":
-                            // Casa: xG medio nelle partite VINTE
-                            pronXgHome = homeWon;
-                            // Trasferta: xG medio nelle partite PERSE
-                            pronXgAway = awayLost;
-                            break;
+switch (esitoGoals)
+{
+    case "1":
+        // Casa favorita:
+        //   (xG vinte + Fatti in Casa + Subiti in Casa dell'avversaria) / 3
+        if (homeWon.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+            pronXgHome = ((homeWon ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
 
-                        case "2":
-                            // Casa: xG medio nelle partite PERSE
-                            pronXgHome = homeLost;
-                            // Trasferta: xG medio nelle partite VINTE
-                            pronXgAway = awayWon;
-                            break;
+        // Ospite sfavorita:
+        //   (xG perse + Fatti in Trasferta + Subiti in Trasferta della casa) / 3
+        if (awayLost.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+            pronXgAway = ((awayLost ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+        break;
 
-                        case "1X":
-                            // Casa: (xG vinte + xG pareggiate) / 2
-                            if (homeWon.HasValue || homeDraw.HasValue)
-                            {
-                                var hW = homeWon  ?? 0m;
-                                var hD = homeDraw ?? 0m;
-                                pronXgHome = (hW + hD) / 2m;
-                            }
+    case "2":
+        // Casa sfavorita:
+        //   (xG perse + Fatti in Casa + Subiti in Trasferta dell'avversaria) / 3
+        if (homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+            pronXgHome = ((homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 3m;
 
-                            // Trasferta: (xG perse + xG pareggiate) / 2
-                            if (awayLost.HasValue || awayDraw.HasValue)
-                            {
-                                var aL = awayLost ?? 0m;
-                                var aD = awayDraw ?? 0m;
-                                pronXgAway = (aL + aD) / 2m;
-                            }
-                            break;
+        // Ospite favorita:
+        //   (xG vinte + Fatti in Trasferta + Subiti in Casa della casa) / 3
+        if (awayWon.HasValue || awayScoredAway.HasValue || homeConcededHome.HasValue)
+            pronXgAway = ((awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededHome ?? 0m)) / 3m;
+        break;
 
-                        case "X2":
-                            // Casa: (xG perse + xG pareggiate) / 2
-                            if (homeLost.HasValue || homeDraw.HasValue)
-                            {
-                                var hL = homeLost ?? 0m;
-                                var hD = homeDraw ?? 0m;
-                                pronXgHome = (hL + hD) / 2m;
-                            }
+    case "1X":
+        // Casa non perde:
+        //   (xG vinte + xG pareggiate + Fatti in Casa + Subiti in Casa dell'avversaria) / 4
+        if (homeWon.HasValue || homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+            pronXgHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 4m;
 
-                            // Trasferta: (xG vinte + xG pareggiate) / 2
-                            if (awayWon.HasValue || awayDraw.HasValue)
-                            {
-                                var aW = awayWon  ?? 0m;
-                                var aD = awayDraw ?? 0m;
-                                pronXgAway = (aW + aD) / 2m;
-                            }
-                            break;
+        // Ospite:
+        //   (xG perse + xG pareggiate + Fatti in Trasferta + Subiti in Trasferta della casa) / 4
+        if (awayLost.HasValue || awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+            pronXgAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 4m;
+        break;
 
-                        case "X":
-                            // Pareggio secco: uso solo le medie delle partite pareggiate (se ci sono)
-                            pronXgHome = homeDraw;
-                            pronXgAway = awayDraw;
-                            break;
+    case "X2":
+        // Casa (sfavorita / può soffrire):
+        //   (xG pareggiate + xG perse + Fatti in Casa + Subiti in Trasferta avversaria) / 4
+        if (homeDraw.HasValue || homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+            pronXgHome = ((homeDraw ?? 0m) + (homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 4m;
 
-                        default:
-                            // altri casi strani: non calcolo nulla
-                            pronXgHome = null;
-                            pronXgAway = null;
-                            break;
-                    }
+        // Trasferta (favorita):
+        //   (xG pareggiate + xG vinte + Fatti in Trasferta + Goal segnati in casa dall’avversaria) / 4
+        if (awayDraw.HasValue || awayWon.HasValue || awayScoredAway.HasValue || homeScoredHome.HasValue)
+            pronXgAway = ((awayDraw ?? 0m) + (awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeScoredHome ?? 0m)) / 4m;
+        break;
+
+    case "X":
+        // Pareggio secco:
+        // Casa: (xG pareggiate + Fatti in Casa + Subiti in Casa avversaria) / 3
+        if (homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+            pronXgHome = ((homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
+
+        // Ospite: (xG pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 3
+        if (awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+            pronXgAway = ((awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+        break;
+
+    default:
+        pronXgHome = null;
+        pronXgAway = null;
+        break;
+}
+
                 }
 
                 var pronXgTot = (pronXgHome.HasValue && pronXgAway.HasValue)
@@ -718,117 +732,117 @@
                         </div>
 
                         <div class="text-muted small">
-                            Calcolati dall'esito (@esitoGoals) usando le medie xG
-                            nelle partite vinte / pareggiate / perse.
+                            Calcolati dall'esito (@esitoGoals) usando:
+                            medie xG per risultato (vinte/pareggiate/perse),
+                            goal fatti in casa/trasferta e goal subiti in casa/trasferta.
                         </div>
 
                         @* 🔹 QUOTE GOAL (da Odds, Description LIKE '%goal%') *@
-@if (Model.Data.Odds != null && Model.Data.Odds.Any())
-{
-    var goalOdds = Model.Data.Odds
-        .Where(o => !string.IsNullOrWhiteSpace(o.Description)
-                    && o.Description.IndexOf("goal", StringComparison.OrdinalIgnoreCase) >= 0)
-        .ToList();
+                        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+                        {
+                            var goalOdds = Model.Data.Odds
+                                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                                            && o.Description.IndexOf("goal", StringComparison.OrdinalIgnoreCase) >= 0)
+                                .ToList();
 
-    if (goalOdds.Any())
-    {
-        var goalMarkets = goalOdds
-            .GroupBy(o => new { o.BetId, o.Description })
-            .OrderBy(g => g.Key.BetId)
-            .ToList();
-
-        <div class="card mt-4">
-            <div class="card-header">
-                Quote Goal (dati dai bookmaker)
-            </div>
-
-            <div class="card-body">
-
-                <div class="row g-3 align-items-center mb-3">
-                    <div class="col-md-6">
-                        <label for="goal-odds-select" class="form-label mb-1 fw-semibold">
-                            Seleziona mercato Goal
-                        </label>
-                        <select id="goal-odds-select" class="form-select form-select-sm">
-                            <option value="">-- Seleziona un mercato --</option>
-                            @foreach (var market in goalMarkets)
+                            if (goalOdds.Any())
                             {
-                                var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
-                                <option value="@key">
-                                    @desc (@market.Key.BetId)
-                                </option>
+                                var goalMarkets = goalOdds
+                                    .GroupBy(o => new { o.BetId, o.Description })
+                                    .OrderBy(g => g.Key.BetId)
+                                    .ToList();
+
+                                <div class="card mt-4">
+                                    <div class="card-header">
+                                        Quote Goal (dati dai bookmaker)
+                                    </div>
+
+                                    <div class="card-body">
+
+                                        <div class="row g-3 align-items-center mb-3">
+                                            <div class="col-md-6">
+                                                <label for="goal-odds-select" class="form-label mb-1 fw-semibold">
+                                                    Seleziona mercato Goal
+                                                </label>
+                                                <select id="goal-odds-select" class="form-select form-select-sm">
+                                                    <option value="">-- Seleziona un mercato --</option>
+                                                    @foreach (var market in goalMarkets)
+                                                    {
+                                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                                        <option value="@key">
+                                                            @desc (@market.Key.BetId)
+                                                        </option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="table-responsive d-none" id="goal-odds-wrapper">
+                                            <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th scope="col">Selezione</th>
+                                                        <th scope="col">Quota</th>
+                                                        <th scope="col">Bookmaker</th>
+                                                        <th scope="col" class="text-end">Telegram</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var market in goalMarkets)
+                                                    {
+                                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                                        foreach (var o in market.OrderBy(o => o.Value))
+                                                        {
+                                                            <tr data-market-key="@key">
+                                                                <td>@o.Value</td>
+                                                                <td>@o.Odd.ToString("0.00")</td>
+                                                                <td>
+                                                                    @if (o.Bookmaker == 8)
+                                                                    {
+                                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        @o.Bookmaker
+                                                                    }
+                                                                </td>
+
+                                                                <td class="text-end">
+                                                                    @if (User.HasClaim("plan", "1"))
+                                                                    {
+                                                                        <form method="post"
+                                                                              asp-page-handler="SendOddsIdea"
+                                                                              class="d-inline">
+                                                                            @Html.AntiForgeryToken()
+
+                                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                                            <input type="hidden" name="odd"
+                                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                                            <button type="submit" class="btn btn-sm btn-outline-success" title="Invia su Telegram">
+                                                                                🚀
+                                                                            </button>
+                                                                        </form>
+                                                                    }
+                                                                </td>
+
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                    </div>
+                                </div>
                             }
-                        </select>
-                    </div>
-                </div>
-
-                <div class="table-responsive d-none" id="goal-odds-wrapper">
-                    <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
-                        <thead>
-                            <tr>
-                                <th scope="col">Selezione</th>
-                                <th scope="col">Quota</th>
-                                <th scope="col">Bookmaker</th>
-                                <th scope="col" class="text-end">Telegram</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var market in goalMarkets)
-                            {
-                                var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                foreach (var o in market.OrderBy(o => o.Value))
-                                {
-                                    <tr data-market-key="@key">
-                                        <td>@o.Value</td>
-                                        <td>@o.Odd.ToString("0.00")</td>
-                                        <td>
-                                            @if (o.Bookmaker == 8)
-                                            {
-                                                <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                            }
-                                            else
-                                            {
-                                                @o.Bookmaker
-                                            }
-                                        </td>
-
-                                        <td class="text-end">
-                                            @if (User.HasClaim("plan", "1"))
-                                            {
-                                                <form method="post"
-                                                      asp-page-handler="SendOddsIdea"
-                                                      class="d-inline">
-                                                    @Html.AntiForgeryToken()
-
-                                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
-
-                                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                    <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                    <input type="hidden" name="odd"
-                                                           value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
-
-                                                    <button type="submit" class="btn btn-sm btn-outline-success" title="Invia su Telegram">
-                                                        🚀
-                                                    </button>
-                                                </form>
-                                            }
-                                        </td>
-
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-            </div>
-        </div>
-    }
-}
-
+                        }
                     }
 
                     @* 🔹 Tabella / box delle metriche come prima *@
@@ -862,12 +876,16 @@
                             ["xG"]                  = "xG medio (expected goals)",
                             ["xGA"]                 = "xGA medio (expected goals concessi)",
                             ["NPxG"]                = "NPxG medio (senza rigori)",
-                            ["In Casa"]             = "xG medio in casa",
-                            ["Fuoricasa"]           = "xG medio in trasferta",
-                            ["Ultime 5"]            = "xG medio (ultime 5 partite)",
-                            ["Partite Vinte"]       = "xG medio nelle partite vinte",
-                            ["Partite Pareggiate"]  = "xG medio nelle partite pareggiate",
-                            ["Partite Perse"]       = "xG medio nelle partite perse"
+                            ["In Casa"]             = "xG/goal medi in casa",
+                            ["Fuoricasa"]           = "xG/goal medi in trasferta",
+                            ["Ultime 5"]            = "xG/goal medi (ultime 5 partite)",
+                            ["Partite Vinte"]       = "xG/goal medi nelle partite vinte",
+                            ["Partite Pareggiate"]  = "xG/goal medi nelle partite pareggiate",
+                            ["Partite Perse"]       = "xG/goal medi nelle partite perse",
+                            ["Fatti in Casa"]       = "Goal segnati in casa",
+                            ["Fatti in Trasferta"]  = "Goal segnati in trasferta",
+                            ["Subiti in Casa"]      = "Goal subiti in casa",
+                            ["Subiti in Trasferta"] = "Goal subiti in trasferta"
                         };
 
                         var groups = metrics
@@ -896,8 +914,15 @@
                                 StringComparer.OrdinalIgnoreCase
                             );
 
-                        // Ordine: xG, xGA, NPxG, poi contesti
-                        string[] desiredOrder = { "xG", "xGA", "NPxG", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+                        // Ordine più leggibile
+                        string[] desiredOrder = {
+                            "xG","xGA","NPxG",
+                            "Fatti in Casa","Fatti in Trasferta",
+                            "Subiti in Casa","Subiti in Trasferta",
+                            "In Casa","Fuoricasa",
+                            "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse"
+                        };
+
                         var orderedKeys = groups.Keys
                             .OrderBy(k =>
                             {
@@ -936,6 +961,7 @@
                 </div>
             }
         </div>
+
 
 
 
@@ -1484,53 +1510,49 @@
         decimal? pronCardsAway = null;
         decimal? pronCardsTotal = null;
 
-        var esitoCards = Model.Data.Prediction?.Esito;
+        var esitoCards   = Model.Data.Prediction?.Esito;
         var cardsMetrics = Model.Data.Cards?.Metrics;
 
         if (!string.IsNullOrWhiteSpace(esitoCards) && cardsMetrics != null && cardsMetrics.Count > 0)
         {
- Func<string, string, decimal?> getCardsMetric = (baseName, side) =>
-{
-    var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
-        ? new[] { "Home", "Casa" }
-        : new[] { "Away", "Ospite" };
-
-    foreach (var sc in sideCandidates)
-    {
-        var key1 = baseName + "-" + sc;
-        var key2 = baseName + " - " + sc;
-
-        if (cardsMetrics.TryGetValue(key1, out var raw) || cardsMetrics.TryGetValue(key2, out raw))
-        {
-            if (raw is null) continue;
-
-            var rawStr = Convert.ToString(raw) ?? string.Empty;
-
-            var cultureLocal = System.Globalization.CultureInfo.CurrentCulture;
-            var cultureInv   = System.Globalization.CultureInfo.InvariantCulture;
-
-            decimal val;
-
-            // 1️⃣ Prima prova a leggere usando la cultura locale (it-IT: "0,27" => 0.27)
-            if (!decimal.TryParse(rawStr, System.Globalization.NumberStyles.Any, cultureLocal, out val))
+            // 🔹 Helper: legge una metrica (baseName) per Home/Away (o Casa/Ospite)
+            Func<string, string, decimal?> getCardsMetric = (baseName, side) =>
             {
-                // 2️⃣ Se fallisce, prova Invariant ("0.27" => 0.27)
-                if (!decimal.TryParse(rawStr, System.Globalization.NumberStyles.Any, cultureInv, out val))
-                    continue;
-            }
+                if (cardsMetrics is null) return null;
 
-            // 3️⃣ Eventuale normalizzazione scala (se qualche valore fosse rimasto tipo 420 => 4.20)
-            if (val > 25m) // soglia di sicurezza per cartellini medi
-                val /= 100m;
+                var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
+                    ? new[] { "Home", "Casa" }
+                    : new[] { "Away", "Ospite" };
 
-            return val;
-        }
-    }
+                foreach (var sc in sideCandidates)
+                {
+                    var key1 = baseName + "-" + sc;
+                    var key2 = baseName + " - " + sc;
 
-    return null;
-};
+                    if (cardsMetrics.TryGetValue(key1, out var raw) || cardsMetrics.TryGetValue(key2, out raw))
+                    {
+                        if (raw is null) continue;
 
+                        var s = raw.ToString() ?? "";
 
+                        // Prova prima con cultura locale (it-IT), poi invariant
+                        var cultureLocal = System.Globalization.CultureInfo.CurrentCulture;
+                        var cultureInv   = System.Globalization.CultureInfo.InvariantCulture;
+
+                        if (decimal.TryParse(s, System.Globalization.NumberStyles.Any, cultureLocal, out var val) ||
+                            decimal.TryParse(s, System.Globalization.NumberStyles.Any, cultureInv,   out val))
+                        {
+                            // Eventuale normalizzazione tipo "420" → 4.20
+                            if (val > 50m) val /= 100m;
+                            return val;
+                        }
+                    }
+                }
+
+                return null;
+            };
+
+            // 🔹 Medie su vinte/pareggiate/perse
             var homeWon  = getCardsMetric("Partite Vinte",      "Home");
             var homeDraw = getCardsMetric("Partite Pareggiate", "Home");
             var homeLost = getCardsMetric("Partite Perse",      "Home");
@@ -1539,14 +1561,28 @@
             var awayDraw = getCardsMetric("Partite Pareggiate", "Away");
             var awayLost = getCardsMetric("Partite Perse",      "Away");
 
+            // 🔹 Nuove medie:
+            //  - "In Casa"     → cartellini a favore in casa
+            //  - "Fuoricasa"   → cartellini a favore in trasferta
+            //  - "Fatti"/"Effettuati" → cartellini ottenuti
+            var homeInCasa    = getCardsMetric("In Casa",   "Home");
+            var awayFuoricasa = getCardsMetric("Fuoricasa", "Away");
+
+            var homeFatti = getCardsMetric("Fatti", "Home")
+                            ?? getCardsMetric("Effettuati", "Home");
+            var awayFatti = getCardsMetric("Fatti", "Away")
+                            ?? getCardsMetric("Effettuati", "Away");
+
             switch (esitoCards)
             {
                 case "1":
+                    // Casa favorita (per ora semplice come prima)
                     pronCardsHome = homeWon;
                     pronCardsAway = awayLost;
                     break;
 
                 case "1X":
+                    // Casa non perde (logica base come prima)
                     if (homeWon.HasValue || homeDraw.HasValue)
                         pronCardsHome = ((homeWon ?? 0m) + (homeDraw ?? 0m)) / 2m;
 
@@ -1555,14 +1591,43 @@
                     break;
 
                 case "X2":
-                    if (homeLost.HasValue || homeDraw.HasValue)
-                        pronCardsHome = ((homeLost ?? 0m) + (homeDraw ?? 0m)) / 2m;
+                    // ✅ NUOVA LOGICA
 
-                    if (awayWon.HasValue || awayDraw.HasValue)
-                        pronCardsAway = ((awayWon ?? 0m) + (awayDraw ?? 0m)) / 2m;
+                    // CASA:
+                    //  Media cartellini a favore in casa       → In Casa - Home
+                    //  Media cartellini partite pareggiate     → Partite Pareggiate - Home
+                    //  Media cartellini partite perse          → Partite Perse - Home
+                    //  Media cartellini ottenuti               → Fatti/Effettuati - Home
+                    //  il tutto /4
+                    if (homeInCasa.HasValue || homeDraw.HasValue || homeLost.HasValue || homeFatti.HasValue)
+                    {
+                        var hInCasa = homeInCasa ?? 0m;
+                        var hDraw   = homeDraw   ?? 0m;
+                        var hLost   = homeLost   ?? 0m;
+                        var hFatti  = homeFatti  ?? 0m;
+
+                        pronCardsHome = (hInCasa + hDraw + hLost + hFatti) / 4m;
+                    }
+
+                    // TRASFERTA:
+                    //  Media cartellini a favore in trasferta  → Fuoricasa - Away
+                    //  Media cartellini partite vinte          → Partite Vinte - Away
+                    //  Media cartellini partite pareggiate     → Partite Pareggiate - Away
+                    //  Media cartellini ottenuti               → Fatti/Effettuati - Away
+                    //  il tutto /4
+                    if (awayFuoricasa.HasValue || awayWon.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+                    {
+                        var aFuori = awayFuoricasa ?? 0m;
+                        var aWon   = awayWon      ?? 0m;
+                        var aDraw  = awayDraw     ?? 0m;
+                        var aFatti = awayFatti    ?? 0m;
+
+                        pronCardsAway = (aFuori + aWon + aDraw + aFatti) / 4m;
+                    }
                     break;
 
                 case "2":
+                    // Ospite favorita (semplice come prima)
                     pronCardsHome = homeLost;
                     pronCardsAway = awayWon;
                     break;
@@ -1573,7 +1638,7 @@
         }
     }
 
-    @* 🔹 Box pronostico cartellini *@
+    @* BOX PRONOSTICO CARTELLINI *@
     @if (pronCardsHome.HasValue || pronCardsAway.HasValue || pronCardsTotal.HasValue)
     {
         <div class="row g-3 mb-3">
@@ -1597,118 +1662,13 @@
             </div>
             <div class="col-12">
                 <small class="text-muted">
-                    Calcolati da Esito (@esitoCards) usando le medie cartellini nelle partite vinte / pareggiate / perse.
+                    Per X2: media di In Casa/Fuoricasa, partite vinte/pareggiate/perse e cartellini ottenuti (diviso 4).
                 </small>
             </div>
         </div>
-
-        @* 🔹 QUOTE CARTELLINI (da Odds, Description LIKE '%card%') *@
-        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
-        {
-            var cardsOdds = Model.Data.Odds
-                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
-                            && o.Description.IndexOf("card", StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
-
-            if (cardsOdds.Any())
-            {
-                var cardsMarkets = cardsOdds
-                    .GroupBy(o => new { o.BetId, o.Description })
-                    .OrderBy(g => g.Key.BetId)
-                    .ToList();
-
-                <div class="card mt-4">
-                    <div class="card-header">
-                        Quote Cartellini (dati dai bookmaker)
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3 align-items-center mb-3">
-                            <div class="col-md-6">
-                                <label for="card-odds-select" class="form-label mb-1 fw-semibold">
-                                    Seleziona mercato Cartellini
-                                </label>
-                                <select id="card-odds-select" class="form-select form-select-sm">
-                                    <option value="">-- Seleziona un mercato --</option>
-                                    @foreach (var market in cardsMarkets)
-                                    {
-                                        var key  = $"{market.Key.BetId}_{market.Key.Description}";
-                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
-                                        <option value="@key">
-                                            @desc (@market.Key.BetId)
-                                        </option>
-                                    }
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive d-none" id="card-odds-wrapper">
-                            <table class="table table-sm table-striped align-middle mb-0" id="card-odds-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Selezione</th>
-                                        <th scope="col">Quota</th>
-                                        <th scope="col">Bookmaker</th>
-                                        <th scope="col" class="text-end">Telegram</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var market in cardsMarkets)
-                                    {
-                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                        foreach (var o in market.OrderBy(o => o.Value))
-                                        {
-                                            <tr data-market-key="@key">
-                                                <td>@o.Value</td>
-                                                <td>@o.Odd.ToString("0.00")</td>
-                                                <td>
-                                                    @if (o.Bookmaker == 8)
-                                                    {
-                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                    }
-                                                    else
-                                                    {
-                                                        @o.Bookmaker
-                                                    }
-                                                </td>
-                                                <td class="text-end">
-                                                    @if (User.HasClaim("plan", "1"))
-                                                    {
-                                                        <form method="post"
-                                                              asp-page-handler="SendOddsIdea"
-                                                              class="d-inline">
-                                                            @Html.AntiForgeryToken()
-
-                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
-
-                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                            <input type="hidden" name="odd"
-                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
-
-                                                            <button type="submit"
-                                                                    class="btn btn-sm btn-outline-success"
-                                                                    title="Invia">
-                                                                🚀
-                                                            </button>
-                                                        </form>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-
-                    </div>
-                </div>
-            }
-        }
     }
 
-    @* 🔹 Tabella metrica cartellini (come prima) *@
+    @* BLOCCO METRICHE (come prima) *@
     @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
     {
         <div class="text-muted">Nessuna analisi cartellini disponibile.</div>
@@ -1756,17 +1716,17 @@
         {
             var labelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["Fatti"]             = "Media cartellini ottenuti",
-                ["Gialli"]            = "Media cartellini gialli",
-                ["Rossi"]             = "Media cartellini rossi",
-                ["Effettuati"]        = "Media cartellini a favore",
-                ["Subiti"]            = "Media cartellini avversari",
-                ["In Casa"]           = "Media cartellini a favore in casa",
-                ["Fuoricasa"]         = "Media cartellini a favore in trasferta",
-                ["Ultime 5"]          = "Media cartellini (ultime 5 partite)",
-                ["Partite Vinte"]     = "Media cartellini nelle partite vinte",
-                ["Partite Pareggiate"]= "Media cartellini nelle partite pareggiate",
-                ["Partite Perse"]     = "Media cartellini nelle partite perse"
+                ["Fatti"]              = "Media cartellini ottenuti",
+                ["Gialli"]             = "Media cartellini gialli",
+                ["Rossi"]              = "Media cartellini rossi",
+                ["Effettuati"]         = "Media cartellini a favore",
+                ["Subiti"]             = "Media cartellini avversari",
+                ["In Casa"]            = "Media cartellini a favore in casa",
+                ["Fuoricasa"]          = "Media cartellini a favore in trasferta",
+                ["Ultime 5"]           = "Media cartellini (ultime 5 partite)",
+                ["Partite Vinte"]      = "Media cartellini nelle partite vinte",
+                ["Partite Pareggiate"] = "Media cartellini nelle partite pareggiate",
+                ["Partite Perse"]      = "Media cartellini nelle partite perse"
             };
 
             var groups = metrics
@@ -1795,7 +1755,12 @@
                     StringComparer.OrdinalIgnoreCase
                 );
 
-            string[] desiredOrder = { "Gialli", "Rossi", "Effettuati", "Subiti", "In Casa", "Fuoricasa", "Ultime 5", "Partite Vinte", "Partite Pareggiate", "Partite Perse" };
+            string[] desiredOrder = {
+                "Gialli", "Rossi", "Effettuati", "Subiti",
+                "In Casa", "Fuoricasa", "Ultime 5",
+                "Partite Vinte", "Partite Pareggiate", "Partite Perse"
+            };
+
             var orderedKeys = groups.Keys
                 .OrderBy(k =>
                 {
@@ -1818,12 +1783,14 @@
                         <div class="row g-2 pt-2">
                             <div class="col-6">
                                 <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                    <span>@homeName</span><span class="fw-bold">@row.Casa</span>
+                                    <span>@homeName</span>
+                                    <span class="fw-bold">@row.Casa</span>
                                 </div>
                             </div>
                             <div class="col-6">
                                 <div class="p-2 bg-light rounded d-flex justify-content-between">
-                                    <span>@awayName</span><span class="fw-bold">@row.Ospite</span>
+                                    <span>@awayName</span>
+                                    <span class="fw-bold">@row.Ospite</span>
                                 </div>
                             </div>
                         </div>
