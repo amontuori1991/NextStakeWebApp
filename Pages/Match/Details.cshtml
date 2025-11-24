@@ -1573,65 +1573,127 @@ switch (esitoGoals)
             var awayFatti = getCardsMetric("Fatti", "Away")
                             ?? getCardsMetric("Effettuati", "Away");
 
-            switch (esitoCards)
-            {
-                case "1":
-                    // Casa favorita (per ora semplice come prima)
-                    pronCardsHome = homeWon;
-                    pronCardsAway = awayLost;
-                    break;
+switch (esitoCards)
+{
+    case "1":
+        // Casa favorita:
+        //  (In Casa + Partite Vinte + Fatti) / 3
+        if (homeInCasa.HasValue || homeWon.HasValue || homeFatti.HasValue)
+        {
+            var hIn  = homeInCasa ?? 0m;
+            var hWin = homeWon    ?? 0m;
+            var hFat = homeFatti  ?? 0m;
+            pronCardsHome = (hIn + hWin + hFat) / 3m;
+        }
 
-                case "1X":
-                    // Casa non perde (logica base come prima)
-                    if (homeWon.HasValue || homeDraw.HasValue)
-                        pronCardsHome = ((homeWon ?? 0m) + (homeDraw ?? 0m)) / 2m;
+        // Ospite sfavorita:
+        //  (Fuoricasa + Partite Perse + Fatti) / 3
+        if (awayFuoricasa.HasValue || awayLost.HasValue || awayFatti.HasValue)
+        {
+            var aOut = awayFuoricasa ?? 0m;
+            var aLos = awayLost      ?? 0m;
+            var aFat = awayFatti     ?? 0m;
+            pronCardsAway = (aOut + aLos + aFat) / 3m;
+        }
+        break;
 
-                    if (awayLost.HasValue || awayDraw.HasValue)
-                        pronCardsAway = ((awayLost ?? 0m) + (awayDraw ?? 0m)) / 2m;
-                    break;
+    case "2":
+        // Casa sfavorita:
+        //  (In Casa + Partite Perse + Fatti) / 3
+        if (homeInCasa.HasValue || homeLost.HasValue || homeFatti.HasValue)
+        {
+            var hIn  = homeInCasa ?? 0m;
+            var hLos = homeLost   ?? 0m;
+            var hFat = homeFatti  ?? 0m;
+            pronCardsHome = (hIn + hLos + hFat) / 3m;
+        }
 
-                case "X2":
-                    // ✅ NUOVA LOGICA
+        // Ospite favorita:
+        //  (Fuoricasa + Partite Vinte + Fatti) / 3
+        if (awayFuoricasa.HasValue || awayWon.HasValue || awayFatti.HasValue)
+        {
+            var aOut = awayFuoricasa ?? 0m;
+            var aWin = awayWon       ?? 0m;
+            var aFat = awayFatti     ?? 0m;
+            pronCardsAway = (aOut + aWin + aFat) / 3m;
+        }
+        break;
 
-                    // CASA:
-                    //  Media cartellini a favore in casa       → In Casa - Home
-                    //  Media cartellini partite pareggiate     → Partite Pareggiate - Home
-                    //  Media cartellini partite perse          → Partite Perse - Home
-                    //  Media cartellini ottenuti               → Fatti/Effettuati - Home
-                    //  il tutto /4
-                    if (homeInCasa.HasValue || homeDraw.HasValue || homeLost.HasValue || homeFatti.HasValue)
-                    {
-                        var hInCasa = homeInCasa ?? 0m;
-                        var hDraw   = homeDraw   ?? 0m;
-                        var hLost   = homeLost   ?? 0m;
-                        var hFatti  = homeFatti  ?? 0m;
+    case "1X":
+        // Casa non perde:
+        //  (In Casa + Partite Vinte + Partite Pareggiate + Fatti) / 4
+        if (homeInCasa.HasValue || homeWon.HasValue || homeDraw.HasValue || homeFatti.HasValue)
+        {
+            var hIn   = homeInCasa ?? 0m;
+            var hWin  = homeWon    ?? 0m;
+            var hDraw = homeDraw   ?? 0m;
+            var hFat  = homeFatti  ?? 0m;
+            pronCardsHome = (hIn + hWin + hDraw + hFat) / 4m;
+        }
 
-                        pronCardsHome = (hInCasa + hDraw + hLost + hFatti) / 4m;
-                    }
+        // Ospite (meno favorevole):
+        //  (Fuoricasa + Partite Perse + Partite Pareggiate + Fatti) / 4
+        if (awayFuoricasa.HasValue || awayLost.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+        {
+            var aOut  = awayFuoricasa ?? 0m;
+            var aLos  = awayLost      ?? 0m;
+            var aDraw = awayDraw      ?? 0m;
+            var aFat  = awayFatti     ?? 0m;
+            pronCardsAway = (aOut + aLos + aDraw + aFat) / 4m;
+        }
+        break;
 
-                    // TRASFERTA:
-                    //  Media cartellini a favore in trasferta  → Fuoricasa - Away
-                    //  Media cartellini partite vinte          → Partite Vinte - Away
-                    //  Media cartellini partite pareggiate     → Partite Pareggiate - Away
-                    //  Media cartellini ottenuti               → Fatti/Effettuati - Away
-                    //  il tutto /4
-                    if (awayFuoricasa.HasValue || awayWon.HasValue || awayDraw.HasValue || awayFatti.HasValue)
-                    {
-                        var aFuori = awayFuoricasa ?? 0m;
-                        var aWon   = awayWon      ?? 0m;
-                        var aDraw  = awayDraw     ?? 0m;
-                        var aFatti = awayFatti    ?? 0m;
+    case "X2":
+        // Casa (sfavorita / può soffrire):
+        //  (In Casa + Partite Pareggiate + Partite Perse + Fatti) / 4
+        if (homeInCasa.HasValue || homeDraw.HasValue || homeLost.HasValue || homeFatti.HasValue)
+        {
+            var hIn   = homeInCasa ?? 0m;
+            var hDraw = homeDraw   ?? 0m;
+            var hLos  = homeLost   ?? 0m;
+            var hFat  = homeFatti  ?? 0m;
+            pronCardsHome = (hIn + hDraw + hLos + hFat) / 4m;
+        }
 
-                        pronCardsAway = (aFuori + aWon + aDraw + aFatti) / 4m;
-                    }
-                    break;
+        // Trasferta (favorita):
+        //  (Fuoricasa + Partite Vinte + Partite Pareggiate + Fatti) / 4
+        if (awayFuoricasa.HasValue || awayWon.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+        {
+            var aOut  = awayFuoricasa ?? 0m;
+            var aWin  = awayWon       ?? 0m;
+            var aDraw = awayDraw      ?? 0m;
+            var aFat  = awayFatti     ?? 0m;
+            pronCardsAway = (aOut + aWin + aDraw + aFat) / 4m;
+        }
+        break;
 
-                case "2":
-                    // Ospite favorita (semplice come prima)
-                    pronCardsHome = homeLost;
-                    pronCardsAway = awayWon;
-                    break;
-            }
+    case "X":
+        // Pareggio secco:
+        // Casa:  (In Casa + Partite Pareggiate + Fatti) / 3
+        if (homeInCasa.HasValue || homeDraw.HasValue || homeFatti.HasValue)
+        {
+            var hIn   = homeInCasa ?? 0m;
+            var hDraw = homeDraw   ?? 0m;
+            var hFat  = homeFatti  ?? 0m;
+            pronCardsHome = (hIn + hDraw + hFat) / 3m;
+        }
+
+        // Ospite: (Fuoricasa + Partite Pareggiate + Fatti) / 3
+        if (awayFuoricasa.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+        {
+            var aOut  = awayFuoricasa ?? 0m;
+            var aDraw = awayDraw      ?? 0m;
+            var aFat  = awayFatti     ?? 0m;
+            pronCardsAway = (aOut + aDraw + aFat) / 3m;
+        }
+        break;
+
+    default:
+        pronCardsHome = null;
+        pronCardsAway = null;
+        break;
+}
+
 
             if (pronCardsHome.HasValue && pronCardsAway.HasValue)
                 pronCardsTotal = pronCardsHome + pronCardsAway;
@@ -2463,11 +2525,15 @@ switch (esitoGoals)
         decimal? pronShotsAway = null;
         decimal? pronShotsTotal = null;
 
-        var esitoShots  = Model.Data.Prediction?.Esito;
+        var esitoShots = (Model.Data.Prediction?.Esito ?? "")
+            .Trim()
+            .ToUpperInvariant();
+
         var shotsMetrics = Model.Data.Shots?.Metrics;
 
         if (!string.IsNullOrWhiteSpace(esitoShots) && shotsMetrics != null && shotsMetrics.Count > 0)
         {
+            // Helper per leggere le metriche tiri (Effettuati, In Casa, Fuoricasa, Partite Vinte/Pareggiate/Perse)
             Func<string, string, decimal?> getShotsMetric = (baseName, side) =>
             {
                 var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
@@ -2489,6 +2555,7 @@ switch (esitoGoals)
                                 System.Globalization.CultureInfo.InvariantCulture,
                                 out var val))
                         {
+                            // Protezione caso valori scalati x100
                             if (val > 50m) val /= 100m;
                             return val;
                         }
@@ -2498,40 +2565,150 @@ switch (esitoGoals)
                 return null;
             };
 
-            var homeWon  = getShotsMetric("Partite Vinte",      "Home");
-            var homeDraw = getShotsMetric("Partite Pareggiate", "Home");
-            var homeLost = getShotsMetric("Partite Perse",      "Home");
+            // 🔹 HOME: medie generali + per esito
+            var homeEff       = getShotsMetric("Effettuati",         "Home"); // media tiri effettuati totali
+            var homeInCasa    = getShotsMetric("In Casa",            "Home"); // media tiri effettuati in casa
+            var homeWon       = getShotsMetric("Partite Vinte",      "Home");
+            var homeDraw      = getShotsMetric("Partite Pareggiate", "Home");
+            var homeLost      = getShotsMetric("Partite Perse",      "Home");
 
-            var awayWon  = getShotsMetric("Partite Vinte",      "Away");
-            var awayDraw = getShotsMetric("Partite Pareggiate", "Away");
-            var awayLost = getShotsMetric("Partite Perse",      "Away");
+            // 🔹 AWAY: medie generali + per esito
+            var awayEff       = getShotsMetric("Effettuati",         "Away"); // media tiri effettuati totali
+            var awayFuoriCasa = getShotsMetric("Fuoricasa",          "Away"); // media tiri effettuati in trasferta
+            var awayWon       = getShotsMetric("Partite Vinte",      "Away");
+            var awayDraw      = getShotsMetric("Partite Pareggiate", "Away");
+            var awayLost      = getShotsMetric("Partite Perse",      "Away");
 
             switch (esitoShots)
             {
                 case "1":
-                    pronShotsHome = homeWon;
-                    pronShotsAway = awayLost;
-                    break;
+                    // Casa favorita:
+                    // (Effettuati + In Casa + Partite Vinte + Partite Pareggiate) / 4
+                    if (homeEff.HasValue || homeInCasa.HasValue || homeWon.HasValue || homeDraw.HasValue)
+                    {
+                        var hEff  = homeEff    ?? 0m;
+                        var hHome = homeInCasa ?? 0m;
+                        var hWin  = homeWon    ?? 0m;
+                        var hDraw = homeDraw   ?? 0m;
+                        pronShotsHome = (hEff + hHome + hWin + hDraw) / 4m;
+                    }
 
-                case "1X":
-                    if (homeWon.HasValue || homeDraw.HasValue)
-                        pronShotsHome = ((homeWon ?? 0m) + (homeDraw ?? 0m)) / 2m;
-
-                    if (awayLost.HasValue || awayDraw.HasValue)
-                        pronShotsAway = ((awayLost ?? 0m) + (awayDraw ?? 0m)) / 2m;
-                    break;
-
-                case "X2":
-                    if (homeLost.HasValue || homeDraw.HasValue)
-                        pronShotsHome = ((homeLost ?? 0m) + (homeDraw ?? 0m)) / 2m;
-
-                    if (awayWon.HasValue || awayDraw.HasValue)
-                        pronShotsAway = ((awayWon ?? 0m) + (awayDraw ?? 0m)) / 2m;
+                    // Ospite sfavorita:
+                    // (Effettuati + Fuoricasa + Partite Perse + Partite Pareggiate) / 4
+                    if (awayEff.HasValue || awayFuoriCasa.HasValue || awayLost.HasValue || awayDraw.HasValue)
+                    {
+                        var aEff  = awayEff       ?? 0m;
+                        var aAway = awayFuoriCasa ?? 0m;
+                        var aLos  = awayLost      ?? 0m;
+                        var aDraw = awayDraw      ?? 0m;
+                        pronShotsAway = (aEff + aAway + aLos + aDraw) / 4m;
+                    }
                     break;
 
                 case "2":
-                    pronShotsHome = homeLost;
-                    pronShotsAway = awayWon;
+                    // Casa sfavorita:
+                    // (Effettuati + In Casa + Partite Perse + Partite Pareggiate) / 4
+                    if (homeEff.HasValue || homeInCasa.HasValue || homeLost.HasValue || homeDraw.HasValue)
+                    {
+                        var hEff  = homeEff    ?? 0m;
+                        var hHome = homeInCasa ?? 0m;
+                        var hLos  = homeLost   ?? 0m;
+                        var hDraw = homeDraw   ?? 0m;
+                        pronShotsHome = (hEff + hHome + hLos + hDraw) / 4m;
+                    }
+
+                    // Ospite favorita:
+                    // (Effettuati + Fuoricasa + Partite Vinte + Partite Pareggiate) / 4
+                    if (awayEff.HasValue || awayFuoriCasa.HasValue || awayWon.HasValue || awayDraw.HasValue)
+                    {
+                        var aEff  = awayEff       ?? 0m;
+                        var aAway = awayFuoriCasa ?? 0m;
+                        var aWin  = awayWon       ?? 0m;
+                        var aDraw = awayDraw      ?? 0m;
+                        pronShotsAway = (aEff + aAway + aWin + aDraw) / 4m;
+                    }
+                    break;
+
+                case "1X":
+                    // Casa non perde:
+                    // (Effettuati + In Casa + Partite Vinte + Partite Pareggiate) / 4
+                    if (homeEff.HasValue || homeInCasa.HasValue || homeWon.HasValue || homeDraw.HasValue)
+                    {
+                        var hEff  = homeEff    ?? 0m;
+                        var hHome = homeInCasa ?? 0m;
+                        var hWin  = homeWon    ?? 0m;
+                        var hDraw = homeDraw   ?? 0m;
+                        pronShotsHome = (hEff + hHome + hWin + hDraw) / 4m;
+                    }
+
+                    // Ospite (meno favorita):
+                    // (Effettuati + Fuoricasa + Partite Perse + Partite Pareggiate) / 4
+                    if (awayEff.HasValue || awayFuoriCasa.HasValue || awayLost.HasValue || awayDraw.HasValue)
+                    {
+                        var aEff  = awayEff       ?? 0m;
+                        var aAway = awayFuoriCasa ?? 0m;
+                        var aLos  = awayLost      ?? 0m;
+                        var aDraw = awayDraw      ?? 0m;
+                        pronShotsAway = (aEff + aAway + aLos + aDraw) / 4m;
+                    }
+                    break;
+
+                case "X2":
+                    // ✅ Casa (sfavorita / può soffrire) – come da tua regola:
+                    //  Media tiri effettuati
+                    //  + Media tiri effettuati in casa
+                    //  + Media tiri nelle partite pareggiate
+                    //  + Media tiri nelle partite perse
+                    //  / 4
+                    if (homeEff.HasValue || homeInCasa.HasValue || homeDraw.HasValue || homeLost.HasValue)
+                    {
+                        var hEff  = homeEff    ?? 0m;
+                        var hHome = homeInCasa ?? 0m;
+                        var hDraw = homeDraw   ?? 0m;
+                        var hLos  = homeLost   ?? 0m;
+                        pronShotsHome = (hEff + hHome + hDraw + hLos) / 4m;
+                    }
+
+                    // ✅ Trasferta (favorita) – come da tua regola:
+                    //  Media tiri effettuati
+                    //  + Media tiri effettuati in trasferta
+                    //  + Media tiri nelle partite pareggiate
+                    //  + Media tiri nelle partite vinte
+                    //  / 4
+                    if (awayEff.HasValue || awayFuoriCasa.HasValue || awayDraw.HasValue || awayWon.HasValue)
+                    {
+                        var aEff  = awayEff       ?? 0m;
+                        var aAway = awayFuoriCasa ?? 0m;
+                        var aDraw = awayDraw      ?? 0m;
+                        var aWin  = awayWon       ?? 0m;
+                        pronShotsAway = (aEff + aAway + aDraw + aWin) / 4m;
+                    }
+                    break;
+
+                case "X":
+                    // Pareggio secco:
+                    // Casa:  (Effettuati + In Casa + Partite Pareggiate) / 3
+                    if (homeEff.HasValue || homeInCasa.HasValue || homeDraw.HasValue)
+                    {
+                        var hEff  = homeEff    ?? 0m;
+                        var hHome = homeInCasa ?? 0m;
+                        var hDraw = homeDraw   ?? 0m;
+                        pronShotsHome = (hEff + hHome + hDraw) / 3m;
+                    }
+
+                    // Ospite: (Effettuati + Fuoricasa + Partite Pareggiate) / 3
+                    if (awayEff.HasValue || awayFuoriCasa.HasValue || awayDraw.HasValue)
+                    {
+                        var aEff  = awayEff       ?? 0m;
+                        var aAway = awayFuoriCasa ?? 0m;
+                        var aDraw = awayDraw      ?? 0m;
+                        pronShotsAway = (aEff + aAway + aDraw) / 3m;
+                    }
+                    break;
+
+                default:
+                    pronShotsHome = null;
+                    pronShotsAway = null;
                     break;
             }
 
@@ -2539,6 +2716,7 @@ switch (esitoGoals)
                 pronShotsTotal = pronShotsHome + pronShotsAway;
         }
     }
+
 
     @* 🔹 Box pronostico tiri *@
     @if (pronShotsHome.HasValue || pronShotsAway.HasValue || pronShotsTotal.HasValue)
