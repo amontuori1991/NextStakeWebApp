@@ -689,163 +689,155 @@ switch (esitoGoals)
                     )
                 );
 
-                <div class="vstack gap-3">
+ <div class="vstack gap-3">
 
-                    @* 🔹 BOX PRONOSTICO xG – stile identico a Tiri/Corner/Falli *@
-                    @if (pronXgHome.HasValue || pronXgAway.HasValue || pronXgTot.HasValue)
-                    {
-                        var homeName = string.IsNullOrWhiteSpace(Model.Data.Home) ? "Casa" : Model.Data.Home;
-                        var awayName = string.IsNullOrWhiteSpace(Model.Data.Away) ? "Ospite" : Model.Data.Away;
+    @* 🔹 BOX PRONOSTICO xG – ORA STILE IDENTICO A TIRI/FALLI/CORNER *@
+    @if (pronXgHome.HasValue || pronXgAway.HasValue || pronXgTot.HasValue)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <div class="p-3 rounded bg-light d-flex flex-column">
+                    <span class="fw-semibold">Pronostico Goal Attesi Home</span>
+                    <span class="fs-5">
+                        @(pronXgHome.HasValue ? pronXgHome.Value.ToString("0.00") : "—")
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 rounded bg-light d-flex flex-column">
+                    <span class="fw-semibold">Pronostico Goal Attesi Away</span>
+                    <span class="fs-5">
+                        @(pronXgAway.HasValue ? pronXgAway.Value.ToString("0.00") : "—")
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 rounded bg-light d-flex flex-column">
+                    <span class="fw-semibold">Totale xG attesi</span>
+                    <span class="fs-5">
+                        @(pronXgTot.HasValue ? pronXgTot.Value.ToString("0.00") : "—")
+                    </span>
+                </div>
+            </div>
+        </div>
 
-                        <h5 class="mb-2">
-                            Pronostico Goal Attesi (in base all'esito @esitoGoals)
-                        </h5>
+        <div class="col-12 mb-2">
+            <small class="text-muted">
+                Calcolati dall'esito (@esitoGoals) usando: medie xG per risultato
+                (vinte/pareggiate/perse), goal fatti in casa/trasferta e goal subiti
+                in casa/trasferta.
+            </small>
+        </div>
 
-                        <div class="row g-3 mb-2">
-                            <div class="col-md-4">
-                                <div class="card p-3 h-100">
-                                    <h6 class="fw-bold">@homeName</h6>
-                                    <hr />
-                                    <div class="fs-4 fw-bold">
-                                        @(pronXgHome.HasValue ? pronXgHome.Value.ToString("0.00") : "—")
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card p-3 h-100">
-                                    <h6 class="fw-bold">@awayName</h6>
-                                    <hr />
-                                    <div class="fs-4 fw-bold">
-                                        @(pronXgAway.HasValue ? pronXgAway.Value.ToString("0.00") : "—")
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="card p-3 h-100">
-                                    <h6 class="fw-bold">Totale xG attesi</h6>
-                                    <hr />
-                                    <div class="fs-4 fw-bold">
-                                        @(pronXgTot.HasValue ? pronXgTot.Value.ToString("0.00") : "—")
-                                    </div>
-                                </div>
+        @* 🔹 QUOTE GOAL (da Odds, Description LIKE '%goal%') *@
+        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+        {
+            var goalOdds = Model.Data.Odds
+                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                            && o.Description.IndexOf("goal", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            if (goalOdds.Any())
+            {
+                var goalMarkets = goalOdds
+                    .GroupBy(o => new { o.BetId, o.Description })
+                    .OrderBy(g => g.Key.BetId)
+                    .ToList();
+
+                <div class="card mt-3">
+                    <div class="card-header">
+                        Quote Goal (dati dai bookmaker)
+                    </div>
+
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center mb-3">
+                            <div class="col-md-6">
+                                <label for="goal-odds-select" class="form-label mb-1 fw-semibold">
+                                    Seleziona mercato Goal
+                                </label>
+                                <select id="goal-odds-select" class="form-select form-select-sm">
+                                    <option value="">-- Seleziona un mercato --</option>
+                                    @foreach (var market in goalMarkets)
+                                    {
+                                        var key  = $"{market.Key.BetId}_{market.Key.Description}";
+                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                        <option value="@key">
+                                            @desc (@market.Key.BetId)
+                                        </option>
+                                    }
+                                </select>
                             </div>
                         </div>
 
-                        <div class="text-muted small">
-                            Calcolati dall'esito (@esitoGoals) usando:
-                            medie xG per risultato (vinte/pareggiate/perse),
-                            goal fatti in casa/trasferta e goal subiti in casa/trasferta.
+                        <div class="table-responsive d-none" id="goal-odds-wrapper">
+                            <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Selezione</th>
+                                        <th scope="col">Quota</th>
+                                        <th scope="col">Bookmaker</th>
+                                        <th scope="col" class="text-end">Telegram</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var market in goalMarkets)
+                                    {
+                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                        foreach (var o in market.OrderBy(o => o.Value))
+                                        {
+                                            <tr data-market-key="@key">
+                                                <td>@o.Value</td>
+                                                <td>@o.Odd.ToString("0.00")</td>
+                                                <td>
+                                                    @if (o.Bookmaker == 8)
+                                                    {
+                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                    }
+                                                    else
+                                                    {
+                                                        @o.Bookmaker
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    @if (User.HasClaim("plan", "1"))
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="SendOddsIdea"
+                                                              class="d-inline">
+                                                            @Html.AntiForgeryToken()
+
+                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                            <input type="hidden" name="odd"
+                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                            <button type="submit"
+                                                                    class="btn btn-sm btn-outline-success"
+                                                                    title="Invia su Telegram">
+                                                                🚀
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
                         </div>
 
-                        @* 🔹 QUOTE GOAL (da Odds, Description LIKE '%goal%') *@
-                        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
-                        {
-                            var goalOdds = Model.Data.Odds
-                                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
-                                            && o.Description.IndexOf("goal", StringComparison.OrdinalIgnoreCase) >= 0)
-                                .ToList();
+                    </div>
+                </div>
+            }
+        }
+    }
 
-                            if (goalOdds.Any())
-                            {
-                                var goalMarkets = goalOdds
-                                    .GroupBy(o => new { o.BetId, o.Description })
-                                    .OrderBy(g => g.Key.BetId)
-                                    .ToList();
+    @* 🔹 Tabella / box delle metriche come prima *@
 
-                                <div class="card mt-4">
-                                    <div class="card-header">
-                                        Quote Goal (dati dai bookmaker)
-                                    </div>
-
-                                    <div class="card-body">
-
-                                        <div class="row g-3 align-items-center mb-3">
-                                            <div class="col-md-6">
-                                                <label for="goal-odds-select" class="form-label mb-1 fw-semibold">
-                                                    Seleziona mercato Goal
-                                                </label>
-                                                <select id="goal-odds-select" class="form-select form-select-sm">
-                                                    <option value="">-- Seleziona un mercato --</option>
-                                                    @foreach (var market in goalMarkets)
-                                                    {
-                                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
-                                                        <option value="@key">
-                                                            @desc (@market.Key.BetId)
-                                                        </option>
-                                                    }
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div class="table-responsive d-none" id="goal-odds-wrapper">
-                                            <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th scope="col">Selezione</th>
-                                                        <th scope="col">Quota</th>
-                                                        <th scope="col">Bookmaker</th>
-                                                        <th scope="col" class="text-end">Telegram</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    @foreach (var market in goalMarkets)
-                                                    {
-                                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                                        foreach (var o in market.OrderBy(o => o.Value))
-                                                        {
-                                                            <tr data-market-key="@key">
-                                                                <td>@o.Value</td>
-                                                                <td>@o.Odd.ToString("0.00")</td>
-                                                                <td>
-                                                                    @if (o.Bookmaker == 8)
-                                                                    {
-                                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        @o.Bookmaker
-                                                                    }
-                                                                </td>
-
-                                                                <td class="text-end">
-                                                                    @if (User.HasClaim("plan", "1"))
-                                                                    {
-                                                                        <form method="post"
-                                                                              asp-page-handler="SendOddsIdea"
-                                                                              class="d-inline">
-                                                                            @Html.AntiForgeryToken()
-
-                                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
-
-                                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                                            <input type="hidden" name="odd"
-                                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
-
-                                                                            <button type="submit" class="btn btn-sm btn-outline-success" title="Invia su Telegram">
-                                                                                🚀
-                                                                            </button>
-                                                                        </form>
-                                                                    }
-                                                                </td>
-
-                                                            </tr>
-                                                        }
-                                                    }
-                                                </tbody>
-                                            </table>
-                                        </div>
-
-                                    </div>
-                                </div>
-                            }
-                        }
-                    }
-
-                    @* 🔹 Tabella / box delle metriche come prima *@
                     @if (!hasSides)
                     {
                         <div class="table-responsive mt-3">
