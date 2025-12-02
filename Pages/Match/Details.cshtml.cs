@@ -14,6 +14,7 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
+using System.Text;
 
 namespace NextStakeWebApp.Pages.Match
 {
@@ -28,6 +29,8 @@ namespace NextStakeWebApp.Pages.Match
         private readonly IConfiguration _config;
         private readonly IOpenAIService _openai;
         private readonly IMatchBannerService _banner;
+        private readonly ILogger<DetailsModel> _logger;
+
 
 
         public DetailsModel(
@@ -37,7 +40,8 @@ namespace NextStakeWebApp.Pages.Match
             ITelegramService telegram,
             IConfiguration config,
             IOpenAIService openai,
-            IMatchBannerService banner) // <--- aggiungi
+            IMatchBannerService banner,
+            ILogger<DetailsModel> logger)
         {
             _read = read;
             _write = write;
@@ -45,11 +49,18 @@ namespace NextStakeWebApp.Pages.Match
             _telegram = telegram;
             _config = config;
             _openai = openai;
-            _banner = banner; // <--- aggiungi
+            _banner = banner;
+            _logger = logger; // <-- AGGIUNTO
         }
+
         [TempData]
         public string? StatusMessage { get; set; }
+
+        [TempData]
+        public string? Preview { get; set; }
+
         public VM Data { get; private set; } = new();
+
 
         public class VM
         {
@@ -155,6 +166,9 @@ namespace NextStakeWebApp.Pages.Match
             // 2) Dati proprietari + forma + classifica
             var p = await LoadPredictionAsync(id);
             var esitoProprietario = p?.Esito ?? "X";
+            // Esito+quota che vogliamo mostrare sopra l'analisi
+            string esitoConQuota = "";
+
             var homeForm = await GetLastFiveAsync(dto.HomeId, dto.LeagueId, dto.Season);
             var awayForm = await GetLastFiveAsync(dto.AwayId, dto.LeagueId, dto.Season);
             var standings = await GetStandingsAsync(dto.LeagueId, dto.Season);
@@ -281,28 +295,22 @@ namespace NextStakeWebApp.Pages.Match
             string cornerSuggestionsInternal = "CORNERS_SUGGERITI_INTERNO: (non disponibile)";
             string shotsSuggestionsInternal = "SHOTS_SUGGERITI_INTERNO: (non disponibile)";
             string cardsSuggestionsInternal = "CARDS_SUGGERITI_INTERNO: (non disponibile)";
+            string cardsWithQuota = "";
+            string cornersWithQuota = "";
+
+            string overUnderWithQuota = "";
+
+
             // (se in futuro vorrai anche falli/fuorigioco, li riusiamo)
 
             try
             {
                 // 5.a) Ricarico le odds dal DB per questo match
+                // 5.a) Ricarico le odds dal DB per questo match (mappate direttamente su OddsRow)
                 var oddsForAi = await (
                     from o in _read.Odds
-                    where o.Id == dto.MatchId      // 👈 STESSA LOGICA DI OnGetAsync
-                    select new
-                    {
-                        o.Bookmaker,
-                        o.Betid,
-                        o.Description,
-                        o.Value,
-                        o.Odd,
-                        o.Dateupd
-                    }
-                ).AsNoTracking().ToListAsync();
-
-                // mappo in List<OddsRow> per riutilizzare la stessa struttura
-                var oddsRowsForAi = oddsForAi
-                    .Select(o => new OddsRow
+                    where o.Id == dto.MatchId      // Id = matchid
+                    select new OddsRow
                     {
                         Bookmaker = o.Bookmaker,
                         BetId = o.Betid,
@@ -310,39 +318,468 @@ namespace NextStakeWebApp.Pages.Match
                         Value = o.Value,
                         Odd = (decimal)o.Odd,
                         DateUpdated = o.Dateupd
-                    })
-                    .ToList();
+                    }
+                ).AsNoTracking().ToListAsync();
+
+
+                // =========================
+                // ESITO + QUOTA REALE
+                // =========================
+                string esitoFinale = (p?.Esito ?? "").Trim().ToUpperInvariant();
+
+                decimal? esitoQuota = null;
+
+                if (!string.IsNullOrWhiteSpace(esitoFinale))
+                {
+                    var oddsEsito = oddsForAi
+                        .FirstOrDefault(o =>
+                        {
+                            if (o.Description == null || o.Value == null)
+                                return false;
+
+                            var desc = o.Description;
+                            var val = o.Value;
+
+                            // 1X2 classico (Match Winner)
+                            if (esitoFinale == "1")
+                                return desc.Contains("Match", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Home", StringComparison.OrdinalIgnoreCase);
+
+                            if (esitoFinale == "X")
+                                return desc.Contains("Match", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Draw", StringComparison.OrdinalIgnoreCase);
+
+                            if (esitoFinale == "2")
+                                return desc.Contains("Match", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Away", StringComparison.OrdinalIgnoreCase);
+
+                            // DOPPIA CHANCE
+                            if (esitoFinale == "1X")
+                                return desc.Contains("Double Chance", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Home/Draw", StringComparison.OrdinalIgnoreCase);
+
+                            if (esitoFinale == "X2")
+                                return desc.Contains("Double Chance", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Draw/Away", StringComparison.OrdinalIgnoreCase);
+
+                            if (esitoFinale == "12")
+                                return desc.Contains("Double Chance", StringComparison.OrdinalIgnoreCase)
+                                       && val.Equals("Home/Away", StringComparison.OrdinalIgnoreCase);
+
+                            return false;
+                        });
+
+                    if (oddsEsito != null)
+                        esitoQuota = Convert.ToDecimal(oddsEsito.Odd);
+                }
+                // 👉 Costruisco la stringa da mostrare in header
+                if (!string.IsNullOrWhiteSpace(esitoFinale))
+                {
+                    esitoConQuota = esitoQuota.HasValue
+                        ? $"ESITO: {esitoFinale} (quota {esitoQuota.Value:0.00})"
+                        : $"ESITO: {esitoFinale} (quota non disponibile)";
+                }
+
+                // =========================
+                // OVER/UNDER DA GOAL ATTESI + QUOTA REALE
+                // =========================
+                decimal? overUnderQuota = null;
+                string overUnderLine = "";
+
+                // 1) Prova ad usare i goal simulati della PredictionRow (DB)
+                decimal? totXg = null;
+                if (p != null && (p.GoalSimulatoCasa > 0 || p.GoalSimulatoOspite > 0))
+                {
+                    totXg = p.GoalSimulatoCasa + p.GoalSimulatoOspite;
+                }
+
+                // 2) Se non arrivano dal DB (o sono 0), recuperali dal payload JSON
+                if (!totXg.HasValue && !string.IsNullOrWhiteSpace(analysisPayload))
+                {
+                    try
+                    {
+                        var rootJson = JsonNode.Parse(analysisPayload)!.AsObject();
+                        if (rootJson.TryGetPropertyValue("Prediction", out var predNode) &&
+                            predNode is JsonObject predObj)
+                        {
+                            decimal? ReadDec(string key)
+                            {
+                                if (!predObj.TryGetPropertyValue(key, out var v) || v is null)
+                                    return null;
+
+                                var s = v.ToString();
+
+                                if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d))
+                                    return d;
+
+                                if (decimal.TryParse(s, NumberStyles.Any, new CultureInfo("it-IT"), out d))
+                                    return d;
+
+                                return null;
+                            }
+
+                            var gHome = ReadDec("GoalSimulatoCasa");
+                            var gAway = ReadDec("GoalSimulatoOspite");
+
+                            if (gHome.HasValue && gAway.HasValue)
+                                totXg = gHome.Value + gAway.Value;
+                        }
+                    }
+                    catch
+                    {
+                        // se il JSON è sporco, non blocchiamo niente
+                    }
+                }
+
+                // 3) Se ho una somma di goal attesi, costruisco la linea Over/Under
+                if (totXg.HasValue)
+                {
+                    var xg = totXg.Value;
+
+                    string direction;
+                    decimal targetLine;
+
+                    // Regole:
+                    // - somma >= 3.7  -> Over 2.5
+                    // - somma >= 3.0  -> Over 1.5
+                    // - somma >= 2.0  -> Under 2.5
+                    // - somma <  2.0  -> Under 1.5
+                    if (xg >= 3.4m)
+                    {
+                        direction = "Over";
+                        targetLine = 3.5m;
+                    }
+                    else if (xg >= 2.8m) // 2.8–3.39
+                    {
+                        direction = "Over";
+                        targetLine = 2.5m;
+                    }
+                    else if (xg >= 2.2m) // 2.2–2.79
+                    {
+                        direction = "Over";
+                        targetLine = 1.5m;
+                    }
+                    else if (xg >= 1.6m) // 1.6–2.19
+                    {
+                        direction = "Under";
+                        targetLine = 2.5m;
+                    }
+                    else // xg < 1.6
+                    {
+                        direction = "Under";
+                        targetLine = 1.5m;
+                    }
+
+
+                    overUnderLine = $"{direction} {targetLine:0.0}";
+
+                    // cerco la quota nella categoria "Goals Over/Under" con la linea scelta
+                    var ouCandidate = oddsForAi
+                        .Where(o =>
+                            !string.IsNullOrWhiteSpace(o.Description) &&
+                            o.Description!.IndexOf("Goals Over/Under", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            !string.IsNullOrWhiteSpace(o.Value))
+                        .FirstOrDefault(o =>
+                        {
+                            var val = o.Value!.Trim();
+                            if (!val.StartsWith(direction, StringComparison.OrdinalIgnoreCase))
+                                return false;
+
+                            var parts = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length == 0) return false;
+                            var last = parts[^1].Replace(',', '.');
+
+                            if (!decimal.TryParse(
+                                    last,
+                                    NumberStyles.Any,
+                                    CultureInfo.InvariantCulture,
+                                    out var line))
+                                return false;
+
+                            return line == targetLine;
+                        });
+
+                    if (ouCandidate != null)
+                        overUnderQuota = Convert.ToDecimal(ouCandidate.Odd);
+                }
+
+                // 4) Stringa finale GOAL: ...
+                if (!string.IsNullOrEmpty(overUnderLine))
+                {
+                    overUnderWithQuota = overUnderQuota.HasValue
+                        ? $"GOAL: {overUnderLine} (quota {overUnderQuota.Value:0.00})"
+                        : $"GOAL: {overUnderLine} (quota non disponibile)";
+                }
+
+                // =========================
+                // CARTELLINI: linea totale + quota reale
+                // Usando la stessa logica del tab Analisi
+                // =========================
+                cardsWithQuota = "";
+
+                try
+                {
+                    var esitoCards = p?.Esito;          // ✅ CORRETTO
+                    var cardsMetrics = cardsMg?.Metrics;  // cardsMg è l'analisi cartellini che stai già usando
+
+                    var expectedCardsDec = ComputePronosticoCartelliniTotali(esitoCards, cardsMetrics);
+                    var expectedCards = expectedCardsDec ?? 0m;
+
+                    _logger.LogInformation(
+                        "DEBUG CARTELLINI (FUN) esito={esito}, expected={expected}",
+                        esitoCards, expectedCards);
+
+                    // se non riusciamo a stimare nulla → salta il blocco
+                    if (expectedCards <= 0m)
+                    {
+                        cardsWithQuota = "";
+                    }
+                    else
+                    {
+                        string cardsDirection;
+                        decimal cardsTargetLine;
+
+                        // soglie calibrate sulle linee che hai davvero (3.5 e 4.5):
+                        // - se siamo <= 3 → Under 3.5
+                        // - se siamo tra 3 e 4 → Over 3.5
+                        // - se siamo > 4 → Over 4.5
+                        if (expectedCards <= 3.0m)
+                        {
+                            cardsDirection = "Under";
+                            cardsTargetLine = 3.5m;
+                        }
+                        else if (expectedCards <= 4.0m)
+                        {
+                            cardsDirection = "Over";
+                            cardsTargetLine = 3.5m;
+                        }
+                        else
+                        {
+                            cardsDirection = "Over";
+                            cardsTargetLine = 4.5m;
+                        }
+
+
+                        // cerca la quota sul mercato "Cards Over/Under"
+                        var cardsCandidate = oddsForAi
+                            .Where(o =>
+                                !string.IsNullOrWhiteSpace(o.Description) &&
+                                o.Description!.IndexOf("Cards Over/Under", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                !string.IsNullOrWhiteSpace(o.Value))
+                            .FirstOrDefault(o =>
+                            {
+                                var val = o.Value!.Trim();
+
+                                if (!val.StartsWith(cardsDirection, StringComparison.OrdinalIgnoreCase))
+                                    return false;
+
+                                var parts = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                var last = parts[^1].Replace(',', '.');
+
+                                if (!decimal.TryParse(
+                                        last,
+                                        NumberStyles.Any,
+                                        CultureInfo.InvariantCulture,
+                                        out var line))
+                                    return false;
+
+                                return line == cardsTargetLine;
+                            });
+
+                        if (cardsCandidate != null)
+                        {
+                            cardsWithQuota =
+                                $"CARTELLINI: {cardsDirection} {cardsTargetLine:0.0} (quota {cardsCandidate.Odd:0.00})";
+                        }
+                        else
+                        {
+                            // Nessuna quota disponibile (match già giocato o mercato mancante),
+                            // ma vogliamo comunque esporre il pronostico statistico.
+                            cardsWithQuota =
+                                $"CARTELLINI: {cardsDirection} {cardsTargetLine:0.0} (quota non disponibile)";
+                        }
+
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Errore nel calcolo cartellini/quote");
+                    cardsWithQuota = "";
+                }
+
+                // =========================
+                // CORNER: linea totale + quota reale
+                // (stessa idea dei cartellini, ma su mercato "Corners Over Under")
+                // =========================
+                cornersWithQuota = "";
+
+                try
+                {
+                    // Usa SOLO il mercato principale "Corners Over Under"
+                    bool IsMainCornersOverUnder(string? desc)
+                    {
+                        if (string.IsNullOrWhiteSpace(desc))
+                            return false;
+
+                        var d = desc.Trim();
+
+                        // nel tuo feed è scritto senza "/"
+                        return d.Equals("Corners Over Under", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    var esitoCorners = p?.Esito;
+                    var cornersMetrics = cornersMg?.Metrics;
+
+                    var expectedCornersDec = ComputePronosticoCornerTotali(esitoCorners, cornersMetrics);
+                    var expectedCorners = expectedCornersDec ?? 0m;
+
+                    _logger.LogInformation(
+                        "DEBUG CORNER (FUN) esito={esito}, expected={expected}",
+                        esitoCorners, expectedCorners);
+
+                    if (expectedCorners > 0m)
+                    {
+                        string cornersDirection;
+                        decimal cornersTargetLine;
+
+                        // Soglie "umane" per corner totali:
+                        // <= 9   → Under 9.5
+                        // <= 10.5 → Over 9.5
+                        //  > 10.5 → Over 10.5
+                        if (expectedCorners <= 9.0m)
+                        {
+                            cornersDirection = "Under";
+                            cornersTargetLine = 9.5m;
+                        }
+                        else if (expectedCorners <= 10.5m)
+                        {
+                            cornersDirection = "Over";
+                            cornersTargetLine = 9.5m;
+                        }
+                        else
+                        {
+                            cornersDirection = "Over";
+                            cornersTargetLine = 10.5m;
+                        }
+
+                        // 🔍 CERCO SOLO NEL MERCATO "Corners Over Under"
+                        var sameDirectionMarkets = oddsForAi
+                            .Where(o =>
+                                IsMainCornersOverUnder(o.Description) &&        // 👈 solo questo mercato
+                                !string.IsNullOrWhiteSpace(o.Value))
+                            .Select(o =>
+                            {
+                                // Esempi Value: "Over 9.5", "Under 10"
+                                var val = o.Value!.Trim();
+
+                                if (!val.StartsWith(cornersDirection, StringComparison.OrdinalIgnoreCase))
+                                    return null;
+
+                                var parts = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                if (parts.Length < 2)
+                                    return null;
+
+                                var last = parts[^1].Replace(',', '.');
+
+                                if (!decimal.TryParse(
+                                        last,
+                                        NumberStyles.Any,
+                                        CultureInfo.InvariantCulture,
+                                        out var line))
+                                    return null;
+
+                                return new
+                                {
+                                    Row = o,
+                                    Line = line
+                                };
+                            })
+                            .Where(x => x != null)
+                            .ToList();
+
+                        if (!sameDirectionMarkets.Any())
+                        {
+                            // Nessuna quota nel mercato "Corners Over Under" per questa direzione
+                            cornersWithQuota =
+                                $"CORNER: {cornersDirection} {cornersTargetLine:0.0} (quota non disponibile)";
+                        }
+                        else
+                        {
+                            // 1) Provo match esatto sulla linea teorica (es. 10.5)
+                            var exact = sameDirectionMarkets
+                                .FirstOrDefault(x => x.Line == cornersTargetLine);
+
+                            var chosen = exact;
+
+                            // 2) Se non esiste linea esatta, fallback:
+                            if (chosen == null)
+                            {
+                                if (string.Equals(cornersDirection, "Over", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    // Over → linea più bassa disponibile (es. Over 9.5)
+                                    chosen = sameDirectionMarkets
+                                        .OrderBy(x => x.Line)
+                                        .FirstOrDefault();
+                                }
+                                else
+                                {
+                                    // Under → linea più alta disponibile (es. Under 10)
+                                    chosen = sameDirectionMarkets
+                                        .OrderByDescending(x => x.Line)
+                                        .FirstOrDefault();
+                                }
+                            }
+
+                            if (chosen != null)
+                            {
+                                var line = chosen.Line;
+                                var row = chosen.Row;
+
+                                cornersWithQuota =
+                                    $"CORNER: {cornersDirection} {line:0.0} (quota {row.Odd:0.00})";
+                            }
+                            else
+                            {
+                                cornersWithQuota =
+                                    $"CORNER: {cornersDirection} {cornersTargetLine:0.0} (quota non disponibile)";
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Errore nel calcolo corner/quote");
+                    cornersWithQuota = "";
+                }
+
+
+                // mappo in List<OddsRow> per riutilizzare la stessa struttura
+                var oddsRowsForAi = oddsForAi;
+
 
                 // 🔹 Suggerimenti CORNER (usa logica vittorie/perse + quote reali)
                 // 🔹 Suggerimenti CORNER (usa linee indicative + quote reali)
-                cornerSuggestionsInternal = BuildCornerSuggestions(
-                    lines,       // linee totali (gol/corner/cartellini/tiri)
-                    teamLines,   // linee per squadra
-                    oddsRowsForAi,
-                    esitoProprietario,
-                    dto.Home,
-                    dto.Away
-                );
+ cornerSuggestionsInternal = BuildCornerSuggestions(
+    lines,
+    teamLines,
+    oddsForAi,
+    esitoProprietario,
+    dto.Home,
+    dto.Away
+);
 
-
-                // 🔹 Suggerimenti TIRI (usa linee indicative + quote reali)
-                // "lines" e "teamLines" li hai già calcolati poco sopra con:
-                // var lines = BuildIndicativeLines(...);
-                // var teamLines = BuildTeamLines(...);
                 shotsSuggestionsInternal = BuildShotsSuggestions(
                     lines,
                     teamLines,
-                    oddsRowsForAi,
+                    oddsForAi,
                     dto.Home,
                     dto.Away
                 );
 
-                // 🔹 Suggerimenti CARTELLINI: per ora solo totali (nessun split squadra)
                 cardsSuggestionsInternal = BuildCardsSuggestions(
                     lines,
-                    oddsRowsForAi
+                    oddsForAi
                 );
-
 
 
 
@@ -362,231 +799,82 @@ namespace NextStakeWebApp.Pages.Match
                 }
 
                 // 5.c) Costruisco l'array JSON delle odds
+                // 5.c) Costruisco l'array JSON delle odds
                 var oddsArray = new JsonArray();
 
                 foreach (var o in oddsForAi)
                 {
                     var obj = new JsonObject
                     {
-                        ["Bookmaker"] = o.Bookmaker,       // int (es. 8 = Bet365)
-                        ["BetId"] = o.Betid,
+                        ["Bookmaker"] = o.Bookmaker,
+                        ["BetId"] = o.BetId,          // <- usa la proprietà di OddsRow
                         ["Description"] = o.Description,
                         ["Value"] = o.Value,
                         ["Odd"] = o.Odd,
-                        ["DateUpdated"] = o.Dateupd
+                        ["DateUpdated"] = o.DateUpdated // <- idem
                     };
 
                     oddsArray.Add(obj);
                 }
 
+
                 // 5.d) Inietto l'array "odds" nel payload
                 rootPayload["odds"] = oddsArray;
 
                 // 5.e) Aggiorno la stringa analysisPayload che viene passata al prompt
+                // 🔹 Iniettiamo ESITO + QUOTA nel payload per l'AI
+                rootPayload["EsitoConQuota"] = esitoConQuota;
+                rootPayload["CardsWithQuota"] = cardsWithQuota;
+                rootPayload["CornersWithQuota"] = cornersWithQuota;
+
+
+
                 analysisPayload = rootPayload.ToJsonString(new JsonSerializerOptions
                 {
                     WriteIndented = false
                 });
+
+
             }
             catch
             {
                 // Se qualcosa va storto, non bloccare la generazione: semplicemente niente odds nel payload
             }
 
+            // 5) Prompt semplificato per l'AI: solo riscrittura del blocco analitico,
+            // senza chiedere pronostici, mercati o quote.
+            var analysisContextForAi = BuildAnalysisContextForAi(analysisPayload, dto.Home, dto.Away);
+
+
             var prompt = $@"
-Agisci come analista calcistico professionista. Devi generare un testo UNICO, discorsivo e fluido (NO sezioni, NO punti elenco), con linguaggio tecnico ma naturale, rivolto a un pubblico che già mastica scommesse e statistiche.
+Devi riscrivere in stile Telegram questa analisi calcistica.
 
-Hai a disposizione:
-- Dati proprietari (esito, GG/NG, over/under, multigoal, simulazioni).
-- Stato di forma (W/D/L), contesto classifica e motivazioni.
-- Statistiche già parsate: tiri, corner, falli, cartellini, fuorigioco, gol/over.
-- Linee indicative interne (totale match e per squadra).
-- SUGGERIMENTI calcolati a backend (corner, tiri, cartellini).
-- Le QUOTE reali (odds) con le linee di mercato (gol, corner, tiri, team totals).
-- Tutte le medie statistiche disponibili per V/P/L.
-- I dati completi del match.
-- L’esito proprietario che determina in modo ASSOLUTO chi è favorita.
+CONTESTO AGGIUNTIVO:
+L'esito 1X2 previsto dalla nostra analisi è: {esitoProprietario}
 
-──────────────────────────────────────────────
-REGOLE NON NEGOZIABILI
-──────────────────────────────────────────────
+REGOLE:
+- Integra l'esito in modo naturale nel testo (senza formati tipo ""ESITO:"").
+- Non parlare mai di scommesse, quote o puntate.
+- Non ripetere il nome del match nelle prime righe.
+- Parti subito dall'analisi tecnica.
+- Mantieni uno stile professionale, fluido e da canale Telegram.
+- Non inventare dati.
 
-0) NON inventare numeri di quote, handicap o linee. Le quote esistono solo se sono presenti nel blocco JSON ""odds"". Se non trovi una quota, NON la scrivi.
-1) NON inventare linee Over/Under (X.5) che non siano:
-   - ricavate in modo coerente dalle linee indicative interne OPPURE
-   - presenti nelle quote reali in ""odds"" OPPURE
-   - presenti esplicitamente nei suggerimenti interni (corner/tiri/cartellini).
-2) NON cambiare mai direzione (Over/Under) rispetto ai suggerimenti interni calcolati a backend:
-   - se un suggerimento interno dice Over 9.5 corner totali a quota 1.80,
-     tu NON puoi proporre Under 9.5 corner,
-     né Under su una linea equivalente/collegata (tipo 9.0 o 10.0) contro quell’indicazione.
-3) Se i suggerimenti interni su corner/tiri/cartellini sono presenti, li devi considerare PRIORITARI:
-   - non li puoi ignorare;
-   - non puoi ribaltarne il senso;
-   - non puoi proporre un mercato opposto sugli stessi corner/tiri/cartellini.
-4) Il tuo compito NON è cercare nuove idee, ma rendere discorsive e coerenti
-   le indicazioni statistiche e i suggerimenti interni calcolati dal backend.
-5) Quando parli di favorita/sfavorita devi SEMPRE seguire l’ESITO PROPRIETARIO, non le tue deduzioni.
-6) NON citare mai numeri grezzi di medie (tipo ""13.5 corner di media"", ""18 tiri"", ""5.44 corner""):
-   - puoi parlare di volumi (alto/basso), intensità, pressione, dominanza, ecc.,
-   - i numeri precisi devono comparire SOLO dentro linee Over/Under e/o quote, se esistono.
-7) Se non trovi una quota o una linea coerente per un certo mercato (gol/corner/tiri):
-   - puoi restare più generico nel testo discorsivo,
-   - ma nelle tre righe finali GOL/CORNER/TIRI devi comunque proporre una linea X.5 sensata
-     (basandoti sulle linee indicative interne) SENZA inventare la quota.
-8) Se i dati interni indicano chiaramente un volume atteso MOLTO superiore alla linea del book,
-   non puoi scrivere frasi che lo contraddicono (esempio: se la somma attesa di corner è ben sopra 12
-   e il book offre Over 9.5, NON puoi dire che ""potrebbe rimanere sotto 9.5 corner"").
-9) Se non sei sicuro fra due opzioni, segui SEMPRE la direzione implicita nei suggerimenti interni.
-10) Tutto ciò che arriva dai blocchi:
-   - CORNERS_SUGGERITI_INTERNO
-   - SHOTS_SUGGERITI_INTERNO
-   - CARDS_SUGGERITI_INTERNO
-   viene considerato come una sorta di ""pre-pick"" vincolante: puoi solo riscriverlo in modo discorsivo, non modificarne la sostanza.
-11) Se il blocco CARDS_SUGGERITI_INTERNO contiene la frase
-    ""NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI"",
-    ti è VIETATO proporre Over/Under sui cartellini:
-    - niente mercati cartellini nel testo discorsivo,
-    - niente mercati cartellini nelle tre righe finali.
-    Puoi solo fare un cenno generico al fatto che il match potrebbe essere
-    più o meno nervoso, ma SENZA associare una linea o un Over/Under.
-
-──────────────────────────────────────────────
-CONTESTO MATCH
-──────────────────────────────────────────────
-Lega: {dto.LeagueName}
-Partita: {dto.Home} vs {dto.Away}
-Esito proprietario: {esitoProprietario}
-Calcio d'inizio (locale): {dto.KickoffUtc:yyyy-MM-dd HH:mm}
-
-FORMA (ultime 5)
-- {dto.Home}: {homeSeqEmo} (W:{homeWDL.w} D:{homeWDL.d} L:{homeWDL.l})
-- {dto.Away}: {awaySeqEmo} (W:{awayWDL.w} D:{awayWDL.d} L:{awayWDL.l})
-
-CONTESTO CAMPIONATO:
-{leagueContext}
-
-DATI PROPRIETARI (riassunto):
-{proprietaryContext}
-
-LINEE INDICATIVE INTERNE (totali):
-{linesTotal}
-
-LINEE INDICATIVE PER SQUADRA (gol/corner/tiri):
-{linesTeams}
-
-──────────────────────────────────────────────
-SUGGERIMENTI CALCOLATI A BACKEND (VINCOLANTI)
-──────────────────────────────────────────────
-
-Questi blocchi contengono i suggerimenti pre-calcolati dal backend.
-
-NON puoi:
-- cambiare Over in Under (o viceversa) sulle stesse linee;
-- cambiare la linea (es. da 9.5 a 7.5) se espressamente indicata;
-- ignorare completamente questi mercati.
-
-Puoi solo trasformarli in un commento discorsivo e coerente.
-
-SUGGERIMENTI CORNER (VINCOLANTI, NON MODIFICARE IL SENSO):
-{cornerSuggestionsInternal}
-
-SUGGERIMENTI TIRI (VINCOLANTI, NON MODIFICARE IL SENSO):
-{shotsSuggestionsInternal}
-
-SUGGERIMENTI CARTELLINI (VINCOLANTI, NON MODIFICARE IL SENSO):
-{cardsSuggestionsInternal}
-
-──────────────────────────────────────────────
-STATISTICHE (CONTESTO, NO NUMERI GREZZI)
-──────────────────────────────────────────────
-Usa questo blocco per farti un’idea del modo in cui le squadre producono
-gol, tiri, corner, falli, cartellini e fuorigioco. NON riportare i numeri così come sono, ma trasformali in concetti (ritmo alto/basso, pressione, pericolosità, ecc.):
-
-{analysisContext}
-
-SEGNALI SINTETICI (corner/cartellini/falli/fuorigioco/tiri) – SOLO PER IL TUO RAGIONAMENTO:
-{aiSignalsBlock}
-
-CANDIDATI TEAM TOTAL (gol/corner/tiri) – SOLO PER IL TUO RAGIONAMENTO, NON COPIARE ALLA LETTERA:
-{teamCandidatesText}
-
-──────────────────────────────────────────────
-PAYLOAD JSON COMPLETO (STATISTICHE + ODDS)
-NON citarlo nel testo, usalo solo per il ragionamento:
-{analysisPayload}
-
-──────────────────────────────────────────────
-FORMATO DELLA RISPOSTA (OBBLIGATORIO)
-──────────────────────────────────────────────
-
-1️⃣ TESTO DISCORSIVO PRINCIPALE
-Scrivi un unico blocco di 5–12 frasi, SENZA punti elenco, dove:
-
-- Spieghi perché {dto.Home} o {dto.Away} è favorita in base all’ESITO PROPRIETARIO (non dedurre da altro).
-- Colleghi forma, classifica e stile di gioco alle aspettative su:
-  - andamento del match,
-  - gol,
-  - volume di tiri,
-  - volume di corner.
-- Cita almeno una volta {dto.Home} e almeno una volta {dto.Away} quando parli di favorita/sfavorita.
-- Se i suggerimenti interni indicano un mercato forte (es. Over corner, Over tiri, ecc.),
-  inserisci nel testo un riferimento coerente (es. ""è lecito attendersi una partita con molti corner a favore di..."").
-
-2️⃣ TRE RIGHE FINALI STRUTTURATE
-Alla FINE del testo discorsivo, su tre righe separate, DEVI aggiungere ESATTAMENTE questo schema:
-
-GOL: [descrizione mercato sui gol con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
-CORNER: [descrizione mercato sui corner con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
-TIRI: [descrizione mercato sui tiri con Over/Under X.5, specificando se totali o di squadra, e QUOTA se presente nelle ""odds""]
-
-Regole per queste tre righe:
-
-- Ogni riga DEVE iniziare con la parola esatta: ""GOL:"", ""CORNER:"", ""TIRI:"".
-- Ogni riga DEVE contenere una linea con .5 (1.5, 2.5, 3.5, 9.5, 10.5, ecc.).
-- Specifica sempre se si tratta di:
-  - gol/corner/tiri TOTALI oppure
-  - gol/corner/tiri di una singola squadra (es. {dto.Home} o {dto.Away}).
-- Se nel payload ""odds"" esiste una quota per quella linea e per quel mercato:
-  - scrivi: ""a quota X.XX su Bet365"" (es. ""Over 2.5 gol totali a quota 1.85 su Bet365"").
-  - NON inventare mai Bet365 se il bookmaker è diverso o assente.
-- Se NON trovi una quota per quella linea:
-  - NON inventare la quota numerica,
-  - NON nominare Bet365 o altri bookmaker,
-  - scrivi solo la linea (es. ""Over 2.5 gol totali"").
-
-- Se i suggerimenti interni impongono una certa direzione (es. Over corner totali):
-  - la riga CORNER DEVE essere coerente con quella direzione (non puoi proporre l’Under sulla stessa linea).
-- In caso di dubbio fra più linee possibili, scegli quella che:
-  - è coerente con i suggerimenti interni,
-  - è realmente presente in ""odds"" (se stai usando anche la quota).
-
-3️⃣ CHECK FINALE PRIMA DI RESTITUIRE LA RISPOSTA
-
-Prima di concludere, verifica che:
-
-- Nel testo compaiano correttamente {dto.Home} e {dto.Away}.
-- Non hai scritto frasi che contraddicono chiaramente i suggerimenti interni
-  (es. testo che parla di pochi corner quando i suggerimenti interni spingono forte per Over corner).
-- La riga GOL contiene: Over/Under X.5 gol totali o di squadra.
-- La riga CORNER contiene: Over/Under X.5 corner totali o di squadra.
-- La riga TIRI contiene: Over/Under X.5 tiri totali o di squadra.
-- Se citi una QUOTA X.XX, quella linea esiste davvero dentro ""odds"".
-- Non ci sono numeri di medie grezze (tiri medi, corner medi, ecc.) fuori dalle linee e dalle quote.
-
-RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
-
-
-
+TESTO DA RISCRIVERE:
+{analysisContextForAi}
+";
 
             // 6) Chiamata AI
             string aiText;
             try
             {
-                var raw = await _openai.AskAsync(prompt);
+                string promptForAi = prompt;
+                var raw = await _openai.AskAsync(promptForAi);
                 aiText = string.IsNullOrWhiteSpace(raw) ? "" : raw.Trim();
                 aiText = NormalizeHalfLines(aiText);
             }
+
+
             catch (Exception ex)
             {
                 Console.WriteLine("[AI][ERR] " + ex);
@@ -603,121 +891,424 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
             // 7) Header e preview finale
             var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
             var header =
-                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
-                $"⚽️ {dto.Home} - {dto.Away}\n\n";
+     $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+     $"⚽️ {dto.Home} - {dto.Away}\n\n";
 
-            var preview = header + aiText;
+            var extraHeaderLines = "";
 
-            TempData["AiPreview"] = preview;
+            if (!string.IsNullOrWhiteSpace(esitoConQuota))
+                extraHeaderLines += esitoConQuota + "\n\n";
+
+            if (!string.IsNullOrWhiteSpace(overUnderWithQuota))
+                extraHeaderLines += overUnderWithQuota + "\n\n";
+
+            if (!string.IsNullOrWhiteSpace(cardsWithQuota))
+                extraHeaderLines += cardsWithQuota + "\n\n";
+
+            if (!string.IsNullOrWhiteSpace(cornersWithQuota))
+                extraHeaderLines += cornersWithQuota + "\n\n";
+
+            var preview = header + extraHeaderLines + aiText;
+
+
+            // 🔹 Salviamo il testo in TempData,
+            // così dopo il Redirect la pagina può leggerlo
+            Preview = preview;
+
             StatusMessage = "✅ Anteprima generata. Controlla e premi Invia.";
             return RedirectToPage(new { id });
 
+
             // =============== HELPERS LOCALI ===============
             static string BuildAnalysisContextForAi(string? json, string home, string away)
-            {
-                if (string.IsNullOrWhiteSpace(json))
-                    return "(nessun payload analitico disponibile)";
+{
+    if (string.IsNullOrWhiteSpace(json))
+        return "(nessun payload analitico disponibile)";
 
-                try
+    JsonObject root;
+    try
+    {
+        root = JsonNode.Parse(json)!.AsObject();
+    }
+    catch
+    {
+        return "(errore nel parsing del payload analitico)";
+    }
+
+    // 🔹 Esito 1X2 dalla sezione Prediction
+    string esito = "";
+    if (root.TryGetPropertyValue("Prediction", out var predNode) && predNode is JsonObject predObj)
+    {
+        esito = predObj["Esito"]?.ToString()?.Trim().ToUpperInvariant() ?? "";
+    }
+
+                string esitoConQuota = "";
+                if (root.TryGetPropertyValue("EsitoConQuota", out var quotaNode))
                 {
-                    var root = JsonNode.Parse(json)!.AsObject();
+                    esitoConQuota = quotaNode?.ToString() ?? "";
+                }
+                // 🔹 Blocchi metrics per goals / shots / etc.
+                var goalsMetrics   = FindMetricsBlock(root, "goal");
+    var shotsMetrics   = FindMetricsBlock(root, "shot");
+    var cornersMetrics = FindMetricsBlock(root, "corner"); // per futuro uso
+    var cardsMetrics   = FindMetricsBlock(root, "card");   // per futuro uso
 
-                    string ReadBlock(string blockName, params string[] alias)
+    // ----------------------------------------------------
+    // 1) PRONOSTICI GOAL ATTESI (stessa logica della cshtml)
+    // ----------------------------------------------------
+    decimal? pronXgHome = null;
+    decimal? pronXgAway = null;
+
+    if (goalsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
+    {
+        var homeWon  = GetMetric(goalsMetrics, "Partite Vinte",      "Home");
+        var homeDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Home");
+        var homeLost = GetMetric(goalsMetrics, "Partite Perse",      "Home");
+
+        var awayWon  = GetMetric(goalsMetrics, "Partite Vinte",      "Away");
+        var awayDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Away");
+        var awayLost = GetMetric(goalsMetrics, "Partite Perse",      "Away");
+
+        var homeScoredHome      = GetMetric(goalsMetrics, "Fatti in Casa",       "Home");
+        var awayScoredAway      = GetMetric(goalsMetrics, "Fatti in Trasferta",  "Away");
+        var homeConcededHome    = GetMetric(goalsMetrics, "Subiti in Casa",      "Home");
+        var homeConcededAway    = GetMetric(goalsMetrics, "Subiti in Trasferta", "Home");
+        var awayConcededHome    = GetMetric(goalsMetrics, "Subiti in Casa",      "Away");
+        var awayConcededAway    = GetMetric(goalsMetrics, "Subiti in Trasferta", "Away");
+
+        switch (esito)
+        {
+            case "1":
+                // Casa favorita:
+                //   (xG vinte + Fatti in Casa + Subiti in Casa dell'avversaria) / 3
+                if (homeWon.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                    pronXgHome = ((homeWon ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
+
+                // Ospite sfavorita:
+                //   (xG perse + Fatti in Trasferta + Subiti in Trasferta della casa) / 3
+                if (awayLost.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                    pronXgAway = ((awayLost ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+                break;
+
+            case "2":
+                // Casa sfavorita:
+                //   (xG perse + Fatti in Casa + Subiti in Trasferta dell'avversaria) / 3
+                if (homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+                    pronXgHome = ((homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 3m;
+
+                // Ospite favorita:
+                //   (xG vinte + Fatti in Trasferta + Subiti in Casa della casa) / 3
+                if (awayWon.HasValue || awayScoredAway.HasValue || homeConcededHome.HasValue)
+                    pronXgAway = ((awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededHome ?? 0m)) / 3m;
+                break;
+
+            case "1X":
+                // Casa non perde:
+                //   (xG vinte + xG pareggiate + Fatti in Casa + Subiti in Casa dell'avversaria) / 4
+                if (homeWon.HasValue || homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                    pronXgHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 4m;
+
+                // Ospite: (perse + pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 4
+                if (awayLost.HasValue || awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                    pronXgAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 4m;
+                break;
+
+            case "X2":
+                // Casa (sfavorita / può soffrire):
+                //   xG pareggiate + xG perse + Fatti in Casa + Subiti in Trasferta avversaria
+                if (homeDraw.HasValue || homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+                    pronXgHome = ((homeDraw ?? 0m) + (homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 4m;
+
+                // Trasferta (favorita, come da tuo esempio):
+                //   xG pareggiate + xG VINTE + Fatti in Trasferta + Goal segnati in casa dall'avversaria
+                if (awayDraw.HasValue || awayWon.HasValue || awayScoredAway.HasValue || homeScoredHome.HasValue)
+                    pronXgAway = ((awayDraw ?? 0m) + (awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeScoredHome ?? 0m)) / 4m;
+                break;
+
+            case "X":
+                // Pareggio secco:
+                // Casa: (xG pareggiate + Fatti in Casa + Subiti in Casa avversaria) / 3
+                if (homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                    pronXgHome = ((homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
+
+                // Ospite: (xG pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 3
+                if (awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                    pronXgAway = ((awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+                break;
+
+            default:
+                pronXgHome = null;
+                pronXgAway = null;
+                break;
+        }
+    }
+
+    var pronXgTot = (pronXgHome.HasValue && pronXgAway.HasValue)
+        ? pronXgHome.Value + pronXgAway.Value
+        : (decimal?)null;
+
+    // ----------------------------------------------------
+    // 2) PRONOSTICI TIRI (stessa logica concettuale della cshtml)
+    // ----------------------------------------------------
+    decimal? pronShotsHome = null;
+    decimal? pronShotsAway = null;
+
+    if (shotsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
+    {
+        var shEffHome   = GetMetric(shotsMetrics, "Effettuati",         "Home");
+        var shHomeHome  = GetMetric(shotsMetrics, "In Casa",            "Home");
+        var shDrawHome  = GetMetric(shotsMetrics, "Partite Pareggiate", "Home");
+        var shLostHome  = GetMetric(shotsMetrics, "Partite Perse",      "Home");
+
+        var shEffAway   = GetMetric(shotsMetrics, "Effettuati",         "Away");
+        var shAwayAway  = GetMetric(shotsMetrics, "Fuoricasa",          "Away");
+        var shDrawAway  = GetMetric(shotsMetrics, "Partite Pareggiate", "Away");
+        var shWonAway   = GetMetric(shotsMetrics, "Partite Vinte",      "Away");
+
+        switch (esito)
+        {
+            case "1":
+                if (shEffHome.HasValue || shHomeHome.HasValue || shWonAway.HasValue)
+                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shWonAway ?? 0m)) / 3m;
+
+                if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
+                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                break;
+
+            case "2":
+                if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
+                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
+
+                if (shEffAway.HasValue || shAwayAway.HasValue || shWonAway.HasValue)
+                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shWonAway ?? 0m)) / 3m;
+                break;
+
+            case "1X":
+                if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
+                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
+
+                if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
+                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                break;
+
+            case "X2":
+                if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
+                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
+
+                if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
+                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
+                break;
+
+            case "X":
+                if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
+                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
+
+                if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
+                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
+                break;
+        }
+    }
+
+    var pronShotsTot = (pronShotsHome.HasValue && pronShotsAway.HasValue)
+        ? pronShotsHome.Value + pronShotsAway.Value
+        : (decimal?)null;
+
+                // ----------------------------------------------------
+                // 3) COSTRUZIONE DEL TESTO DA PASSARE ALL'AI
+                // ----------------------------------------------------
+                var sb = new System.Text.StringBuilder();
+
+                // ❌ NIENTE MATCH QUI: lo scriviamo già nell'header del messaggio Telegram
+                if (!string.IsNullOrWhiteSpace(esito))
+                    sb.AppendLine($"Esito 1X2 previsto dalla query: {esito}");
+                sb.AppendLine();
+
+
+                // GOAL ATTESI
+                if (pronXgHome.HasValue || pronXgAway.HasValue || pronXgTot.HasValue)
+    {
+        sb.AppendLine("PRONOSTICO GOAL ATTESI");
+        sb.AppendLine($"- {home}:   {(pronXgHome?.ToString("0.00") ?? "n.d.")}");
+        sb.AppendLine($"- {away}:   {(pronXgAway?.ToString("0.00") ?? "n.d.")}");
+        sb.AppendLine($"- Totale: {(pronXgTot?.ToString("0.00") ?? "n.d.")}");
+        sb.AppendLine();
+    }
+
+    // TIRI ATTESI
+    if (pronShotsHome.HasValue || pronShotsAway.HasValue || pronShotsTot.HasValue)
+    {
+        sb.AppendLine("PRONOSTICO TIRI");
+        sb.AppendLine($"- {home}:   {(pronShotsHome?.ToString("0.00") ?? "n.d.")}");
+        sb.AppendLine($"- {away}:   {(pronShotsAway?.ToString("0.00") ?? "n.d.")}");
+        if (pronShotsTot.HasValue)
+            sb.AppendLine($"- Totale: {(pronShotsTot?.ToString("0.00") ?? "n.d.")}");
+        sb.AppendLine();
+    }
+
+    // 🔹 Helper locale per avere anche il dump delle metriche grezze (come prima)
+    string ReadBlock(string blockName, params string[] alias)
+    {
+        var obj = root
+            .Where(kv => string.Equals(kv.Key, blockName, StringComparison.OrdinalIgnoreCase)
+                     || alias.Any(a => string.Equals(kv.Key, a, StringComparison.OrdinalIgnoreCase)))
+            .Select(kv => kv.Value as JsonObject)
+            .FirstOrDefault();
+
+        if (obj is null || obj.Count == 0) return "";
+
+        var normalized = obj
+            .Where(kv => kv.Value is not null)
+            .Select(kv => new { Key = (kv.Key ?? "").Trim(), Val = kv.Value!.ToString()?.Trim() })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Val))
+            .ToList();
+
+        if (normalized.Count == 0) return "";
+
+        var pairs = new Dictionary<string, (string? casa, string? ospite)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in normalized)
+        {
+            var keyFull = item.Key;
+            var lastDash = keyFull.LastIndexOf('-');
+            var baseName = lastDash > 0 ? keyFull.Substring(0, lastDash).Trim() : keyFull;
+            var side = lastDash > 0 ? keyFull[(lastDash + 1)..].Trim() : "";
+
+            bool isHome = side.Equals("Casa", StringComparison.OrdinalIgnoreCase) ||
+                          side.Equals("Home", StringComparison.OrdinalIgnoreCase);
+            bool isAway = side.Equals("Ospite", StringComparison.OrdinalIgnoreCase) ||
+                          side.Equals("Away", StringComparison.OrdinalIgnoreCase);
+
+            if (!pairs.TryGetValue(baseName, out var t)) t = (null, null);
+            if (isHome) t.casa = item.Val;
+            else if (isAway) t.ospite = item.Val;
+            else
+            {
+                if (!pairs.ContainsKey(baseName))
+                    pairs[baseName] = (item.Val, item.Val);
+                continue;
+            }
+            pairs[baseName] = t;
+        }
+
+        string[] desiredOrder = new[]
+        {
+            "Effettuati","Battuti","Fatti","Subiti","In Casa","Fuoricasa",
+            "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse",
+            "% Over 1.5 Casa","% Over 1.5 Trasferta","% Over 1.5 Totale",
+            "% Over 2.5 Casa","% Over 2.5 Trasferta","% Over 2.5 Totale",
+            "% Over 3.5 Casa","% Over 3.5 Trasferta","% Over 3.5 Totale"
+        };
+
+        var rows = pairs.Keys
+            .OrderBy(k => { var i = Array.IndexOf(desiredOrder, k); return i < 0 ? int.MaxValue : i; })
+            .ThenBy(k => k)
+            .Select(k =>
+            {
+                var (casa, ospite) = pairs[k];
+                return $"• {k}: {home} {casa ?? "—"} | {away} {ospite ?? "—"}";
+            });
+
+        var title = blockName.ToLower() switch
+        {
+            "goals" or "goal" => "GOAL/OVER",
+            "shots"           => "TIRI",
+            "corners"         => "CORNER",
+            "fouls"           => "FALLI",
+            "cards"           => "CARTELLINI",
+            "offsides"        => "FUORIGIOCO",
+            _ => blockName.ToUpperInvariant()
+        };
+
+        return $"{title}\n{string.Join("\n", rows)}";
+    }
+
+    var extraBlocks = new List<string>
+    {
+        ReadBlock("goals",   "goal", "goalAttesi"),
+        ReadBlock("shots",   "tiri"),
+        ReadBlock("corners", "corner"),
+        ReadBlock("fouls",   "falli"),
+        ReadBlock("cards",   "cartellini"),
+        ReadBlock("offsides","fuorigioco")
+    };
+
+    var filteredBlocks = extraBlocks.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+    if (filteredBlocks.Count > 0)
+    {
+        sb.AppendLine();
+        sb.AppendLine(string.Join("\n\n", filteredBlocks));
+    }
+
+    var ctx = sb.ToString();
+    if (ctx.Length > 2000) ctx = ctx[..2000] + "...";
+
+    return ctx;
+}
+
+            static decimal? GetMetric(JsonObject? metrics, string baseName, string side)
+            {
+                if (metrics is null) return null;
+
+                // Lato (Home/Casa, Away/Ospite)
+                var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
+                    ? new[] { "Home", "Casa" }
+                    : new[] { "Away", "Ospite" };
+
+                foreach (var sc in sideCandidates)
+                {
+                    var key1 = $"{baseName}-{sc}";
+                    var key2 = $"{baseName} - {sc}";
+
+                    if (metrics.TryGetPropertyValue(key1, out var v) ||
+                        metrics.TryGetPropertyValue(key2, out v))
                     {
-                        var obj = root
-                            .Where(kv => string.Equals(kv.Key, blockName, StringComparison.OrdinalIgnoreCase)
-                                || alias.Any(a => string.Equals(kv.Key, a, StringComparison.OrdinalIgnoreCase)))
-                            .Select(kv => kv.Value as JsonObject)
-                            .FirstOrDefault();
+                        if (v is null) continue;
 
-                        if (obj is null || obj.Count == 0) return "";
-
-                        var normalized = obj
-                            .Where(kv => kv.Value is not null)
-                            .Select(kv => new { Key = (kv.Key ?? "").Trim(), Val = kv.Value!.ToString()?.Trim() })
-                            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Val))
-                            .ToList();
-
-                        if (normalized.Count == 0) return "";
-
-                        var pairs = new Dictionary<string, (string? casa, string? ospite)>(StringComparer.OrdinalIgnoreCase);
-
-                        foreach (var item in normalized)
+                        var raw = v.ToString();
+                        if (decimal.TryParse(raw,
+                                System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                out var val))
                         {
-                            var keyFull = item.Key;
-                            var lastDash = keyFull.LastIndexOf('-');
-                            var baseName = lastDash > 0 ? keyFull.Substring(0, lastDash).Trim() : keyFull;
-                            var side = lastDash > 0 ? keyFull[(lastDash + 1)..].Trim() : "";
-
-                            bool isHome = side.Equals("Casa", StringComparison.OrdinalIgnoreCase) ||
-                                          side.Equals("Home", StringComparison.OrdinalIgnoreCase);
-                            bool isAway = side.Equals("Ospite", StringComparison.OrdinalIgnoreCase) ||
-                                          side.Equals("Away", StringComparison.OrdinalIgnoreCase);
-
-                            if (!pairs.TryGetValue(baseName, out var t)) t = (null, null);
-                            if (isHome) t.casa = item.Val;
-                            else if (isAway) t.ospite = item.Val;
-                            else
-                            {
-                                if (!pairs.ContainsKey(baseName))
-                                    pairs[baseName] = (item.Val, item.Val);
-                                continue;
-                            }
-                            pairs[baseName] = t;
+                            // stessa logica che usiamo nelle tab: se sembra x100, dividi
+                            if (val > 50m) val /= 100m;
+                            return val;
                         }
-
-                        string[] desiredOrder = new[] {
-                    "Effettuati","Battuti","Fatti","Subiti","In Casa","Fuoricasa",
-                    "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse",
-                    "% Over 1.5 Casa","% Over 1.5 Trasferta","% Over 1.5 Totale",
-                    "% Over 2.5 Casa","% Over 2.5 Trasferta","% Over 2.5 Totale",
-                    "% Over 3.5 Casa","% Over 3.5 Trasferta","% Over 3.5 Totale"
-                };
-
-                        var rows = pairs.Keys
-                            .OrderBy(k => { var i = Array.IndexOf(desiredOrder, k); return i < 0 ? int.MaxValue : i; })
-                            .ThenBy(k => k)
-                            .Select(k =>
-                            {
-                                var (casa, ospite) = pairs[k];
-                                return $"• {k}: {home} {casa ?? "—"} | {away} {ospite ?? "—"}";
-                            });
-
-                        var title = blockName.ToLower() switch
-                        {
-                            "goals" or "goal" => "GOAL/OVER",
-                            "shots" => "TIRI",
-                            "corners" => "CORNER",
-                            "fouls" => "FALLI",
-                            "cards" => "CARTELLINI",
-                            "offsides" => "FUORIGIOCO",
-                            _ => blockName.ToUpperInvariant()
-                        };
-
-                        return $"{title}\n{string.Join("\n", rows)}";
                     }
+                }
 
-                    var parts = new List<string>
+                return null;
+            }
+            static JsonObject? FindMetricsBlock(JsonNode? root, string sectionNameLike)
             {
-                ReadBlock("goals", "goal", "goalAttesi"),
-                ReadBlock("shots", "tiri"),
-                ReadBlock("corners", "corner"),
-                ReadBlock("fouls", "falli"),
-                ReadBlock("cards", "cartellini"),
-                ReadBlock("offsides", "fuorigioco")
-            };
+                if (root is null) return null;
 
-                    var filtered = parts.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-                    if (filtered.Count == 0) return "(nessuna sezione analitica riconosciuta)";
+                JsonObject? section = null;
 
-                    var ctx = string.Join("\n\n", filtered);
-                    if (ctx.Length > 1200) ctx = ctx[..1200] + "...";
-                    return ctx;
-                }
-                catch
+                if (root is JsonObject obj)
                 {
-                    return "(errore nel parsing del payload analitico)";
+                    // Cerca una proprietà tipo "Goals", "Cards", "Corners" ecc.
+                    foreach (var kv in obj)
+                    {
+                        if (kv.Key.Contains(sectionNameLike, StringComparison.OrdinalIgnoreCase))
+                        {
+                            section = kv.Value as JsonObject;
+                            break;
+                        }
+                    }
                 }
+
+                if (section is null) return null;
+
+                // Se c'è un sotto-oggetto "Metrics", prendiamo quello
+                if (section.TryGetPropertyValue("Metrics", out var metricsNode) &&
+                    metricsNode is JsonObject metricsObj)
+                {
+                    return metricsObj;
+                }
+
+                // fallback: magari la sezione *è già* l'oggetto metrics
+                return section;
             }
 
             static string BuildLeagueContextForAi(List<TableStandingRow> standings, long homeId, long awayId, int remainingRounds)
@@ -951,6 +1542,7 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
             StatusMessage = "✅ Immagine e testo inviati su Telegram (Idee).";
             return RedirectToPage(new { id });
         }
+ 
 
         // =======================
         // GET: carica dati + analyses da Neon
@@ -1510,6 +2102,191 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
             return (T)Convert.ChangeType(val, targetType);
         }
         // ------------------------ NUMERIC HELPERS ------------------------
+        // Calcola Pronostico Cartellini Totali usando
+        // la stessa logica del tab Analisi (Razor)
+        private static decimal? ComputePronosticoCartelliniTotali(
+    string? esitoCards,
+    IDictionary<string, string>? cardsMetrics)
+
+        {
+            if (string.IsNullOrWhiteSpace(esitoCards) || cardsMetrics is null || cardsMetrics.Count == 0)
+                return null;
+
+            decimal? pronCardsHome = null;
+            decimal? pronCardsAway = null;
+
+            // Helper interno: legge una metrica (baseName) per Home/Away (o Casa/Ospite)
+            decimal? GetCardsMetric(string baseName, string side)
+            {
+                if (cardsMetrics is null) return null;
+
+                var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
+                    ? new[] { "Home", "Casa" }
+                    : new[] { "Away", "Ospite" };
+
+                foreach (var sc in sideCandidates)
+                {
+                    var key1 = baseName + "-" + sc;
+                    var key2 = baseName + " - " + sc;
+
+                    if (cardsMetrics.TryGetValue(key1, out var s) || cardsMetrics.TryGetValue(key2, out s))
+                    {
+                        if (string.IsNullOrWhiteSpace(s)) continue;
+
+
+                        var cultureLocal = CultureInfo.CurrentCulture;
+                        var cultureInv = CultureInfo.InvariantCulture;
+
+                        if (decimal.TryParse(s, NumberStyles.Any, cultureLocal, out var val) ||
+                            decimal.TryParse(s, NumberStyles.Any, cultureInv, out val))
+                        {
+                            // Normalizzazione tipo "420" → 4.20
+                            if (val > 50m) val /= 100m;
+                            return val;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            // Medie su vinte/pareggiate/perse
+            var homeWon = GetCardsMetric("Partite Vinte", "Home");
+            var homeDraw = GetCardsMetric("Partite Pareggiate", "Home");
+            var homeLost = GetCardsMetric("Partite Perse", "Home");
+
+            var awayWon = GetCardsMetric("Partite Vinte", "Away");
+            var awayDraw = GetCardsMetric("Partite Pareggiate", "Away");
+            var awayLost = GetCardsMetric("Partite Perse", "Away");
+
+            // Nuove medie: In Casa, Fuoricasa, Fatti/Effettuati
+            var homeInCasa = GetCardsMetric("In Casa", "Home");
+            var awayFuoricasa = GetCardsMetric("Fuoricasa", "Away");
+
+            var homeFatti = GetCardsMetric("Fatti", "Home")
+                            ?? GetCardsMetric("Effettuati", "Home");
+            var awayFatti = GetCardsMetric("Fatti", "Away")
+                            ?? GetCardsMetric("Effettuati", "Away");
+
+            switch (esitoCards.Trim().ToUpperInvariant())
+            {
+                case "1":
+                    // Casa favorita: (In Casa + Partite Vinte + Fatti) / 3
+                    if (homeInCasa.HasValue || homeWon.HasValue || homeFatti.HasValue)
+                    {
+                        var hIn = homeInCasa ?? 0m;
+                        var hWin = homeWon ?? 0m;
+                        var hFat = homeFatti ?? 0m;
+                        pronCardsHome = (hIn + hWin + hFat) / 3m;
+                    }
+
+                    // Ospite sfavorita: (Fuoricasa + Partite Perse + Fatti) / 3
+                    if (awayFuoricasa.HasValue || awayLost.HasValue || awayFatti.HasValue)
+                    {
+                        var aOut = awayFuoricasa ?? 0m;
+                        var aLos = awayLost ?? 0m;
+                        var aFat = awayFatti ?? 0m;
+                        pronCardsAway = (aOut + aLos + aFat) / 3m;
+                    }
+                    break;
+
+                case "2":
+                    // Casa sfavorita: (In Casa + Partite Perse + Fatti) / 3
+                    if (homeInCasa.HasValue || homeLost.HasValue || homeFatti.HasValue)
+                    {
+                        var hIn = homeInCasa ?? 0m;
+                        var hLos = homeLost ?? 0m;
+                        var hFat = homeFatti ?? 0m;
+                        pronCardsHome = (hIn + hLos + hFat) / 3m;
+                    }
+
+                    // Ospite favorita: (Fuoricasa + Partite Vinte + Fatti) / 3
+                    if (awayFuoricasa.HasValue || awayWon.HasValue || awayFatti.HasValue)
+                    {
+                        var aOut = awayFuoricasa ?? 0m;
+                        var aWin = awayWon ?? 0m;
+                        var aFat = awayFatti ?? 0m;
+                        pronCardsAway = (aOut + aWin + aFat) / 3m;
+                    }
+                    break;
+
+                case "1X":
+                    // Casa non perde: (In Casa + Vinte + Pareggiate + Fatti) / 4
+                    if (homeInCasa.HasValue || homeWon.HasValue || homeDraw.HasValue || homeFatti.HasValue)
+                    {
+                        var hIn = homeInCasa ?? 0m;
+                        var hWin = homeWon ?? 0m;
+                        var hDraw = homeDraw ?? 0m;
+                        var hFat = homeFatti ?? 0m;
+                        pronCardsHome = (hIn + hWin + hDraw + hFat) / 4m;
+                    }
+
+                    // Ospite: (Fuoricasa + Perse + Pareggiate + Fatti) / 4
+                    if (awayFuoricasa.HasValue || awayLost.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+                    {
+                        var aOut = awayFuoricasa ?? 0m;
+                        var aLos = awayLost ?? 0m;
+                        var aDraw = awayDraw ?? 0m;
+                        var aFat = awayFatti ?? 0m;
+                        pronCardsAway = (aOut + aLos + aDraw + aFat) / 4m;
+                    }
+                    break;
+
+                case "X2":
+                    // Casa (sfavorita): (In Casa + Pareggiate + Perse + Fatti) / 4
+                    if (homeInCasa.HasValue || homeDraw.HasValue || homeLost.HasValue || homeFatti.HasValue)
+                    {
+                        var hIn = homeInCasa ?? 0m;
+                        var hDraw = homeDraw ?? 0m;
+                        var hLos = homeLost ?? 0m;
+                        var hFat = homeFatti ?? 0m;
+                        pronCardsHome = (hIn + hDraw + hLos + hFat) / 4m;
+                    }
+
+                    // Trasferta (favorita): (Fuoricasa + Vinte + Pareggiate + Fatti) / 4
+                    if (awayFuoricasa.HasValue || awayWon.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+                    {
+                        var aOut = awayFuoricasa ?? 0m;
+                        var aWin = awayWon ?? 0m;
+                        var aDraw = awayDraw ?? 0m;
+                        var aFat = awayFatti ?? 0m;
+                        pronCardsAway = (aOut + aWin + aDraw + aFat) / 4m;
+                    }
+                    break;
+
+                case "X":
+                    // Pareggio secco:
+                    // Casa:  (In Casa + Pareggiate + Fatti) / 3
+                    if (homeInCasa.HasValue || homeDraw.HasValue || homeFatti.HasValue)
+                    {
+                        var hIn = homeInCasa ?? 0m;
+                        var hDraw = homeDraw ?? 0m;
+                        var hFat = homeFatti ?? 0m;
+                        pronCardsHome = (hIn + hDraw + hFat) / 3m;
+                    }
+
+                    // Ospite: (Fuoricasa + Pareggiate + Fatti) / 3
+                    if (awayFuoricasa.HasValue || awayDraw.HasValue || awayFatti.HasValue)
+                    {
+                        var aOut = awayFuoricasa ?? 0m;
+                        var aDraw = awayDraw ?? 0m;
+                        var aFat = awayFatti ?? 0m;
+                        pronCardsAway = (aOut + aDraw + aFat) / 3m;
+                    }
+                    break;
+
+                default:
+                    pronCardsHome = null;
+                    pronCardsAway = null;
+                    break;
+            }
+
+            if (pronCardsHome.HasValue && pronCardsAway.HasValue)
+                return pronCardsHome + pronCardsAway;
+
+            return null;
+        }
+
         private static decimal? TryParseDec(string? s)
         {
             if (string.IsNullOrWhiteSpace(s)) return null;
@@ -1544,6 +2321,127 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
 
         private static decimal RoundToHalf(decimal x) => Math.Round(x * 2m, MidpointRounding.AwayFromZero) / 2m;
         private static decimal Clamp(decimal v, decimal min, decimal max) => v < min ? min : (v > max ? max : v);
+        // Calcola Pronostico Corner Totali usando
+        // la stessa logica che hai nel tab Analisi (Razor)
+        private static decimal? ComputePronosticoCornerTotali(
+            string? esitoCorners,
+            IDictionary<string, string>? cornersMetrics)
+        {
+            if (string.IsNullOrWhiteSpace(esitoCorners) || cornersMetrics is null || cornersMetrics.Count == 0)
+                return null;
+
+            decimal? pronCornersHome = null;
+            decimal? pronCornersAway = null;
+
+            // Helper interno: legge una metrica (baseName) per Home/Away (o Casa/Ospite)
+            decimal? GetCornersMetric(string baseName, string side)
+            {
+                if (cornersMetrics is null) return null;
+
+                var sideCandidates = side.Equals("Home", StringComparison.OrdinalIgnoreCase)
+                    ? new[] { "Home", "Casa" }
+                    : new[] { "Away", "Ospite" };
+
+                foreach (var sc in sideCandidates)
+                {
+                    var key1 = baseName + "-" + sc;
+                    var key2 = baseName + " - " + sc;
+
+                    if (cornersMetrics.TryGetValue(key1, out var s) || cornersMetrics.TryGetValue(key2, out s))
+                    {
+                        if (string.IsNullOrWhiteSpace(s)) continue;
+
+                        var cultureLocal = CultureInfo.CurrentCulture;
+                        var cultureInv = CultureInfo.InvariantCulture;
+
+                        if (decimal.TryParse(s, NumberStyles.Any, cultureLocal, out var val) ||
+                            decimal.TryParse(s, NumberStyles.Any, cultureInv, out val))
+                        {
+                            // Normalizzazione tipo "920" → 9.20
+                            if (val > 50m) val /= 100m;
+                            return val;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            // Medie per risultato
+            var homeWon = GetCornersMetric("Partite Vinte", "Home");
+            var homeDraw = GetCornersMetric("Partite Pareggiate", "Home");
+            var homeLost = GetCornersMetric("Partite Perse", "Home");
+
+            var awayWon = GetCornersMetric("Partite Vinte", "Away");
+            var awayDraw = GetCornersMetric("Partite Pareggiate", "Away");
+            var awayLost = GetCornersMetric("Partite Perse", "Away");
+
+            // Medie per contesto campo (a favore)
+            var homeHome = GetCornersMetric("In Casa", "Home"); // corner fatti in casa
+            var awayAway = GetCornersMetric("Fuoricasa", "Away"); // corner fatti in trasferta
+
+            switch (esitoCorners.Trim().ToUpperInvariant())
+            {
+                case "1":
+                    // Casa favorita
+                    if (homeWon.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeWon ?? 0m) + (homeHome ?? 0m)) / 2m;
+
+                    // Ospite sfavorita
+                    if (awayLost.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayLost ?? 0m) + (awayAway ?? 0m)) / 2m;
+                    break;
+
+                case "2":
+                    // Casa sfavorita
+                    if (homeLost.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeLost ?? 0m) + (homeHome ?? 0m)) / 2m;
+
+                    // Ospite favorita
+                    if (awayWon.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayWon ?? 0m) + (awayAway ?? 0m)) / 2m;
+                    break;
+
+                case "1X":
+                    // Casa
+                    if (homeWon.HasValue || homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeHome ?? 0m)) / 3m;
+
+                    // Ospite
+                    if (awayLost.HasValue || awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayAway ?? 0m)) / 3m;
+                    break;
+
+                case "X2":
+                    // Casa
+                    if (homeLost.HasValue || homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeLost ?? 0m) + (homeDraw ?? 0m) + (homeHome ?? 0m)) / 3m;
+
+                    // Ospite
+                    if (awayWon.HasValue || awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayWon ?? 0m) + (awayDraw ?? 0m) + (awayAway ?? 0m)) / 3m;
+                    break;
+
+                case "X":
+                    // Pareggio secco
+                    if (homeDraw.HasValue || homeHome.HasValue)
+                        pronCornersHome = ((homeDraw ?? 0m) + (homeHome ?? 0m)) / 2m;
+
+                    if (awayDraw.HasValue || awayAway.HasValue)
+                        pronCornersAway = ((awayDraw ?? 0m) + (awayAway ?? 0m)) / 2m;
+                    break;
+
+                default:
+                    pronCornersHome = null;
+                    pronCornersAway = null;
+                    break;
+            }
+
+            if (pronCornersHome.HasValue && pronCornersAway.HasValue)
+                return pronCornersHome + pronCornersAway;
+
+            return null;
+        }
 
         // ------------------------ METRIC LOOKUP ------------------------
         // Cerca "BaseName - Casa/Ospite" accettando Casa/Ospite o Home/Away
@@ -2202,73 +3100,70 @@ RISPONDI SOLO CON IL TESTO FINALE (analisi + le tre righe GOL/CORNER/TIRI).";
         // ==========================================
         // 🔹 CARTELLINI: solo totali (per ora) da linee + odds
         // ==========================================
-        private static string BuildCardsSuggestions(
-            IndicativeLines baseLines,
-            List<OddsRow> odds)
+
+        private string BuildCardsSuggestions(IndicativeLines cardsIndicative, List<OddsRow> oddsRowsForAi)
         {
-            if (odds is null || odds.Count == 0)
-                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (nessuna quota disponibile)";
+            // Se non ho linea indicativa → niente cartellini
+            if (cardsIndicative == null)
+                return string.Empty;
 
+            // Qui usiamo la linea indicativa sui cartellini totali
+            decimal expectedCards = cardsIndicative.Cards;
 
-            decimal expectedCards = baseLines.Cards;
+            if (expectedCards <= 0m)
+                return string.Empty;
 
-            static bool TryParseLine(string? value, out decimal line)
+            // Scegliamo una linea "umana" di riferimento
+            var candidateLines = new[] { 2.5m, 3.5m, 4.5m, 5.5m, 6.5m };
+
+            // Trovo la linea più vicina all'expected
+            var closestLine = candidateLines
+                .OrderBy(l => Math.Abs(l - expectedCards))
+                .First();
+
+            // Se expected > linea → tendenza verso OVER
+            // Se expected < linea → tendenza verso UNDER
+            bool isOver = expectedCards > closestLine;
+
+            // Provo ad agganciare una quota dai bookmaker (se ci sono odds cartellini)
+            OddsRow? bestOdd = null;
+
+            if (oddsRowsForAi != null && oddsRowsForAi.Count > 0)
             {
-                line = 0m;
-                if (string.IsNullOrWhiteSpace(value)) return false;
-                var parts = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var last = parts[^1].Replace(',', '.');
-                return decimal.TryParse(last, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out line);
-            }
+                // Filtra solo i mercati che parlano di "card"
+                var cardsOdds = oddsRowsForAi
+                    .Where(o => !string.IsNullOrWhiteSpace(o.Description) &&
+                                o.Description.IndexOf("card", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ToList();
 
-            static (string direction, decimal line, decimal odd)? ChooseSideCards(
-                decimal expected,
-                IEnumerable<OddsRow> candidates,
-                decimal minDelta = 0.5m)
-            {
-                (string direction, decimal line, decimal odd)? best = null;
-                decimal bestScore = 0m;
-
-                foreach (var o in candidates)
+                if (cardsOdds.Count > 0)
                 {
-                    if (!TryParseLine(o.Value, out var line)) continue;
+                    var lineStr = closestLine.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+                    var targetPrefix = (isOver ? "Over " : "Under ") + lineStr;
 
-                    bool isOver = o.Value!.Trim().StartsWith("Over", StringComparison.OrdinalIgnoreCase);
-                    decimal delta = isOver ? expected - line : line - expected;
-
-                    if (delta < minDelta) continue;
-
-                    if (delta > bestScore)
-                    {
-                        bestScore = delta;
-                        best = (isOver ? "Over" : "Under", line, o.Odd);
-                    }
+                    // Cerco Over/Under X,Y esatti
+                    bestOdd = cardsOdds
+                        .Where(o => !string.IsNullOrWhiteSpace(o.Value) &&
+                                    o.Value.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                        // qui puoi decidere se prendere la quota più alta o la più bassa
+                        .OrderByDescending(o => o.Odd)
+                        .FirstOrDefault();
                 }
-
-                return best;
             }
 
-            var cardsOdds = odds
-                .Where(o => (o.Description ?? "").IndexOf("Cards", StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
+            var dirLabel = isOver ? "Over" : "Under";
+            var lineLabel = closestLine.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 
-            if (cardsOdds.Count == 0)
-                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (nessuna linea cartellini nelle quote)";
+            string oddPart;
 
+            if (bestOdd != null)
+                oddPart = $" (quota {bestOdd.Odd:0.00})";
+            else
+                oddPart = " (quota non disponibile)";
 
-            var pick = ChooseSideCards(expectedCards, cardsOdds);
-
-            if (pick is null || expectedCards < 2.0m)
-                return "CARDS_SUGGERITI_INTERNO: NON PROPORRE MERCATI SPECIFICI SUI CARTELLINI (volume atteso basso / nessun edge)";
-
-
-            var (dirFinal, lineFinal, oddFinal) = pick.Value;
-
-            return
-                $"CARDS_SUGGERITI_INTERNO:\n" +
-                $"- Totali: {dirFinal} {lineFinal:0.0} cartellini totali a quota {oddFinal:0.00}";
+            return $"CARTELLINI: {dirLabel} {lineLabel}{oddPart}";
         }
+
 
 
         // =======================

@@ -188,27 +188,34 @@
         
 
     </div>
-    @* ANTEPRIMA AI (se presente in TempData) *@
-    @if (TempData["AiPreview"] is string aiPrev && !string.IsNullOrWhiteSpace(aiPrev))
-    {
-        <div class="card border-success mb-3">
-            <div class="card-header bg-success text-white">Anteprima messaggio (AI)</div>
-            <div class="card-body">
-                <div class="mb-3">
-                    @* Mostra come HTML Telegram (abbiamo usato <b>, <em>, ecc.) *@
-                    @Html.Raw(aiPrev.Replace("\n", "<br/>"))
-                </div>
+@* ANTEPRIMA AI (se presente) *@
+@if (!string.IsNullOrWhiteSpace(Model.Preview))
+{
+    var aiPrev = Model.Preview;
 
-                    <form method="post" asp-page-handler="SendAiPick" class="d-flex gap-2" id="aiSendForm" data-loading="send-ai">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                        <input type="hidden" name="preview" value="@aiPrev" />
-                        <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
-                        <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
-                    </form>
+    <div class="card border-success mb-3">
+        <div class="card-header bg-success text-white">Anteprima messaggio (AI)</div>
+        <div class="card-body">
+            <div class="mb-3">
+                @* Mostra come HTML Telegram (abbiamo usato <b>, <em>, ecc.) *@
+                @Html.Raw(aiPrev.Replace("\n", "<br/>"))
             </div>
+
+            <form method="post"
+                  asp-page-handler="SendAiPick"
+                  class="d-flex gap-2"
+                  id="aiSendForm"
+                  data-loading="send-ai">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                <input type="hidden" name="preview" value="@aiPrev" />
+                <button type="submit" class="btn btn-success">🚀 Invia su Telegram (Idee)</button>
+                <a class="btn btn-outline-secondary" href="/Match/Details?id=@Model.Data.MatchId">Annulla</a>
+            </form>
         </div>
-    }
+    </div>
+}
+
 
 
     <!-- Selettore gruppi -->
@@ -1287,17 +1294,18 @@ switch (esitoGoals)
                                         <label for="corner-odds-select" class="form-label mb-1 fw-semibold">
                                             Seleziona mercato Corner
                                         </label>
-                                        <select id="corner-odds-select" class="form-select form-select-sm">
-                                            <option value="">-- Seleziona un mercato --</option>
-                                            @foreach (var market in cornerMarkets)
-                                            {
-                                                var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                                var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
-                                                <option value="@key">
-                                                    @desc (@market.Key.BetId)
-                                                </option>
-                                            }
-                                        </select>
+<select id="corner-odds-select" class="form-select form-select-sm">
+    <option value="">-- Seleziona un mercato --</option>
+    @foreach (var market in cornerMarkets)
+    {
+        var key = market.Key.Description ?? $"Bet {market.Key.BetId}";
+        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+        <option value="@key">
+            @desc
+        </option>
+    }
+</select>
+
                                     </div>
                                 </div>
 
@@ -1312,25 +1320,25 @@ switch (esitoGoals)
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (var market in cornerMarkets)
-                                            {
-                                                var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                                foreach (var o in market.OrderBy(o => o.Value))
-                                                {
-                                                    <tr data-market-key="@key">
-                                                        <td>@o.Value</td>
-                                                        <td>@o.Odd.ToString("0.00")</td>
-                                                        <td>
-                                                            @if (o.Bookmaker == 8)
-                                                            {
-                                                                <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                            }
-                                                            else
-                                                            {
-                                                                @o.Bookmaker
-                                                            }
-                                                        </td>
-                                                        <td class="text-end">
+                                                @foreach (var market in cornerMarkets)
+    {
+        var key = market.Key.Description ?? $"Bet {market.Key.BetId}";
+        foreach (var o in market.OrderBy(o => o.Value))
+        {
+            <tr data-market-key="@key">
+                <td>@o.Value</td>
+                <td>@o.Odd.ToString("0.00")</td>
+                <td>
+                    @if (o.Bookmaker == 8)
+                    {
+                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                    }
+                    else
+                    {
+                        @o.Bookmaker
+                    }
+                </td>
+                <td class="text-end">
                                                             @if (User.HasClaim("plan", "1"))
                                                             {
                                                                 <form method="post"
@@ -1692,35 +1700,141 @@ switch (esitoCards)
         }
     }
 
-    @* BOX PRONOSTICO CARTELLINI *@
-    @if (pronCardsHome.HasValue || pronCardsAway.HasValue || pronCardsTotal.HasValue)
-    {
-        <div class="row g-3 mb-3">
-            <div class="col-md-4">
-                <div class="p-3 rounded bg-light d-flex flex-column">
-                    <span class="fw-semibold">Pronostico Cartellini Home</span>
-                    <span class="fs-5">@pronCardsHome?.ToString("0.00")</span>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="p-3 rounded bg-light d-flex flex-column">
-                    <span class="fw-semibold">Pronostico Cartellini Away</span>
-                    <span class="fs-5">@pronCardsAway?.ToString("0.00")</span>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="p-3 rounded bg-light d-flex flex-column">
-                    <span class="fw-semibold">Pronostico Cartellini Totali</span>
-                    <span class="fs-5">@pronCardsTotal?.ToString("0.00")</span>
-                </div>
-            </div>
-            <div class="col-12">
-                <small class="text-muted">
-                    Per X2: media di In Casa/Fuoricasa, partite vinte/pareggiate/perse e cartellini ottenuti (diviso 4).
-                </small>
+ @* BOX PRONOSTICO CARTELLINI + QUOTE CARTELLINI *@
+@if (pronCardsHome.HasValue || pronCardsAway.HasValue || pronCardsTotal.HasValue)
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <div class="p-3 rounded bg-light d-flex flex-column">
+                <span class="fw-semibold">Pronostico Cartellini Home</span>
+                <span class="fs-5">@pronCardsHome?.ToString("0.00")</span>
             </div>
         </div>
-    }
+        <div class="col-md-4">
+            <div class="p-3 rounded bg-light d-flex flex-column">
+                <span class="fw-semibold">Pronostico Cartellini Away</span>
+                <span class="fs-5">@pronCardsAway?.ToString("0.00")</span>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="p-3 rounded bg-light d-flex flex-column">
+                <span class="fw-semibold">Pronostico Cartellini Totali</span>
+                <span class="fs-5">@pronCardsTotal?.ToString("0.00")</span>
+            </div>
+        </div>
+        <div class="col-12">
+            <small class="text-muted">
+                Per X2: media di In Casa/Fuoricasa, partite vinte/pareggiate/perse e cartellini ottenuti (diviso 4).
+            </small>
+        </div>
+
+        @* 🔹 QUOTE CARTELLINI (da Odds, Description LIKE '%card%') *@
+        @if (Model.Data.Odds != null && Model.Data.Odds.Any())
+        {
+            var cardsOdds = Model.Data.Odds
+                .Where(o => !string.IsNullOrWhiteSpace(o.Description)
+                            && o.Description.IndexOf("card", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+
+            if (cardsOdds.Any())
+            {
+                var cardsMarkets = cardsOdds
+                    .GroupBy(o => new { o.BetId, o.Description })
+                    .OrderBy(g => g.Key.BetId)
+                    .ToList();
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        Quote Cartellini (dati dai bookmaker)
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center mb-3">
+                            <div class="col-md-6">
+                                <label for="cards-odds-select" class="form-label mb-1 fw-semibold">
+                                    Seleziona mercato Cartellini
+                                </label>
+                                <select id="cards-odds-select" class="form-select form-select-sm">
+                                    <option value="">-- Seleziona un mercato --</option>
+                                    @foreach (var market in cardsMarkets)
+                                    {
+                                        var key  = $"{market.Key.BetId}_{market.Key.Description}";
+                                        var desc = market.Key.Description ?? $"Bet {market.Key.BetId}";
+                                        <option value="@key">
+                                            @desc (@market.Key.BetId)
+                                        </option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive d-none" id="cards-odds-wrapper">
+                            <table class="table table-sm table-striped align-middle mb-0" id="cards-odds-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Selezione</th>
+                                        <th scope="col">Quota</th>
+                                        <th scope="col">Bookmaker</th>
+                                        <th scope="col" class="text-end">Telegram</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var market in cardsMarkets)
+                                    {
+                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
+                                        foreach (var o in market.OrderBy(o => o.Value))
+                                        {
+                                            <tr data-market-key="@key">
+                                                <td>@o.Value</td>
+                                                <td>@o.Odd.ToString("0.00")</td>
+                                                <td>
+                                                    @if (o.Bookmaker == 8)
+                                                    {
+                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                                                    }
+                                                    else
+                                                    {
+                                                        @o.Bookmaker
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    @if (User.HasClaim("plan", "1"))
+                                                    {
+                                                        <form method="post"
+                                                              asp-page-handler="SendOddsIdea"
+                                                              class="d-inline">
+                                                            @Html.AntiForgeryToken()
+
+                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
+                                                            <input type="hidden" name="odd"
+                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                                            <button type="submit"
+                                                                    class="btn btn-sm btn-outline-warning"
+                                                                    title="Invia cartellini">
+                                                                🚀
+                                                            </button>
+                                                        </form>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+            }
+        }
+    </div>
+}
+
 
     @* BLOCCO METRICHE (come prima) *@
     @if (Model.Data.Cards is null || Model.Data.Cards.Metrics.Count == 0)
@@ -1853,6 +1967,7 @@ switch (esitoCards)
             </div>
         }
     }
+
 </div>
 
 
@@ -2841,6 +2956,7 @@ switch (esitoCards)
 
                     </div>
                 </div>
+
             }
         }
     }
@@ -3177,14 +3293,14 @@ switch (esitoCards)
             updatePronosticiOdds();
         })();
 
-        // 🔹 Analisi → Corner → Odds
+         // 🔹 Analisi → Cartellini → Odds
         (function () {
-            const select  = document.getElementById('corner-odds-select');
-            const wrapper = document.getElementById('corner-odds-wrapper');
-            const rows    = document.querySelectorAll('#corner-odds-table tbody tr');
+            const select  = document.getElementById('cards-odds-select');
+            const wrapper = document.getElementById('cards-odds-wrapper');
+            const rows    = document.querySelectorAll('#cards-odds-table tbody tr');
             if (!select || !rows.length || !wrapper) return;
 
-            function updateCornerOdds() {
+            function updateCardsOdds() {
                 const key = select.value;
 
                 if (!key) {
@@ -3202,9 +3318,10 @@ switch (esitoCards)
                 });
             }
 
-            select.addEventListener('change', updateCornerOdds);
-            updateCornerOdds();
+            select.addEventListener('change', updateCardsOdds);
+            updateCardsOdds();
         })();
+
                 // 🔹 FALLI – filtro quote per mercato
         (function () {
             const select  = document.getElementById('foul-odds-select');
@@ -3291,6 +3408,35 @@ switch (esitoCards)
             select.addEventListener('change', updateGoalOdds);
             updateGoalOdds();
         })();
+                // 🔹 Analisi → Corner → Odds
+        (function () {
+            const select  = document.getElementById('corner-odds-select');
+            const wrapper = document.getElementById('corner-odds-wrapper');
+            const rows    = document.querySelectorAll('#corner-odds-table tbody tr');
+            if (!select || !rows.length || !wrapper) return;
+
+            function updateCornerOdds() {
+                const key = select.value;
+
+                if (!key) {
+                    wrapper.classList.add('d-none');
+                    rows.forEach(row => {
+                        row.style.display = 'none';
+                    });
+                    return;
+                }
+
+                wrapper.classList.remove('d-none');
+                rows.forEach(row => {
+                    const rowKey = row.getAttribute('data-market-key');
+                    row.style.display = (rowKey === key) ? '' : 'none';
+                });
+            }
+
+            select.addEventListener('change', updateCornerOdds);
+            updateCornerOdds();
+        })();
+
 
         // 🔹 Analisi → Cartellini → Odds
         (function () {

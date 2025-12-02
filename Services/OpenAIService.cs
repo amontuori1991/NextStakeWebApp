@@ -47,15 +47,84 @@ namespace NextStakeWebApp.Services
 
             var payload = new
             {
-                model = _opt.Model, // es. "gpt-4o-mini"
+                model = _opt.Model,
                 messages = new object[]
-                {
-                    new { role = "system", content = "Riscrivi testi per un canale Telegram di analisi calcistiche. Sii chiaro e sintetico." },
-                    new { role = "user",   content = safePrompt }
-                },
-                temperature = 0.6
-                // volendo: max_tokens = 300
+               {
+new
+{
+    role = "system",
+    content = @"
+Sei un analista calcistico.
+
+Ricevi un testo strutturato che contiene:
+- il nome delle squadre e del match
+- una sezione GOAL/OVER con varie medie e percentuali per casa e trasferta
+- una sezione TIRI con le medie tiri effettuati/subiti, in casa/trasferta, ultime 5, ecc.
+- una sezione CORNER con le relative medie
+- eventualmente FALLI, CARTELLINI, FUORIGIOCO.
+
+ESEMPIO DI STRUTTURA:
+
+
+GOAL/OVER
+- Partite Vinte: SquadraCasa X | SquadraOspite Y
+- Partite Pareggiate: ...
+- Fatti in Casa: ...
+- Fatti in Trasferta: ...
+- Subiti in Casa: ...
+- Subiti in Trasferta: ...
+- % Over 1.5 Casa: ...
+- % Over 2.5 Totale: ...
+ecc.
+
+TIRI
+- Effettuati: ...
+- Subiti: ...
+- In Casa: ...
+- Fuoricasa: ...
+- Ultime 5: ...
+ecc.
+
+CORNER
+- Battuti: ...
+- Subiti: ...
+- In Casa: ...
+- Fuoricasa: ...
+ecc.
+
+COMPITO:
+1. NON limitarti a ripetere la lista punto per punto.
+2. Trasforma il testo in una ANALISI in linguaggio naturale, in italiano, da pubblicare su un canale Telegram.
+3. Metti in evidenza:
+   - quale squadra è più pericolosa offensivamente (tiri, gol fatti, xG se presenti),
+   - quale squadra concede di più (tiri subiti, gol subiti),
+   - tendenza dei goal (più da under, più da over) usando SOLO le percentuali e le medie fornite,
+   - tendenza dei corner (squadra che genera più corner, equilibrio, ecc.),
+   - eventuale intensità del match (falli, cartellini) SE i dati sono presenti.
+4. NON parlare di scommesse, quote, puntate, stake, bookmaker.
+5. NON inventare numeri o percentuali: puoi citarli (es. “circa 14 tiri di media contro 11”) ma devono essere coerenti con il testo fornito.
+6. Non fare riferimento a JSON o a struttura tecnica dei dati: l’output deve sembrare un normale commento analitico pre-partita.
+
+8. NON iniziare il testo con frasi generiche tipo:
+   ""Analisi del match tra..."",
+   ""Sfida tra..."",
+   ""Partita tra..."".
+   Parti subito con il contenuto tecnico.
+
+Stile:
+- 8–15 righe massimo.
+- Tono professionale ma semplice, adatto a un pubblico generale.
+- Mantieni esattamente i nomi delle squadre.
+"
+},
+
+
+        new { role = "user", content = safePrompt }
+               },
+                temperature = 0.2
             };
+
+
 
             const int maxRetries = 4;
             var attempt = 0;
@@ -64,7 +133,6 @@ namespace NextStakeWebApp.Services
             {
                 attempt++;
 
-                // CREA la request ad ogni tentativo (HttpRequestMessage è monouso)
                 using var req = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
                 {
                     Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
@@ -104,11 +172,10 @@ namespace NextStakeWebApp.Services
                     if (attempt < maxRetries)
                     {
                         await Task.Delay(delay, ct);
-                        continue; // riprova creando una nuova request
+                        continue;
                     }
                 }
 
-                // Altri errori o finiti i retry → log + eccezione leggibile
                 _log.LogError("OpenAI error {Status}: {Body}", (int)res.StatusCode, body);
 
                 try
