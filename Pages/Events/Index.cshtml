@@ -4,6 +4,22 @@
 }
 
 @model NextStakeWebApp.Pages.Events.IndexModel
+@functions {
+    string FormatScore(int? goals, string? statusShort)
+    {
+        // Partita non iniziata → trattino
+        if (statusShort == "NS" || statusShort == "PST")
+            return "-";
+
+        // Se il provider non ha ancora scritto 0 a DB, ma la gara è live/finita, mostra 0
+        if (!goals.HasValue)
+            return "0";
+
+        // Valore presente (0,1,2,...) → stampalo
+        return goals.Value.ToString();
+    }
+}
+
 @using System.Globalization
 @using System.Runtime.InteropServices
 @{
@@ -358,13 +374,14 @@
                                         <div class="list-group-item">
                                             <div class="match-item">
                                                 @{
-                                                    var matchEnded = (r.StatusShort == "FT" || r.StatusShort == "AET" || r.StatusShort == "PEN");
-                                                    var homeScoreStr = matchEnded && r.HomeGoal.HasValue ? r.HomeGoal.Value.ToString() : "–";
-                                                    var awayScoreStr = matchEnded && r.AwayGoal.HasValue ? r.AwayGoal.Value.ToString() : "–";
+                                                    // Usa l'helper per gestire correttamente "-" vs "0"
+                                                    var homeScoreStr = FormatScore(r.HomeGoal, r.StatusShort);
+                                                    var awayScoreStr = FormatScore(r.AwayGoal, r.StatusShort);
 
                                                     // *** nessuna conversione: già ora Italia dal DB ***
                                                     var ko = r.KickoffLocal.ToString("HH:mm");
                                                 }
+
 
                                                 <a href="/Match/Details?id=@r.MatchId" class="match-grid">
                                                     <div class="team home">
@@ -753,10 +770,10 @@
 @section Scripts {
     <script>
         /**
-         * Bootstrap + Live polling dal proxy del widget.
-         * - Bootstrap fase 1: chiede solo i match FINITI (FT/AET/PEN) per riempire subito l’anteprima col risultato finale.
-         * - Bootstrap fase 2: avvia il polling live (20s) per aggiornare gli eventi in corso.
-         * - Inoltra i parametri della pagina (query string) al proxy: massima compat.
+         * Live scores NextStake:
+         * - chiede tutti i fixtures in pagina a /api/livescores (proxy Api-Football)
+         * - mappa il JSON (formato Api-Football o array semplice)
+         * - aggiorna punteggi, minutaggio e classi .is-live (rosso lampeggiante)
          */
         (function () {
           const ENDPOINT = '/api/livescores';
@@ -765,93 +782,175 @@
           const LIVE_STATUSES = ['1H','2H','ET','P','BT','LIVE','HT'];
           const FINISHED_STATUSES = ['FT','AET','PEN'];
 
-          // Raccogli tutti gli ID presenti in pagina
-          const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
-          const ids = [...new Set([...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean))];
-          if (!ids.length) return;
+          function chunk(arr, size) {
+            return arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
+          }
 
-          // Prendi anche i parametri correnti della pagina (se il backend li sfrutta, li ha)
-          const pageParams = new URLSearchParams(window.location.search);
+          function initLiveScores() {
+            // Raccogli TUTTI gli ID presenti in pagina (dopo che il DOM è pronto)
+            const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
+            const ids = [...new Set(
+              [...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean)
+            )];
 
-          const chunk = (arr, size) => arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
+            if (!ids.length) {
+              console.debug('Livescores: nessun fixture in pagina, non avvio il polling.');
+              return;
+            }
 
-          function applyUpdate(it) {
-            const id = String(it.id);
-            const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
-            const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
-            const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
+            console.debug('Livescores inizializzati, fixture IDs:', ids);
 
-            // Punteggi (sia live che finali)
-            if (homeEl && (it.home ?? it.home === 0)) homeEl.textContent = (it.home ?? '–');
-            if (awayEl && (it.away ?? it.away === 0)) awayEl.textContent = (it.away ?? '–');
+         function applyUpdate(it) {
+          if (!it || !it.id) return;
 
-            const status = (it.status || '').toUpperCase();
-            const isLive = LIVE_STATUSES.includes(status);
-            const isFinished = FINISHED_STATUSES.includes(status);
+          const id = String(it.id);
+          const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
+          const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
+          const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
 
-            // Minutaggio live
-            if (minuteEl) {
-              if (isLive) {
-                let label = '';
-                if (typeof it.elapsed === 'number' && it.elapsed >= 0) label = `${it.elapsed}'`;
-                else if (status === 'HT') label = 'HT';
+          const status   = (it.status || '').toUpperCase();
+          const isLive   = LIVE_STATUSES.includes(status);
+          const isFinished = FINISHED_STATUSES.includes(status);
 
-                if (label) { minuteEl.textContent = label; minuteEl.classList.remove('d-none'); }
-                else { minuteEl.classList.add('d-none'); }
-                minuteEl.classList.add('is-live');
+          const hasDom = !!(homeEl || awayEl || minuteEl);
+          console.debug('Live update item', id, 'status=', status, 'hasDom=', hasDom, it);
+
+          // Se non c'è nessun elemento in pagina con quel data-fixture, esco
+          if (!hasDom) return;
+
+          // --- Punteggi (sia live che finali) ---
+          if (homeEl && it.home !== null && it.home !== undefined) {
+            homeEl.textContent = String(it.home);   // 0,1,2...
+          }
+          if (awayEl && it.away !== null && it.away !== undefined) {
+            awayEl.textContent = String(it.away);
+          }
+
+          // --- Minutaggio live ---
+          if (minuteEl) {
+            if (isLive) {
+              let label = '';
+              if (typeof it.elapsed === 'number' && it.elapsed >= 0) label = `${it.elapsed}'`;
+              else if (status === 'HT') label = 'HT';
+
+              if (label) {
+                minuteEl.textContent = label;
+                minuteEl.classList.remove('d-none');
               } else {
                 minuteEl.classList.add('d-none');
-                minuteEl.classList.remove('is-live');
+              }
+              minuteEl.classList.add('is-live');
+            } else {
+              minuteEl.classList.add('d-none');
+              minuteEl.classList.remove('is-live');
+            }
+          }
+
+          // --- Classi per rosso lampeggiante su punteggio ---
+          const mark = el => {
+            if (!el) return;
+            if (isLive) el.classList.add('is-live');
+            else el.classList.remove('is-live');
+          };
+          mark(homeEl);
+          mark(awayEl);
+        }
+
+
+            async function fetchBatch(batchIds, extraParamsObj) {
+              const qs = new URLSearchParams();
+              qs.set('ids', batchIds.join(','));
+
+              if (extraParamsObj) {
+                for (const [k, v] of Object.entries(extraParamsObj)) {
+                  if (v !== null && v !== undefined) {
+                    qs.set(k, String(v));
+                  }
+                }
+              }
+
+              try {
+                const res = await fetch(`${ENDPOINT}?${qs.toString()}`, { cache: 'no-store' });
+                if (!res.ok) return null;
+                return await res.json();
+              } catch {
+                return null;
               }
             }
 
-            const mark = el => { if (!el) return; if (isLive) el.classList.add('is-live'); else el.classList.remove('is-live'); };
-            mark(homeEl);
-            mark(awayEl);
-          }
+            async function fetchAndApplyAll(extraParamsObj) {
+              const batches = chunk(ids, BATCH);
 
-          async function fetchBatch(batchIds, extraParamsObj) {
-            const qs = new URLSearchParams(pageParams);          // parti dai params di pagina
-            qs.set('ids', batchIds.join(','));                   // sempre gli ID presenti in DOM
+              for (const b of batches) {
+                const data = await fetchBatch(b, extraParamsObj);
+                if (!data) continue;
 
-            // Parametri extra suggeriti (se il backend non li supporta, li ignora senza effetti collaterali)
-            if (extraParamsObj) {
-              for (const [k,v] of Object.entries(extraParamsObj)) qs.set(k, String(v));
+                console.debug('Livescores batch response:', data);
+
+                let items = [];
+
+                if (Array.isArray(data)) {
+                  // Caso: il proxy restituisce direttamente l'array [{ id, home, away, status, elapsed }, ...]
+                  items = data;
+                } else if (Array.isArray(data.response)) {
+                  // Caso tipico Api-Football: { response: [ { fixture, goals, ... }, ... ] }
+                  items = data.response.map(x => ({
+                    id:      x.id ?? x.fixture?.id,
+                    home:    x.home ?? x.goals?.home,
+                    away:    x.away ?? x.goals?.away,
+                    status:  x.status ?? x.fixture?.status?.short,
+                    elapsed: x.elapsed ?? x.fixture?.status?.elapsed
+                  }));
+                } else {
+                  if (data.id) items = [data];
+                }
+
+                for (const it of items) {
+                  applyUpdate(it);
+                }
+              }
             }
 
-            try {
-              const res = await fetch(`${ENDPOINT}?${qs.toString()}`, { cache: 'no-store' });
-              if (!res.ok) return null;
-              return await res.json();
-            } catch {
-              return null;
-            }
+            // === BOOTSTRAP: riempi risultati finali ===
+            fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' })
+              .finally(() => {
+                // === POLLING LIVE ===
+                let timerHandle = null;
+
+                async function liveTick() {
+                  await fetchAndApplyAll({});
+                }
+
+                function start() {
+                  if (timerHandle) return;
+                  liveTick();
+                  timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
+                }
+
+                function stop() {
+                  if (timerHandle) {
+                    clearInterval(timerHandle);
+                    timerHandle = null;
+                  }
+                }
+
+                document.addEventListener('visibilitychange', () => {
+                  if (document.hidden) stop(); else start();
+                });
+
+                start();
+              });
           }
 
-          async function fetchAndApplyAll(extraParamsObj) {
-            const batches = chunk(ids, BATCH);
-            for (const b of batches) {
-              const data = await fetchBatch(b, extraParamsObj);
-              if (!data) continue;
-              for (const it of data) applyUpdate(it);
-            }
+          // Avvia dopo che il DOM è pronto
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initLiveScores);
+          } else {
+            initLiveScores();
           }
-
-          // === BOOTSTRAP FASE 1: chiedi esplicitamente i match FINITI per riempire subito i risultati finali
-          //   - Proviamo varie chiavi comuni che spesso i proxy accettano. Se non supportate, vengono ignorate.
-          fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' })
-            .finally(() => {
-              // === BOOTSTRAP FASE 2 + POLLING LIVE
-              let h = null;
-              async function liveTick() { await fetchAndApplyAll({}); }
-              function start() { liveTick(); h = setInterval(liveTick, LIVE_INTERVAL_MS); }
-              function stop()  { if (h) clearInterval(h); h = null; }
-
-              document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
-              start();
-            });
         })();
     </script>
+
     <script>
         (function(){
           // Inizializza stato bottoni in base al tema corrente

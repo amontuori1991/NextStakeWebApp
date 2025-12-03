@@ -12,6 +12,9 @@ using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
 using static NextStakeWebApp.Services.IMatchBannerService;
+using NextStakeWebApp.ApiSports;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 
 // NOTE: niente Microsoft.Extensions.Options qui: non lo usiamo
 
@@ -256,45 +259,62 @@ app.UseAuthorization();
 app.MapRazorPages();
 
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
+// --- Proxy minimal per Live Scores (API-FOOTBALL) ---
 app.MapGet("/api/livescores", async (
     IHttpClientFactory httpFactory,
     IConfiguration cfg,
     IMemoryCache cache,
-    string ids // "123,456,789"
+    [FromQuery] string? ids // "123,456,789" (opzionale, usato solo per caching)
 ) =>
 {
-    if (string.IsNullOrWhiteSpace(ids)) return Results.BadRequest("ids required");
-
     var key = cfg["ApiSports:Key"];
-    if (string.IsNullOrWhiteSpace(key)) return Results.Problem("Missing ApiSports:Key");
+    if (string.IsNullOrWhiteSpace(key))
+        return Results.Problem("Missing ApiSports:Key");
 
-    // cache 5s per batch ids
-    var cacheKey = $"livescores:{ids}";
+    // chiave di cache (anche se ids è null va bene uguale)
+    var cacheKey = $"livescores:{ids ?? "live-all"}";
     if (cache.TryGetValue(cacheKey, out object? cached) && cached is not null)
         return Results.Json(cached);
 
     var http = httpFactory.CreateClient("ApiSports");
-    var req = new HttpRequestMessage(HttpMethod.Get, $"fixtures?ids={Uri.EscapeDataString(ids)}");
+
+    // 🔴 IMPORTANTE:
+    // Per i live usiamo l'endpoint ufficiale "live=all" e NON filtriamo lato API per ids.
+    // Il filtro per gli ID lo facciamo lato client (DOM) con data-fixture.
+    var url = "fixtures?live=all&timezone=Europe/Rome";
+
+    var req = new HttpRequestMessage(HttpMethod.Get, url);
     req.Headers.Add("x-apisports-key", key);
 
     using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-    if (!resp.IsSuccessStatusCode) return Results.StatusCode((int)resp.StatusCode);
+    if (!resp.IsSuccessStatusCode)
+        return Results.StatusCode((int)resp.StatusCode);
 
-    var json = await resp.Content.ReadFromJsonAsync<ApiFootballFixturesResponse>();
+    // (debug) se vuoi ispezionare la risposta grezza, lascia queste due righe:
+    var raw = await resp.Content.ReadAsStringAsync();
+    Console.WriteLine("[ApiSports RAW fixtures?live=all] " + raw);
 
-    var payload = json?.response?.Select(x => new
-    {
-        id = x.fixture?.id,
-        status = x.fixture?.status?.Short,
-        elapsed = x.fixture?.status?.Elapsed,
-        home = x.goals?.home,
-        away = x.goals?.away
-    }).Where(x => x.id.HasValue).ToList() ?? new();
+    // Deserializza in oggetti fortemente tipizzati
+    var json = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
+
+    var payload = json?.Response?
+        .Select(x => (object)new
+        {
+            id = x.Fixture.Id,
+            status = x.Fixture.Status.Short,   // es. "NS", "1H", "HT", "FT"
+            elapsed = x.Fixture.Status.Elapsed, // minutaggio
+            home = x.Goals.Home,
+            away = x.Goals.Away
+        })
+        .ToList()
+        ?? new List<object>();
+
 
     cache.Set(cacheKey, payload, TimeSpan.FromSeconds(5));
     return Results.Json(payload);
 })
 .WithName("LiveScores");
+
 
 // Endpoint diagnostico minimale (opzionale)
 app.MapGet("/_debug/db", () => Results.Json(new
@@ -306,11 +326,45 @@ app.MapGet("/_debug/db", () => Results.Json(new
 app.Run();
 
 // --- Records per deserializzazione API-FOOTBALL ---
-public record ApiFootballFixturesResponse(System.Collections.Generic.List<ApiFixtureItem> response);
-public record ApiFixtureItem(ApiFixture fixture, ApiGoals goals);
-public record ApiFixture(int id, ApiStatus status);
-public record ApiStatus(
-    [property: JsonPropertyName("short")] string? Short,
-    [property: JsonPropertyName("elapsed")] int? Elapsed
-);
-public record ApiGoals(int? home, int? away);
+// --- Modelli per deserializzazione API-FOOTBALL fixtures ---
+public class ApiFootballFixturesResponse
+{
+    [JsonPropertyName("response")]
+    public List<ApiFixtureItem> Response { get; set; } = new();
+}
+
+public class ApiFixtureItem
+{
+    [JsonPropertyName("fixture")]
+    public ApiFixture Fixture { get; set; } = new();
+
+    [JsonPropertyName("goals")]
+    public ApiGoals Goals { get; set; } = new();
+}
+
+public class ApiFixture
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("status")]
+    public ApiStatus Status { get; set; } = new();
+}
+
+public class ApiStatus
+{
+    [JsonPropertyName("short")]
+    public string? Short { get; set; }
+
+    [JsonPropertyName("elapsed")]
+    public int? Elapsed { get; set; }
+}
+
+public class ApiGoals
+{
+    [JsonPropertyName("home")]
+    public int? Home { get; set; }
+
+    [JsonPropertyName("away")]
+    public int? Away { get; set; }
+}
