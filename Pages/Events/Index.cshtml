@@ -177,15 +177,22 @@
                     <div class="h5 mb-0">
                         @dayName @Model.SelectedDate.ToString("dd/MM/yyyy")
                     </div>
-                    <div class="d-flex gap-2">
+
+                    <div class="d-flex gap-2 align-items-center">
+                        <button id="btn-live-filter"
+                                type="button"
+                                class="btn btn-sm btn-outline-danger fw-bold">
+                            🔴 LIVE
+                        </button>
+
                         <a class="btn btn-outline-secondary"
-                           href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")@common"
-                           aria-label="Giorno precedente">←</a>
+                           href="/Events?d=@Model.SelectedDate.AddDays(-1).ToString("yyyy-MM-dd")@common">←</a>
                         <a class="btn btn-outline-secondary"
-                           href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")@common"
-                           aria-label="Giorno successivo">→</a>
+                           href="/Events?d=@Model.SelectedDate.AddDays(1).ToString("yyyy-MM-dd")@common">→</a>
                     </div>
                 </div>
+
+
 
                 @if (Model.ShowBest)
                 {
@@ -280,6 +287,7 @@
 
                                                     <div class="list-group-item">
                                                         <div class="match-item">
+
                                                             <a href="/Match/Details?id=@bp.R.Id" class="match-grid">
                                                                 <div class="team home">
                                                                     @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
@@ -371,17 +379,21 @@
                                 <div class="list-group list-group-flush">
                                     @foreach (var r in group)
                                     {
-                                        <div class="list-group-item">
+                                        var isLive = r.StatusShort == "1H"
+                                        || r.StatusShort == "2H"
+                                        || r.StatusShort == "ET"
+                                        || r.StatusShort == "P"
+                                        || r.StatusShort == "BT"
+                                        || r.StatusShort == "HT"
+                                        || r.StatusShort == "LIVE";
+
+                                        <div class="list-group-item" data-live="@(isLive ? "1" : "0")">
                                             <div class="match-item">
                                                 @{
-                                                    // Usa l'helper per gestire correttamente "-" vs "0"
                                                     var homeScoreStr = FormatScore(r.HomeGoal, r.StatusShort);
                                                     var awayScoreStr = FormatScore(r.AwayGoal, r.StatusShort);
-
-                                                    // *** nessuna conversione: già ora Italia dal DB ***
                                                     var ko = r.KickoffLocal.ToString("HH:mm");
                                                 }
-
 
                                                 <a href="/Match/Details?id=@r.MatchId" class="match-grid">
                                                     <div class="team home">
@@ -393,7 +405,6 @@
                                                         }
                                                         <span class="team-name">@r.Home</span>
                                                     </div>
-
 
                                                     <div class="center">
                                                         <span class="vs-pill">vs</span>
@@ -410,7 +421,6 @@
                                                             </span>
                                                         }
                                                     </div>
-
 
                                                     <div class="home-score" data-fixture="@r.MatchId" data-side="home">@homeScoreStr</div>
                                                     <div class="score-sep">:</div>
@@ -430,6 +440,7 @@
                                             </div>
                                         </div>
                                     }
+
                                 </div>
                             </div>
                         </div>
@@ -1001,6 +1012,43 @@
           applyTheme(choice);
           const active = document.querySelector(`[data-theme-choice="${choice}"]`);
           if (active) active.classList.add('active');
+        })();
+    </script>
+    <script>
+        (function () {
+            const btn = document.getElementById('btn-live-filter');
+            if (!btn) return;
+
+            let active = false;
+
+            btn.addEventListener('click', function () {
+                active = !active;
+
+                const allMatches = document.querySelectorAll('.list-group-item[data-live]');
+
+                allMatches.forEach(el => {
+                    const isLive = el.getAttribute('data-live') === '1';
+
+                    if (active) {
+                        // Mostra solo i LIVE
+                        el.style.display = isLive ? '' : 'none';
+                    } else {
+                        // Ripristina tutto
+                        el.style.display = '';
+                    }
+                });
+
+                // Aggiorna stile bottone
+                if (active) {
+                    btn.classList.remove('btn-outline-danger');
+                    btn.classList.add('btn-danger');
+                    btn.textContent = '🔴 LIVE ATTIVI';
+                } else {
+                    btn.classList.add('btn-outline-danger');
+                    btn.classList.remove('btn-danger');
+                    btn.textContent = '🔴 LIVE';
+                }
+            });
         })();
     </script>
 
