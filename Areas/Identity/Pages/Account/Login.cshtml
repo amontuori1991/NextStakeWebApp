@@ -46,12 +46,24 @@
             </div>
 
         </form>
+
+        <!-- Hint PWA / Aggiungi alla Home -->
+        <div id="pwa-install-hint" class="ns-pwa-hint d-none">
+            <div class="ns-pwa-hint-icon">📱</div>
+            <div class="ns-pwa-hint-text" id="pwa-install-text">
+                Puoi aggiungere NextStake alla schermata Home e usarlo come un'app.
+            </div>
+            <button type="button" id="pwa-install-btn">
+                Installa
+            </button>
+        </div>
     </div>
 </div>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 
+    <!-- ❄ Neve solo sulla pagina di login -->
     <script>
         (function () {
             function initLoginSnow() {
@@ -92,7 +104,87 @@
             }
         })();
     </script>
+
+    <!-- 📱 Banner "Installa app" / Aggiungi alla Home -->
+    <script>
+        (function () {
+            const hint = document.getElementById('pwa-install-hint');
+            const btn  = document.getElementById('pwa-install-btn');
+            const text = document.getElementById('pwa-install-text');
+
+            if (!hint) return;
+
+            function showBanner(message) {
+                if (message && text) text.textContent = message;
+                hint.classList.remove('d-none');
+            }
+
+            function hideBanner() {
+                hint.classList.add('d-none');
+            }
+
+            // Già installata come PWA?
+            const isStandalone =
+                window.matchMedia('(display-mode: standalone)').matches ||
+                window.navigator.standalone === true;
+
+            if (isStandalone) {
+                // Se è già "app", non mostrare il suggerimento
+                return;
+            }
+
+            let deferredPrompt = null;
+
+            // Browser che supportano l'evento PWA nativo
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();
+                deferredPrompt = e;
+                showBanner('Puoi installare NextStake come app.');
+
+                if (btn) {
+                    btn.onclick = async function () {
+                        if (!deferredPrompt) return;
+
+                        deferredPrompt.prompt();
+                        const choice = await deferredPrompt.userChoice;
+                        deferredPrompt = null;
+
+                        if (choice.outcome === 'accepted') {
+                            hideBanner();
+                        }
+                    };
+                }
+            });
+
+            // Fallback: se entro 4 secondi non arriva beforeinstallprompt,
+            // mostriamo comunque istruzioni manuali
+            setTimeout(function () {
+                if (deferredPrompt || isStandalone) return;
+
+                const ua = navigator.userAgent || '';
+                let helpText = '';
+
+                if (/iPhone|iPad|iPod/i.test(ua)) {
+                    helpText = 'Su iOS: apri il menu di condivisione di Safari e tocca "Aggiungi alla schermata Home".';
+                } else if (/Android/i.test(ua)) {
+                    helpText = 'Su Android: apri il menu ⋮ del browser e scegli "Aggiungi alla schermata Home" o "Installa app".';
+                } else {
+                    helpText = 'Dal browser desktop puoi usare "Installa app" o aggiungerlo alla barra delle applicazioni.';
+                }
+
+                showBanner(helpText);
+
+                if (btn) {
+                    // In modalità fallback il bottone chiude solo il banner
+                    btn.onclick = function () {
+                        hideBanner();
+                    };
+                }
+            }, 4000);
+        })();
+    </script>
 }
+
 
 
 @section Styles {
@@ -346,6 +438,56 @@
                 transform: translateY(110vh);
             }
         }
+        /* --- Hint PWA / Aggiungi alla Home --- */
+        #login-page .ns-pwa-hint {
+            margin-top: 20px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.35);
+            border: 1px dashed rgba(255,255,255,0.35);
+            color: var(--ns-text-dim);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
+        #login-page .ns-pwa-hint-icon {
+            font-size: 20px;
+        }
+
+        #login-page .ns-pwa-hint-text {
+            flex: 1;
+        }
+
+        #login-page #pwa-install-btn {
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 13px;
+            border: none;
+            background: var(--ns-accent);
+            color: #fff;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+            #login-page #pwa-install-btn:hover {
+                background: var(--ns-accent-hover);
+            }
+
+        @@media (max-width: 576px) {
+            #login-page .ns-pwa-hint
+
+        {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        #login-page #pwa-install-btn {
+            width: 100%;
+            text-align: center;
+        }
+
+        }
     </style>
 }
