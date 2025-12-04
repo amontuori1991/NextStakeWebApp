@@ -678,10 +678,6 @@
         justify-self: end;
     }
 
-    .is-live::after {
-        content: ' •';
-    }
-
     :root {
         --live-color: #dc3545;
         --live-color-soft: #ff6b6b;
@@ -1362,10 +1358,7 @@
                     animation: livePulse .9s ease-in-out infinite alternate;
                 }
 
-            .is-live::after {
-                content: ' •';
-                animation: blinkDot 1s ease-in-out infinite alternate;
-            }
+
 
             @@media (prefers-reduced-motion: reduce) {
                 .is-live, .live-minute.is-live {
