@@ -247,32 +247,42 @@
                                     var gid = $"bestgrp-{++gi}";
 
                                     <div class="mb-3 border rounded">
-                                        <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                                        <button class="w-100 text-start league-toggle-btn border-0"
                                                 type="button" data-bs-toggle="collapse" data-bs-target="#@gid"
                                                 aria-expanded="true" aria-controls="@gid">
-                                            <div class="d-flex align-items-center gap-2 py-2 px-3">
-                                                <span class="toggle-caret">▾</span>
+                                            <div class="d-flex align-items-center justify-content-between py-2 px-3">
+                                                <!-- Sinistra: caret + logo + nome competizione -->
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="toggle-caret">▾</span>
 
-                                                @if (!string.IsNullOrWhiteSpace(grp.Key.Logo))
-                                                {
-                                                    <img src="@grp.Key.Logo" alt="league-logo" style="height:18px;width:auto;" />
-                                                }
+                                                    @if (!string.IsNullOrWhiteSpace(grp.Key.Logo))
+                                                    {
+                                                        <img src="@grp.Key.Logo" alt="league-logo" style="height:18px;width:auto;" />
+                                                    }
 
-                                                <span class="fw-semibold">@grp.Key.League</span>
+                                                    <span class="fw-semibold">@grp.Key.League</span>
+                                                </div>
 
+                                                <!-- Destra: Country + bandiera (senza parentesi) -->
                                                 @if (!string.IsNullOrWhiteSpace(grp.Key.Country) || !string.IsNullOrWhiteSpace(grp.Key.Flag))
                                                 {
-                                                    <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
-                                                        ( @grp.Key.Country
+                                                    <div class="d-flex align-items-center gap-1 text-muted">
+                                                        @if (!string.IsNullOrWhiteSpace(grp.Key.Country))
+                                                        {
+                                                            <span>@grp.Key.Country</span>
+                                                        }
+
                                                         @if (!string.IsNullOrWhiteSpace(grp.Key.Flag))
                                                         {
-                                                            <img src="@grp.Key.Flag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
+                                                            <img src="@grp.Key.Flag"
+                                                                 alt="flag"
+                                                                 style="height:14px;width:auto;vertical-align:middle;" />
                                                         }
-                                                        )
-                                                    </small>
+                                                    </div>
                                                 }
                                             </div>
                                         </button>
+
 
                                         <div id="@gid" class="collapse show">
                                             <div class="list-group list-group-flush">
@@ -346,34 +356,42 @@
                         var groupId = $"lg-{group.Key.LeagueId}";
 
                         <div class="mb-3 border rounded">
-                            <button class="w-100 text-start d-flex align-items-center justify-content-between league-toggle-btn border-0"
+                            <button class="w-100 text-start league-toggle-btn border-0"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#@groupId"
                                     aria-expanded="true" aria-controls="@groupId">
-                                <div class="d-flex align-items-center gap-2 py-2 px-3">
-                                    <span class="toggle-caret">▾</span>
+                                <div class="d-flex align-items-center justify-content-between py-2 px-3">
+                                    <!-- Sinistra: caret + logo + nome lega -->
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="toggle-caret">▾</span>
 
-                                    @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
-                                    {
-                                        <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
-                                    }
+                                        @if (!string.IsNullOrWhiteSpace(group.Key.LeagueLogo))
+                                        {
+                                            <img src="@group.Key.LeagueLogo" alt="league-logo" style="height:18px;width:auto;" />
+                                        }
 
-                                    <span class="fw-semibold">@group.Key.LeagueName</span>
+                                        <span class="fw-semibold">@group.Key.LeagueName</span>
+                                    </div>
 
+                                    <!-- Destra: Country + bandiera (senza parentesi, senza #id) -->
                                     @if (!string.IsNullOrWhiteSpace(group.Key.CountryName) || !string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
                                     {
-                                        <small class="text-muted d-flex align-items-center ms-2" style="gap:.35rem;">
-                                            ( @group.Key.CountryName
+                                        <div class="d-flex align-items-center gap-1 text-muted">
+                                            @if (!string.IsNullOrWhiteSpace(group.Key.CountryName))
+                                            {
+                                                <span>@group.Key.CountryName</span>
+                                            }
+
                                             @if (!string.IsNullOrWhiteSpace(group.Key.LeagueFlag))
                                             {
-                                                <img src="@group.Key.LeagueFlag" alt="flag" style="height:14px;width:auto;vertical-align:middle;" />
+                                                <img src="@group.Key.LeagueFlag"
+                                                     alt="flag"
+                                                     style="height:14px;width:auto;vertical-align:middle;" />
                                             }
-                                            )
-                                        </small>
+                                        </div>
                                     }
-
-                                    <small class="text-muted ms-2">#@group.Key.LeagueId</small>
                                 </div>
                             </button>
+
 
                             <div id="@groupId" class="collapse show">
                                 <div class="list-group list-group-flush">
