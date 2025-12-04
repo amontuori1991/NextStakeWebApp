@@ -272,15 +272,14 @@ app.MapGet("/api/livescores", async (
         return Results.Problem("Missing ApiSports:Key");
 
     // chiave di cache (anche se ids è null va bene uguale)
+    // chiave di cache (anche se ids è null va bene uguale)
     var cacheKey = $"livescores:{ids ?? "live-all"}";
     if (cache.TryGetValue(cacheKey, out object? cached) && cached is not null)
         return Results.Json(cached);
 
     var http = httpFactory.CreateClient("ApiSports");
 
-    // 🔴 IMPORTANTE:
-    // Per i live usiamo l'endpoint ufficiale "live=all" e NON filtriamo lato API per ids.
-    // Il filtro per gli ID lo facciamo lato client (DOM) con data-fixture.
+    // Per i live usiamo l'endpoint ufficiale "live=all"
     var url = "fixtures?live=all&timezone=Europe/Rome";
 
     var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -290,28 +289,27 @@ app.MapGet("/api/livescores", async (
     if (!resp.IsSuccessStatusCode)
         return Results.StatusCode((int)resp.StatusCode);
 
-    // (debug) se vuoi ispezionare la risposta grezza, lascia queste due righe:
+    // NIENTE Console.WriteLine qui, solo deserializzazione
     var raw = await resp.Content.ReadAsStringAsync();
-    Console.WriteLine("[ApiSports RAW fixtures?live=all] " + raw);
-
-    // Deserializza in oggetti fortemente tipizzati
     var json = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
 
     var payload = json?.Response?
         .Select(x => (object)new
         {
             id = x.Fixture.Id,
-            status = x.Fixture.Status.Short,   // es. "NS", "1H", "HT", "FT"
-            elapsed = x.Fixture.Status.Elapsed, // minutaggio
+            status = x.Fixture.Status.Short,    // es. "NS", "1H", "HT", "FT"
+            elapsed = x.Fixture.Status.Elapsed,  // minutaggio
             home = x.Goals.Home,
             away = x.Goals.Away
         })
         .ToList()
         ?? new List<object>();
 
+    // cache molto corta: 1 secondo
+    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(1));
 
-    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(5));
     return Results.Json(payload);
+
 })
 .WithName("LiveScores");
 
