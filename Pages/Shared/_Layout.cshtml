@@ -118,5 +118,70 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+
+    <div id="snow-container"></div>
+
+    <style>
+        #snow-container {
+            pointer-events: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            color: white;
+            font-size: 1rem;
+            user-select: none;
+            animation: fall linear infinite;
+            opacity: 0.9;
+            filter: drop-shadow(0 0 3px rgba(255,255,255,0.6));
+        }
+
+        @@keyframes fall {
+            to {
+                transform: translateY(110vh);
+            }
+        }
+    </style>
+
+    <script>
+        (function () {
+            const SNOW_COUNT = 50;   // quantità fiocchi
+            const container = document.getElementById('snow-container');
+
+            if (!container) return;
+
+            for (let i = 0; i < SNOW_COUNT; i++) {
+                createSnowflake();
+            }
+
+            function createSnowflake() {
+                const flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.textContent = '❄';
+
+                const size = Math.random() * 12 + 8; // 8px - 20px
+                flake.style.fontSize = size + 'px';
+
+                flake.style.left = Math.random() * 100 + 'vw';
+                flake.style.animationDuration = (Math.random() * 10 + 10) + 's';
+                flake.style.opacity = Math.random();
+                flake.style.transform = `translateX(${Math.random() * 40 - 20}px)`;
+
+                container.appendChild(flake);
+
+                flake.addEventListener('animationend', () => {
+                    flake.remove();
+                    createSnowflake();
+                });
+            }
+        })();
+    </script>
+
+
 </body>
 </html>

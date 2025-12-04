@@ -5,6 +5,7 @@
 }
 
 <div id="login-page" class="ns-login-wrapper d-flex align-items-center justify-content-center">
+    <div id="snow-container-login"></div>
     <div class="ns-login-card">
         <div class="ns-login-header">
             <img src="~/icons/favicon.svg" alt="NextStake Logo" class="ns-login-logo" />
@@ -50,7 +51,49 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+            function initLoginSnow() {
+                const SNOW_COUNT = 50;
+                const container = document.getElementById('snow-container-login');
+                if (!container) return;
+
+                for (let i = 0; i < SNOW_COUNT; i++) {
+                    createSnowflake();
+                }
+
+                function createSnowflake() {
+                    const flake = document.createElement('div');
+                    flake.className = 'snowflake-login';
+                    flake.textContent = '❄';
+
+                    const size = Math.random() * 12 + 8; // 8px - 20px
+                    flake.style.fontSize = size + 'px';
+
+                    flake.style.left = Math.random() * 100 + 'vw';
+                    flake.style.animationDuration = (Math.random() * 10 + 10) + 's';
+                    flake.style.opacity = Math.random();
+                    flake.style.transform = `translateX(${Math.random() * 40 - 20}px)`;
+
+                    container.appendChild(flake);
+
+                    flake.addEventListener('animationend', () => {
+                        flake.remove();
+                        createSnowflake();
+                    });
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initLoginSnow);
+            } else {
+                initLoginSnow();
+            }
+        })();
+    </script>
 }
+
 
 @section Styles {
     <style>
@@ -278,6 +321,31 @@
             #login-page a.text-info:hover {
                 color: #66d0ff !important;
             }
+        /* --- Neve pagina login --- */
+        #snow-container-login {
+            pointer-events: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .snowflake-login {
+            position: absolute;
+            top: -10px;
+            color: #ffffff;
+            font-size: 1rem;
+            user-select: none;
+            animation: fall-login linear infinite;
+            opacity: 0.9;
+            filter: drop-shadow(0 0 3px rgba(255,255,255,0.6));
+        }
+
+        @@keyframes fall-login {
+            to {
+                transform: translateY(110vh);
+            }
+        }
 
     </style>
 }
