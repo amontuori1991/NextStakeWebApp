@@ -142,17 +142,25 @@
                 <div class="card p-3 mb-3">
                     <div class="d-flex align-items-center justify-content-between">
                         <span class="form-label fw-semibold mb-0">Notifiche match preferiti</span>
-                        <button type="button"
-                                id="btn-push-toggle"
-                                class="btn btn-sm btn-outline-primary">
-                            Attiva notifiche
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button type="button"
+                                    id="btn-push-test"
+                                    class="btn btn-sm btn-outline-secondary">
+                                Test notifica
+                            </button>
+                            <button type="button"
+                                    id="btn-push-toggle"
+                                    class="btn btn-sm btn-outline-primary">
+                                Attiva notifiche
+                            </button>
+                        </div>
                     </div>
                     <small class="text-muted d-block mt-2">
                         Ricevi una notifica su inizio/fine e gol dei match che hai messo tra i preferiti.
                     </small>
                     <div id="push-status" class="small text-muted mt-1"></div>
                 </div>
+
 
                 <form method="get" action="/Events" class="card p-3 mb-3">
                     <div class="mb-2">
@@ -1237,9 +1245,12 @@
             console.log('[PUSH] Script push toggle caricato.');
 
             const btn = document.getElementById('btn-push-toggle');
+            const btnTest = document.getElementById('btn-push-test');
             const statusEl = document.getElementById('push-status');
 
-            console.log('[PUSH] Bottone trovato?', !!btn);
+            console.log('[PUSH] Bottone toggle trovato?', !!btn);
+            console.log('[PUSH] Bottone test trovato?', !!btnTest);
+
 
             if (!btn) {
                 console.warn('[PUSH] Nessun elemento con id="btn-push-toggle" trovato nel DOM.');
@@ -1428,6 +1439,31 @@
                 } catch (err) {
                     console.error('[PUSH] Errore init push toggle', err);
                 }
+                        // Bottone "Test notifica"
+        if (btnTest) {
+            btnTest.addEventListener('click', async () => {
+                console.log('[PUSH] CLICK test notifica');
+                if (statusEl) statusEl.textContent = 'Invio notifica di test...';
+
+                try {
+                    const res = await fetch('/api/push/test', { method: 'POST' });
+                    const text = await res.text();
+                    console.log('[PUSH] /api/push/test response:', res.status, text);
+
+                    if (res.ok) {
+                        if (statusEl) statusEl.textContent =
+                            'Notifica di test inviata. Se hai attivato le notifiche dovresti vederla a breve.';
+                    } else {
+                        if (statusEl) statusEl.textContent =
+                            'Errore durante l\'invio della notifica di test.';
+                    }
+                } catch (err) {
+                    console.error('[PUSH] Errore chiamata /api/push/test', err);
+                    if (statusEl) statusEl.textContent = 'Errore di rete durante il test.';
+                }
+            });
+        }
+
             })();
 
             btn.addEventListener('click', async () => {
