@@ -2,6 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Models;
 
+
+
 namespace NextStakeWebApp.Data
 {
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
@@ -11,6 +13,7 @@ namespace NextStakeWebApp.Data
 
         public DbSet<FavoriteMatch> FavoriteMatches => Set<FavoriteMatch>();
         public DbSet<Analysis> Analyses { get; set; } = default!;
+        public DbSet<PushSubscription> PushSubscriptions { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -22,6 +25,19 @@ namespace NextStakeWebApp.Data
             builder.Entity<FavoriteMatch>()
                    .HasIndex(x => new { x.UserId, x.MatchId })
                    .IsUnique();
+            builder.Entity<PushSubscription>(entity =>
+            {
+                entity.ToTable("PushSubscriptions");
+
+                entity.HasIndex(e => e.Endpoint)
+                      .IsUnique();
+
+                entity.HasOne(e => e.User)
+                      .WithMany()
+                      .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
         }
     }
 }

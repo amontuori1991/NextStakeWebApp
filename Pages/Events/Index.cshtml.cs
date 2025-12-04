@@ -1,14 +1,15 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
-using System.Runtime.InteropServices;
-using System.Text.Json;
-using Microsoft.AspNetCore.Http;
+using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace NextStakeWebApp.Pages.Events
 {
@@ -18,24 +19,30 @@ namespace NextStakeWebApp.Pages.Events
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _write;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IConfiguration _config;
 
 
         private readonly SignInManager<ApplicationUser> _signInManager;
 
-        public IndexModel(ReadDbContext read,
-                          ApplicationDbContext write,
-                          UserManager<ApplicationUser> userManager,
-                          SignInManager<ApplicationUser> signInManager)   // <-- aggiungi
+        public IndexModel(
+            ReadDbContext read,
+            ApplicationDbContext write,
+            UserManager<ApplicationUser> userManager,
+            SignInManager<ApplicationUser> signInManager,
+            IConfiguration config)                 // 👈 NUOVO
         {
             _read = read;
             _write = write;
             _userManager = userManager;
-            _signInManager = signInManager;                               // <-- aggiungi
+            _signInManager = signInManager;
+            _config = config;                      // 👈 NUOVO
         }
+
 
 
         // Giorno selezionato (giorno "Italia")
         public DateOnly SelectedDate { get; private set; } = DateOnly.FromDateTime(DateTime.Now);
+        public string VapidPublicKey { get; private set; } = "";
 
         public bool OnlyFavorites { get; private set; }
         public string? SelectedCountryCode { get; private set; }
@@ -122,7 +129,7 @@ namespace NextStakeWebApp.Pages.Events
             SelectedCountryCode = string.IsNullOrWhiteSpace(country) ? null : country;
             Query = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
             ShowBest = best == 1;
-
+            VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
             // Preferiti dell'utente
             var userId = _userManager.GetUserId(User)!;
             FavoriteMatchIds = _write.FavoriteMatches

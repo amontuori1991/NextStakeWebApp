@@ -313,6 +313,93 @@ app.MapGet("/api/livescores", async (
 })
 .WithName("LiveScores");
 
+// === Push Notifications: salva / disattiva subscription ===
+app.MapPost("/api/push/subscribe", async (
+    [FromBody] PushSubscribeDto body,
+    ApplicationDbContext db,
+    UserManager<ApplicationUser> userManager,
+    HttpContext httpContext
+) =>
+{
+    // Deve essere loggato
+    if (httpContext.User?.Identity?.IsAuthenticated != true)
+        return Results.Unauthorized();
+
+    var userId = userManager.GetUserId(httpContext.User);
+    if (string.IsNullOrWhiteSpace(userId))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.Endpoint) ||
+        string.IsNullOrWhiteSpace(body.P256Dh) ||
+        string.IsNullOrWhiteSpace(body.Auth))
+    {
+        return Results.BadRequest(new { error = "Dati subscription non validi" });
+    }
+
+    // Cerca subscription per endpoint (univoco)
+    var existing = await db.PushSubscriptions
+        .FirstOrDefaultAsync(x => x.Endpoint == body.Endpoint);
+
+    if (existing is null)
+    {
+        existing = new PushSubscription
+        {
+            UserId = userId,
+            Endpoint = body.Endpoint,
+            P256Dh = body.P256Dh,
+            Auth = body.Auth,
+            CreatedAtUtc = DateTime.UtcNow,
+            IsActive = true,
+            MatchNotificationsEnabled = true  // di default ON
+        };
+        db.PushSubscriptions.Add(existing);
+    }
+    else
+    {
+        // Aggiorna dati e ri-attiva
+        existing.UserId = userId;
+        existing.P256Dh = body.P256Dh;
+        existing.Auth = body.Auth;
+        existing.IsActive = true;
+        // NON tocchiamo MatchNotificationsEnabled: magari l’utente l’ha messa su OFF di proposito
+    }
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { ok = true });
+})
+.RequireAuthorization(); // richiede login
+
+
+app.MapPost("/api/push/unsubscribe", async (
+    [FromBody] PushUnsubscribeDto body,
+    ApplicationDbContext db,
+    HttpContext httpContext
+) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Endpoint))
+        return Results.BadRequest(new { error = "Endpoint mancante" });
+
+    // opzionale: puoi richiedere login anche qui
+    if (httpContext.User?.Identity?.IsAuthenticated != true)
+        return Results.Unauthorized();
+
+    var sub = await db.PushSubscriptions
+        .FirstOrDefaultAsync(x => x.Endpoint == body.Endpoint);
+
+    if (sub is null)
+    {
+        // idempotente: ok anche se non esiste
+        return Results.Ok(new { ok = true });
+    }
+
+    sub.IsActive = false;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { ok = true });
+})
+.RequireAuthorization();
+
 
 // Endpoint diagnostico minimale (opzionale)
 app.MapGet("/_debug/db", () => Results.Json(new
@@ -366,3 +453,14 @@ public class ApiGoals
     [JsonPropertyName("away")]
     public int? Away { get; set; }
 }
+
+// === DTO per Push Notifications ===
+public record PushSubscribeDto(
+    string Endpoint,
+    string P256Dh,
+    string Auth
+);
+
+public record PushUnsubscribeDto(
+    string Endpoint
+);

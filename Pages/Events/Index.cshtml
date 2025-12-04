@@ -139,6 +139,20 @@
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-theme-choice="system">Sistema</button>
                     </div>
                 </div>
+                <div class="card p-3 mb-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span class="form-label fw-semibold mb-0">Notifiche match preferiti</span>
+                        <button type="button"
+                                id="btn-push-toggle"
+                                class="btn btn-sm btn-outline-primary">
+                            Attiva notifiche
+                        </button>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        Ricevi una notifica su inizio/fine e gol dei match che hai messo tra i preferiti.
+                    </small>
+                    <div id="push-status" class="small text-muted mt-1"></div>
+                </div>
 
                 <form method="get" action="/Events" class="card p-3 mb-3">
                     <div class="mb-2">
@@ -397,7 +411,8 @@
                                 <div class="list-group list-group-flush">
                                     @foreach (var r in group)
                                     {
-                                        var isLive = r.StatusShort == "1H"
+                                        var isLive =
+                                        r.StatusShort == "1H"
                                         || r.StatusShort == "2H"
                                         || r.StatusShort == "ET"
                                         || r.StatusShort == "P"
@@ -405,7 +420,12 @@
                                         || r.StatusShort == "HT"
                                         || r.StatusShort == "LIVE";
 
-                                        <div class="list-group-item" data-live="@(isLive ? "1" : "0")">
+                                        var isFav = Model.FavoriteMatchIds.Contains(r.MatchId);
+
+                                        <div class="list-group-item"
+                                             data-live="@(isLive ? "1" : "0")"
+                                             data-fixture-root="@r.MatchId"
+                                             data-fav="@(isFav ? "1" : "0")">
                                             <div class="match-item">
                                                 @{
                                                     var homeScoreStr = FormatScore(r.HomeGoal, r.StatusShort);
@@ -450,7 +470,7 @@
                                                       class="fav-form">
                                                     @Html.AntiForgeryToken()
                                                     <button type="submit"
-                                                            class="btn btn-sm @(Model.FavoriteMatchIds.Contains(r.MatchId) ? "btn-warning" : "btn-outline-secondary")"
+                                                            class="btn btn-sm @(isFav ? "btn-warning" : "btn-outline-secondary")"
                                                             title="Aggiungi/rimuovi dai preferiti">
                                                         ⭐
                                                     </button>
@@ -458,6 +478,7 @@
                                             </div>
                                         </div>
                                     }
+
 
                                 </div>
                             </div>
@@ -799,187 +820,333 @@
 
 @section Scripts {
     <script>
-        /**
-         * Live scores NextStake:
-         * - chiede tutti i fixtures in pagina a /api/livescores (proxy Api-Football)
-         * - mappa il JSON (formato Api-Football o array semplice)
-         * - aggiorna punteggi, minutaggio e classi .is-live (rosso lampeggiante)
-         */
+        // VAPID public key dal backend
+        const VAPID_PUBLIC_KEY = '@Model.VapidPublicKey';
+    </script>
+    <script>
+        // Richiede il permesso di inviare notifiche (una sola volta)
         (function () {
-          const ENDPOINT = '/api/livescores';
-          const BATCH = 20;
-          const LIVE_INTERVAL_MS = 3000;
-          const LIVE_STATUSES = ['1H','2H','ET','P','BT','LIVE','HT'];
-          const FINISHED_STATUSES = ['FT','AET','PEN'];
+            if (!('Notification' in window)) return;
 
-          function chunk(arr, size) {
-            return arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
-          }
-
-          function initLiveScores() {
-            // Raccogli TUTTI gli ID presenti in pagina (dopo che il DOM è pronto)
-            const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
-            const ids = [...new Set(
-              [...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean)
-            )];
-
-            if (!ids.length) {
-              console.debug('Livescores: nessun fixture in pagina, non avvio il polling.');
-              return;
-            }
-
-            console.debug('Livescores inizializzati, fixture IDs:', ids);
-
-         function applyUpdate(it) {
-          if (!it || !it.id) return;
-
-          const id = String(it.id);
-          const homeEl   = document.querySelector(`.home-score[data-fixture="${id}"]`);
-          const awayEl   = document.querySelector(`.away-score[data-fixture="${id}"]`);
-          const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
-
-          const status   = (it.status || '').toUpperCase();
-          const isLive   = LIVE_STATUSES.includes(status);
-          const isFinished = FINISHED_STATUSES.includes(status);
-
-          const hasDom = !!(homeEl || awayEl || minuteEl);
-          console.debug('Live update item', id, 'status=', status, 'hasDom=', hasDom, it);
-
-          // Se non c'è nessun elemento in pagina con quel data-fixture, esco
-          if (!hasDom) return;
-
-          // --- Punteggi (sia live che finali) ---
-          if (homeEl && it.home !== null && it.home !== undefined) {
-            homeEl.textContent = String(it.home);   // 0,1,2...
-          }
-          if (awayEl && it.away !== null && it.away !== undefined) {
-            awayEl.textContent = String(it.away);
-          }
-
-          // --- Minutaggio live ---
-          if (minuteEl) {
-            if (isLive) {
-              let label = '';
-              if (typeof it.elapsed === 'number' && it.elapsed >= 0) label = `${it.elapsed}'`;
-              else if (status === 'HT') label = 'HT';
-
-              if (label) {
-                minuteEl.textContent = label;
-                minuteEl.classList.remove('d-none');
-              } else {
-                minuteEl.classList.add('d-none');
-              }
-              minuteEl.classList.add('is-live');
-            } else {
-              minuteEl.classList.add('d-none');
-              minuteEl.classList.remove('is-live');
-            }
-          }
-
-          // --- Classi per rosso lampeggiante su punteggio ---
-          const mark = el => {
-            if (!el) return;
-            if (isLive) el.classList.add('is-live');
-            else el.classList.remove('is-live');
-          };
-          mark(homeEl);
-          mark(awayEl);
-        }
-
-
-            async function fetchBatch(batchIds, extraParamsObj) {
-              const qs = new URLSearchParams();
-              qs.set('ids', batchIds.join(','));
-
-              if (extraParamsObj) {
-                for (const [k, v] of Object.entries(extraParamsObj)) {
-                  if (v !== null && v !== undefined) {
-                    qs.set(k, String(v));
-                  }
+            // Piccolo delay per evitare di sparare subito al caricamento
+            setTimeout(function () {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().catch(function () { });
                 }
-              }
-
-              try {
-                const res = await fetch(`${ENDPOINT}?${qs.toString()}`, { cache: 'no-store' });
-                if (!res.ok) return null;
-                return await res.json();
-              } catch {
-                return null;
-              }
-            }
-
-            async function fetchAndApplyAll(extraParamsObj) {
-              const batches = chunk(ids, BATCH);
-
-              for (const b of batches) {
-                const data = await fetchBatch(b, extraParamsObj);
-                if (!data) continue;
-
-                console.debug('Livescores batch response:', data);
-
-                let items = [];
-
-                if (Array.isArray(data)) {
-                  // Caso: il proxy restituisce direttamente l'array [{ id, home, away, status, elapsed }, ...]
-                  items = data;
-                } else if (Array.isArray(data.response)) {
-                  // Caso tipico Api-Football: { response: [ { fixture, goals, ... }, ... ] }
-                  items = data.response.map(x => ({
-                    id:      x.id ?? x.fixture?.id,
-                    home:    x.home ?? x.goals?.home,
-                    away:    x.away ?? x.goals?.away,
-                    status:  x.status ?? x.fixture?.status?.short,
-                    elapsed: x.elapsed ?? x.fixture?.status?.elapsed
-                  }));
-                } else {
-                  if (data.id) items = [data];
-                }
-
-                for (const it of items) {
-                  applyUpdate(it);
-                }
-              }
-            }
-
-            // === BOOTSTRAP: riempi risultati finali ===
-            fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' })
-              .finally(() => {
-                // === POLLING LIVE ===
-                let timerHandle = null;
-
-                async function liveTick() {
-                  await fetchAndApplyAll({});
-                }
-
-                function start() {
-                  if (timerHandle) return;
-                  liveTick();
-                  timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
-                }
-
-                function stop() {
-                  if (timerHandle) {
-                    clearInterval(timerHandle);
-                    timerHandle = null;
-                  }
-                }
-
-                document.addEventListener('visibilitychange', () => {
-                  if (document.hidden) stop(); else start();
-                });
-
-                start();
-              });
-          }
-
-          // Avvia dopo che il DOM è pronto
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initLiveScores);
-          } else {
-            initLiveScores();
-          }
+            }, 2000);
         })();
     </script>
+    <script>
+        /**
+         * Live scores NextStake + notifiche locali:
+         * - chiede tutti i fixtures in pagina a /api/livescores
+         * - aggiorna punteggi/minuti
+         * - per i match nei preferiti, mostra notifiche su:
+         *   - inizio partita
+         *   - fine primo tempo
+         *   - inizio secondo tempo
+         *   - fine partita
+         *   - goal
+         */
+        (function () {
+            const ENDPOINT = '/api/livescores';
+            const BATCH = 20;
+            const LIVE_INTERVAL_MS = 10000; // 10 secondi
+            const LIVE_STATUSES = ['1H', '2H', 'ET', 'P', 'BT', 'LIVE', 'HT'];
+            const FINISHED_STATUSES = ['FT', 'AET', 'PEN'];
+
+            // Stato precedente per ogni fixtureId -> { status, home, away }
+            const prevState = new Map();
+
+            function chunk(arr, size) {
+                return arr.length ? [arr.slice(0, size), ...chunk(arr.slice(size), size)] : [];
+            }
+
+            // NOTIFICA LOCALE
+            function fireLocalNotification(kind, data) {
+                if (!('Notification' in window)) return;
+                if (Notification.permission !== 'granted') return;
+
+                const { id, homeName, awayName, home, away, minute, status } = data;
+
+                let title = 'Notifica match';
+                let body = '';
+
+                const scoreStr = (home != null && away != null)
+                    ? `${home} - ${away}`
+                    : '';
+
+                switch (kind) {
+                    case 'start':
+                        title = 'Inizio partita';
+                        body = `${homeName} - ${awayName} è iniziata.`;
+                        break;
+                    case 'halftime':
+                        title = 'Fine primo tempo';
+                        body = `${homeName} - ${awayName} | HT ${scoreStr}`;
+                        break;
+                    case 'second':
+                        title = 'Inizio secondo tempo';
+                        body = `${homeName} - ${awayName} | Ripresa in corso.`;
+                        break;
+                    case 'end':
+                        title = 'Partita terminata';
+                        body = `${homeName} - ${awayName} | Finale ${scoreStr}`;
+                        break;
+                    case 'goal':
+                        title = 'GOAL!';
+                        body = `${homeName} - ${awayName} | ${scoreStr}` + (minute ? ` al ${minute}'` : '');
+                        break;
+                    default:
+                        body = `${homeName} - ${awayName}`;
+                        break;
+                }
+
+                const options = {
+                    body: body,
+                    icon: '/icons/android-chrome-192x192.png',
+                    badge: '/icons/android-chrome-192x192.png',
+                    tag: `match-${id}-${kind}`, // evita spam infinito, raggruppa per tipo
+                };
+
+                try {
+                    new Notification(title, options);
+                } catch { }
+            }
+
+            function initLiveScores() {
+                // Raccogli TUTTI gli ID presenti in pagina (dopo che il DOM è pronto)
+                const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
+                const ids = [...new Set(
+                    [...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean)
+                )];
+
+                if (!ids.length) {
+                    console.debug('Livescores: nessun fixture in pagina, non avvio il polling.');
+                    return;
+                }
+
+                console.debug('Livescores inizializzati, fixture IDs:', ids);
+
+                function applyUpdate(it) {
+                    if (!it || !it.id) return;
+
+                    const id = String(it.id);
+                    const homeEl = document.querySelector(`.home-score[data-fixture="${id}"]`);
+                    const awayEl = document.querySelector(`.away-score[data-fixture="${id}"]`);
+                    const minuteEl = document.querySelector(`.live-minute[data-fixture="${id}"]`);
+
+                    const statusRaw = (it.status || '').toUpperCase();
+                    const status = statusRaw || '';
+                    const isLiveNow = LIVE_STATUSES.includes(status);
+                    const isFinishedNow = FINISHED_STATUSES.includes(status);
+
+                    const hasDom = !!(homeEl || awayEl || minuteEl);
+                    if (!hasDom) return;
+
+                    // Trova il "root" della partita e verifica se è preferita
+                    const root = (homeEl || awayEl || minuteEl)?.closest('.list-group-item');
+                    const isFav = root && root.getAttribute('data-fav') === '1';
+
+                    let homeName = '';
+                    let awayName = '';
+                    if (root) {
+                        const h = root.querySelector('.team.home .team-name');
+                        const a = root.querySelector('.team.away .team-name');
+                        homeName = h ? h.textContent.trim() : '';
+                        awayName = a ? a.textContent.trim() : '';
+                    }
+
+                    console.debug('Live update item', id, 'status=', status, 'fav=', isFav, it);
+
+                    // --- Punteggi (sia live che finali) ---
+                    if (homeEl && it.home !== null && it.home !== undefined) {
+                        homeEl.textContent = String(it.home);
+                    }
+                    if (awayEl && it.away !== null && it.away !== undefined) {
+                        awayEl.textContent = String(it.away);
+                    }
+
+                    // --- Minutaggio live ---
+                    if (minuteEl) {
+                        if (isLiveNow) {
+                            let label = '';
+                            if (typeof it.elapsed === 'number' && it.elapsed >= 0) label = `${it.elapsed}'`;
+                            else if (status === 'HT') label = 'HT';
+
+                            if (label) {
+                                minuteEl.textContent = label;
+                                minuteEl.classList.remove('d-none');
+                            } else {
+                                minuteEl.classList.add('d-none');
+                            }
+                            minuteEl.classList.add('is-live');
+                        } else {
+                            minuteEl.classList.add('d-none');
+                            minuteEl.classList.remove('is-live');
+                        }
+                    }
+
+                    // --- Classi rosse su punteggi ---
+                    const mark = el => {
+                        if (!el) return;
+                        if (isLiveNow) el.classList.add('is-live');
+                        else el.classList.remove('is-live');
+                    };
+                    mark(homeEl);
+                    mark(awayEl);
+
+                    // --- Rilevazione eventi vs stato precedente (solo per preferiti) ---
+                    const prev = prevState.get(id);
+                    const current = {
+                        status,
+                        home: it.home,
+                        away: it.away
+                    };
+
+                    if (isFav && prev) {
+                        const isLivePrev = prev.status && LIVE_STATUSES.includes(prev.status);
+                        const isFinishedPrev = prev.status && FINISHED_STATUSES.includes(prev.status);
+
+                        const homeChanged = (prev.home ?? null) !== (it.home ?? null);
+                        const awayChanged = (prev.away ?? null) !== (it.away ?? null);
+
+                        const commonData = {
+                            id,
+                            homeName,
+                            awayName,
+                            home: it.home,
+                            away: it.away,
+                            minute: typeof it.elapsed === 'number' ? it.elapsed : null,
+                            status
+                        };
+
+                        // Inizio partita (non era live prima, è live ora)
+                        if (!isLivePrev && isLiveNow) {
+                            fireLocalNotification('start', commonData);
+                        }
+
+                        // Fine primo tempo
+                        if (prev.status === '1H' && status === 'HT') {
+                            fireLocalNotification('halftime', commonData);
+                        }
+
+                        // Inizio secondo tempo
+                        if (prev.status === 'HT' && status === '2H') {
+                            fireLocalNotification('second', commonData);
+                        }
+
+                        // Fine partita (non finita prima, finita ora)
+                        if (!isFinishedPrev && isFinishedNow) {
+                            fireLocalNotification('end', commonData);
+                        }
+
+                        // Goal (cambiato uno dei due punteggi)
+                        if (homeChanged || awayChanged) {
+                            // Evita di segnalare goal dopo il fischio finale
+                            if (!isFinishedNow) {
+                                fireLocalNotification('goal', commonData);
+                            }
+                        }
+                    }
+
+                    // Aggiorna stato corrente
+                    prevState.set(id, current);
+                }
+
+                async function fetchBatch(batchIds, extraParamsObj) {
+                    const qs = new URLSearchParams();
+                    qs.set('ids', batchIds.join(','));
+
+                    if (extraParamsObj) {
+                        for (const [k, v] of Object.entries(extraParamsObj)) {
+                            if (v !== null && v !== undefined) {
+                                qs.set(k, String(v));
+                            }
+                        }
+                    }
+
+                    try {
+                        const res = await fetch(`${ENDPOINT}?${qs.toString()}`, { cache: 'no-store' });
+                        if (!res.ok) return null;
+                        return await res.json();
+                    } catch {
+                        return null;
+                    }
+                }
+
+                async function fetchAndApplyAll(extraParamsObj) {
+                    const batches = chunk(ids, BATCH);
+
+                    for (const b of batches) {
+                        const data = await fetchBatch(b, extraParamsObj);
+                        if (!data) continue;
+
+                        console.debug('Livescores batch response:', data);
+
+                        let items = [];
+
+                        if (Array.isArray(data)) {
+                            items = data;
+                        } else if (Array.isArray(data.response)) {
+                            items = data.response.map(x => ({
+                                id: x.id ?? x.fixture?.id,
+                                home: x.home ?? x.goals?.home,
+                                away: x.away ?? x.goals?.away,
+                                status: x.status ?? x.fixture?.status?.short,
+                                elapsed: x.elapsed ?? x.fixture?.status?.elapsed
+                            }));
+                        } else {
+                            if (data.id) items = [data];
+                        }
+
+                        for (const it of items) {
+                            applyUpdate(it);
+                        }
+                    }
+                }
+
+                // === BOOTSTRAP: inizializza stato senza notificare passato ===
+                (async function bootstrap() {
+                    await fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' });
+                })().finally(() => {
+                    // === POLLING LIVE ===
+                    let timerHandle = null;
+
+                    async function liveTick() {
+                        await fetchAndApplyAll({});
+                    }
+
+                    function start() {
+                        if (timerHandle) return;
+                        liveTick();
+                        timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
+                    }
+
+                    function stop() {
+                        if (timerHandle) {
+                            clearInterval(timerHandle);
+                            timerHandle = null;
+                        }
+                    }
+
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.hidden) stop(); else start();
+                    });
+
+                    start();
+                });
+            }
+
+            // Avvia dopo che il DOM è pronto
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initLiveScores);
+            } else {
+                initLiveScores();
+            }
+        })();
+    </script>
+
 
     <script>
         (function(){
@@ -1065,6 +1232,183 @@
                     btn.classList.add('btn-outline-danger');
                     btn.classList.remove('btn-danger');
                     btn.textContent = '🔴 LIVE';
+                }
+            });
+        })();
+    </script>
+    <script>
+        (function () {
+            const btn = document.getElementById('btn-push-toggle');
+            const statusEl = document.getElementById('push-status');
+
+            if (!btn) return;
+
+            // ⚠️ Sostituisci con la tua chiave pubblica VAPID in formato base64 url-safe
+            // es: "BOp5W...ecc..."
+            const VAPID_PUBLIC_KEY = 'BGzvjpfsQIu-nU76Aqr1S22XVzybN35iOpCf6IopdR-c-Vt7H7h5_LmC1RzKmi_t0uR5OncrDZLFoJ6gxFB2BEM';
+
+            function urlBase64ToUint8Array(base64String) {
+                const padding = '='.repeat((4 - base64String.length % 4) % 4);
+                const base64 = (base64String + padding)
+                    .replace(/-/g, '+')
+                    .replace(/_/g, '/');
+
+                const rawData = window.atob(base64);
+                const outputArray = new Uint8Array(rawData.length);
+
+                for (let i = 0; i < rawData.length; ++i) {
+                    outputArray[i] = rawData.charCodeAt(i);
+                }
+                return outputArray;
+            }
+
+            function setUi(enabled) {
+                if (enabled) {
+                    btn.classList.remove('btn-outline-primary');
+                    btn.classList.add('btn-success');
+                    btn.textContent = 'Notifiche attive';
+                    if (statusEl) statusEl.textContent = 'Riceverai notifiche per i match preferiti.';
+                } else {
+                    btn.classList.add('btn-outline-primary');
+                    btn.classList.remove('btn-success');
+                    btn.textContent = 'Attiva notifiche';
+                    if (statusEl) statusEl.textContent = 'Notifiche disattivate.';
+                }
+            }
+
+            async function getRegistration() {
+                if (!('serviceWorker' in navigator)) {
+                    if (statusEl) statusEl.textContent = 'Il tuo browser non supporta le notifiche push.';
+                    btn.disabled = true;
+                    return null;
+                }
+
+                try {
+                    // Prova a recuperare una registration esistente
+                    let reg = await navigator.serviceWorker.getRegistration();
+                    if (!reg) {
+                        // Se non esiste, registriamo /service-worker.js con scope root
+                        reg = await navigator.serviceWorker.register('/service-worker.js');
+                    }
+                    return reg;
+                } catch (err) {
+                    console.error('Errore registrazione service worker', err);
+                    if (statusEl) statusEl.textContent = 'Errore nella registrazione delle notifiche.';
+                    btn.disabled = true;
+                    return null;
+                }
+            }
+
+            async function ensureSubscribed() {
+                const reg = await getRegistration();
+                if (!reg || !('pushManager' in reg)) {
+                    if (statusEl) statusEl.textContent = 'Le notifiche push non sono supportate dal tuo browser.';
+                    return null;
+                }
+
+                let sub = await reg.pushManager.getSubscription();
+
+                if (!sub) {
+                    // chiede il permesso al browser
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                        if (statusEl) statusEl.textContent = 'Per attivare le notifiche devi consentirle nel browser.';
+                        return null;
+                    }
+
+                    sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                    });
+                }
+
+                // invia al backend
+                const rawP256 = sub.getKey('p256dh');
+                const rawAuth = sub.getKey('auth');
+
+                const p256dh = rawP256
+                    ? btoa(String.fromCharCode.apply(null, new Uint8Array(rawP256)))
+                    : '';
+                const auth = rawAuth
+                    ? btoa(String.fromCharCode.apply(null, new Uint8Array(rawAuth)))
+                    : '';
+
+                const payload = {
+                    endpoint: sub.endpoint,
+                    p256Dh: p256dh,
+                    auth: auth
+                };
+
+                try {
+                    await fetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (err) {
+                    console.error('Errore chiamata /api/push/subscribe', err);
+                    if (statusEl) statusEl.textContent = 'Errore durante il salvataggio della subscription.';
+                }
+
+                return sub;
+            }
+
+            async function unsubscribe() {
+                const reg = await getRegistration();
+                if (!reg || !('pushManager' in reg)) return;
+                const sub = await reg.pushManager.getSubscription();
+                if (!sub) return;
+
+                const endpoint = sub.endpoint;
+
+                try {
+                    await sub.unsubscribe();
+                } catch (err) {
+                    console.warn('Errore unsubscribe client', err);
+                }
+
+                try {
+                    await fetch('/api/push/unsubscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ endpoint })
+                    });
+                } catch (err) {
+                    console.warn('Errore /api/push/unsubscribe', err);
+                }
+            }
+
+            // Inizializzazione UI in base allo stato attuale
+            (async function init() {
+                if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+                    if (statusEl) statusEl.textContent = 'Il tuo browser non supporta le notifiche push.';
+                    btn.disabled = true;
+                    return;
+                }
+
+                try {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    const sub = reg && await reg.pushManager.getSubscription();
+                    const enabled = !!sub && Notification.permission === 'granted';
+                    setUi(enabled);
+                } catch (err) {
+                    console.error('Errore init push toggle', err);
+                }
+            })();
+
+            btn.addEventListener('click', async () => {
+                if (btn.disabled) return;
+
+                const reg = await getRegistration();
+                const currentSub = reg && await reg.pushManager.getSubscription();
+                const currentlyEnabled = !!currentSub && Notification.permission === 'granted';
+
+                if (!currentlyEnabled) {
+                    const sub = await ensureSubscribed();
+                    if (sub) setUi(true);
+                } else {
+                    await unsubscribe();
+                    setUi(false);
                 }
             });
         })();
