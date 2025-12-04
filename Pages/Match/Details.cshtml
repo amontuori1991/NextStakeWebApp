@@ -3471,45 +3471,43 @@ switch (esitoCards)
         })();
     </script>
     <script>
-        (function () {
-            function initSnowDetails() {
-                const SNOW_COUNT = 50;   // quantità fiocchi
-                const container = document.getElementById('snow-container-details');
+(function () {
+    let SNOW_COUNT = 50;
 
-                if (!container) return;
+    // Se mobile / viewport piccola, riduci i fiocchi
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        SNOW_COUNT = 15; // o 10, prova tu
+    }
 
-                for (let i = 0; i < SNOW_COUNT; i++) {
-                    createSnowflake();
-                }
+    const container = document.getElementById('snow-container');
+    if (!container) return;
 
-                function createSnowflake() {
-                    const flake = document.createElement('div');
-                    flake.className = 'snowflake-details';
-                    flake.textContent = '❄';
+    for (let i = 0; i < SNOW_COUNT; i++) {
+        createSnowflake();
+    }
 
-                    const size = Math.random() * 12 + 8; // 8px - 20px
-                    flake.style.fontSize = size + 'px';
+    function createSnowflake() {
+        const flake = document.createElement('div');
+        flake.className = 'snowflake';
+        flake.textContent = '❄';
 
-                    flake.style.left = Math.random() * 100 + 'vw';
-                    flake.style.animationDuration = (Math.random() * 10 + 10) + 's';
-                    flake.style.opacity = Math.random();
-                    flake.style.transform = `translateX(${Math.random() * 40 - 20}px)`;
+        const size = Math.random() * 12 + 8; // 8px - 20px
+        flake.style.fontSize = size + 'px';
 
-                    container.appendChild(flake);
+        flake.style.left = Math.random() * 100 + 'vw';
+        flake.style.animationDuration = (Math.random() * 10 + 10) + 's';
+        flake.style.opacity = Math.random();
+        flake.style.transform = `translateX(${Math.random() * 40 - 20}px)`;
 
-                    flake.addEventListener('animationend', () => {
-                        flake.remove();
-                        createSnowflake();
-                    });
-                }
-            }
+        container.appendChild(flake);
 
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initSnowDetails);
-            } else {
-                initSnowDetails();
-            }
-        })();
+        flake.addEventListener('animationend', () => {
+            flake.remove();
+            createSnowflake();
+        });
+    }
+})();
+
     </script>
 }
 
@@ -3737,16 +3735,29 @@ switch (esitoCards)
         overflow: hidden;
     }
 
-    .snowflake-details {
-        position: absolute;
-        top: -10px;
-        color: white;
-        font-size: 1rem;
-        user-select: none;
-        animation: fall-details linear infinite;
-        opacity: 0.9;
-        filter: drop-shadow(0 0 3px rgba(255,255,255,0.6));
+.snowflake {
+    position: absolute;
+    top: -10px;
+    color: white;
+    font-size: 1rem;
+    user-select: none;
+    animation: fall linear infinite;
+    opacity: 0.9;
+}
+
+/* Su schermi piccoli: togli il drop-shadow e riduci dimensione */
+@@media (max-width: 768px) {
+    .snowflake {
+        filter: none;           /* niente drop-shadow */
+        font-size: 0.8rem;      /* più piccoli */
     }
+}
+
+@@media (prefers-reduced-motion: reduce) {
+    .snowflake {
+        animation: none !important;
+    }
+}
 
     @@keyframes fall-details {
         to {

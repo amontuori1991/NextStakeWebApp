@@ -142,17 +142,48 @@
         }
 
         @@keyframes fall {
-            to {
-                transform: translateY(110vh);
-            }
+            to
+
+        {
+            transform: translateY(110vh);
+        }
+
+        }
+
+        /* 🔻 Su mobile: fiocchi più leggeri (niente drop-shadow, più piccoli) */
+        @@media (max-width: 768px) {
+            .snowflake
+
+        {
+            filter: none;
+            font-size: 0.8rem;
+        }
+
+        }
+
+        /* 🔻 Opzionale: niente animazione per chi ha "riduci movimento" */
+        @@media (prefers-reduced-motion: reduce) {
+            .snowflake
+
+        {
+            animation: none !important;
+        }
+
         }
     </style>
 
+
     <script>
         (function () {
-            const SNOW_COUNT = 50;   // quantità fiocchi
-            const container = document.getElementById('snow-container');
+            // Di base 50 fiocchi (desktop/tablet)
+            let SNOW_COUNT = 50;
 
+            // Su viewport piccole (smartphone) riduci drasticamente
+            if (window.matchMedia('(max-width: 768px)').matches) {
+                SNOW_COUNT = 15; // prova con 10–15
+            }
+
+            const container = document.getElementById('snow-container');
             if (!container) return;
 
             for (let i = 0; i < SNOW_COUNT; i++) {
