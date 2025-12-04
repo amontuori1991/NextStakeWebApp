@@ -1,41 +1,39 @@
 ﻿// wwwroot/service-worker.js
 
+// (opzionale) semplice install/activate
 self.addEventListener('install', event => {
-    // Puoi farci precaching in futuro, per ora è giusto un log
-    console.log('[SW] Install');
+    // Subito attivo
     self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-    console.log('[SW] Activate');
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(clients.claim());
 });
 
-// Gestione push: mostra la notifica anche a pagina chiusa
+// ===== GESTIONE PUSH =====
 self.addEventListener('push', event => {
-    console.log('[SW] Push event ricevuto', event);
+    console.log('[SW] push ricevuto', event);
 
     let data = {};
-    if (event.data) {
-        try {
+    try {
+        if (event.data) {
             data = event.data.json();
-        } catch (e) {
-            // Se non è JSON, uso il testo grezzo
-            data = { title: event.data.text() };
         }
+    } catch (e) {
+        console.error('[SW] errore parse payload push', e);
     }
 
     const title = data.title || 'NextStake';
-    const body = data.body || 'Aggiornamento partita.';
-    const icon = data.icon || '/icons/favicon_grinch.svg'; // o l’icona che preferisci
-    const url = data.url || '/Events'; // pagina di default se non viene passato altro
+    const body = data.body || 'Nuova notifica';
+    const url = data.url || '/';
 
     const options = {
         body: body,
-        icon: icon,
-        badge: icon,
-        data: { url: url },
-        renotify: true
+        icon: '/icons/android-chrome-192x192.png',
+        badge: '/icons/android-chrome-192x192.png',
+        data: {
+            url: url
+        }
     };
 
     event.waitUntil(
@@ -43,23 +41,26 @@ self.addEventListener('push', event => {
     );
 });
 
-// Click sulla notifica: apri/focus sulla pagina indicata
+// ===== CLICK SULLA NOTIFICA =====
 self.addEventListener('notificationclick', event => {
+    console.log('[SW] notificationclick', event);
     event.notification.close();
-    const url = event.notification.data && event.notification.data.url;
 
-    if (!url) return;
+    const url = (event.notification.data && event.notification.data.url) || '/';
 
     event.waitUntil(
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-            for (const client of clientList) {
-                if (client.url === url && 'focus' in client) {
-                    return client.focus();
+        clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then(windowClients => {
+                // Se esiste già una scheda aperta, la porta in primo piano
+                for (const client of windowClients) {
+                    if (client.url.includes(self.location.origin)) {
+                        client.focus();
+                        client.navigate(url);
+                        return;
+                    }
                 }
-            }
-            if (self.clients.openWindow) {
-                return self.clients.openWindow(url);
-            }
-        })
+                // Altrimenti apre una nuova scheda
+                return clients.openWindow(url);
+            })
     );
 });

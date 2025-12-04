@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
-using static Org.BouncyCastle.Math.EC.ECCurve;
+
 
 namespace NextStakeWebApp.Pages.Events
 {

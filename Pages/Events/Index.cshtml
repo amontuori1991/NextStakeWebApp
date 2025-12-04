@@ -820,10 +820,6 @@
 
 @section Scripts {
     <script>
-        // VAPID public key dal backend
-        const VAPID_PUBLIC_KEY = '@Model.VapidPublicKey';
-    </script>
-    <script>
         // Richiede il permesso di inviare notifiche (una sola volta)
         (function () {
             if (!('Notification' in window)) return;
@@ -1238,14 +1234,20 @@
     </script>
     <script>
         (function () {
+            console.log('[PUSH] Script push toggle caricato.');
+
             const btn = document.getElementById('btn-push-toggle');
             const statusEl = document.getElementById('push-status');
 
-            if (!btn) return;
+            console.log('[PUSH] Bottone trovato?', !!btn);
 
-            // ⚠️ Sostituisci con la tua chiave pubblica VAPID in formato base64 url-safe
-            // es: "BOp5W...ecc..."
-            const VAPID_PUBLIC_KEY = 'BGzvjpfsQIu-nU76Aqr1S22XVzybN35iOpCf6IopdR-c-Vt7H7h5_LmC1RzKmi_t0uR5OncrDZLFoJ6gxFB2BEM';
+            if (!btn) {
+                console.warn('[PUSH] Nessun elemento con id="btn-push-toggle" trovato nel DOM.');
+                return;
+            }
+        // Chiave pubblica VAPID reale
+        const VAPID_PUBLIC_KEY = 'BGzvjpfsQIu-nU76Aqr1S22XVzybN35iOpCf6IopdR-c-Vt7H7h5_LmC1RzKmi_t0uR5OncrDZLFoJ6gxFB2BEM';
+
 
             function urlBase64ToUint8Array(base64String) {
                 const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -1263,6 +1265,7 @@
             }
 
             function setUi(enabled) {
+                console.log('[PUSH] setUi, enabled=', enabled);
                 if (enabled) {
                     btn.classList.remove('btn-outline-primary');
                     btn.classList.add('btn-success');
@@ -1277,22 +1280,27 @@
             }
 
             async function getRegistration() {
+                console.log('[PUSH] getRegistration() chiamato');
+
                 if (!('serviceWorker' in navigator)) {
+                    console.warn('[PUSH] Service worker non supportato');
                     if (statusEl) statusEl.textContent = 'Il tuo browser non supporta le notifiche push.';
                     btn.disabled = true;
                     return null;
                 }
 
                 try {
-                    // Prova a recuperare una registration esistente
                     let reg = await navigator.serviceWorker.getRegistration();
+                    console.log('[PUSH] getRegistration() - registration esistente:', !!reg);
+
                     if (!reg) {
-                        // Se non esiste, registriamo /service-worker.js con scope root
+                        console.log('[PUSH] Nessuna registration, provo a registrare /service-worker.js');
                         reg = await navigator.serviceWorker.register('/service-worker.js');
+                        console.log('[PUSH] Service worker registrato:', reg);
                     }
                     return reg;
                 } catch (err) {
-                    console.error('Errore registrazione service worker', err);
+                    console.error('[PUSH] Errore registrazione service worker', err);
                     if (statusEl) statusEl.textContent = 'Errore nella registrazione delle notifiche.';
                     btn.disabled = true;
                     return null;
@@ -1300,29 +1308,36 @@
             }
 
             async function ensureSubscribed() {
+                console.log('[PUSH] ensureSubscribed() chiamato');
+
                 const reg = await getRegistration();
                 if (!reg || !('pushManager' in reg)) {
+                    console.warn('[PUSH] pushManager non disponibile');
                     if (statusEl) statusEl.textContent = 'Le notifiche push non sono supportate dal tuo browser.';
                     return null;
                 }
 
                 let sub = await reg.pushManager.getSubscription();
+                console.log('[PUSH] Subscription esistente:', !!sub);
 
                 if (!sub) {
-                    // chiede il permesso al browser
+                    console.log('[PUSH] Nessuna subscription, chiedo permesso notifiche');
                     const permission = await Notification.requestPermission();
+                    console.log('[PUSH] Notification permission =', permission);
+
                     if (permission !== 'granted') {
                         if (statusEl) statusEl.textContent = 'Per attivare le notifiche devi consentirle nel browser.';
                         return null;
                     }
 
+                    console.log('[PUSH] Mi iscrivo al pushManager...');
                     sub = await reg.pushManager.subscribe({
                         userVisibleOnly: true,
                         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
                     });
+                    console.log('[PUSH] Subscription creata:', sub);
                 }
 
-                // invia al backend
                 const rawP256 = sub.getKey('p256dh');
                 const rawAuth = sub.getKey('auth');
 
@@ -1339,14 +1354,21 @@
                     auth: auth
                 };
 
+                console.log('[PUSH] Invio subscription al backend', payload);
+
                 try {
-                    await fetch('/api/push/subscribe', {
+                    const res = await fetch('/api/push/subscribe', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+
+                    console.log('[PUSH] /api/push/subscribe status =', res.status);
+                    if (!res.ok) {
+                        console.warn('[PUSH] Errore risposta subscribe', await res.text());
+                    }
                 } catch (err) {
-                    console.error('Errore chiamata /api/push/subscribe', err);
+                    console.error('[PUSH] Errore chiamata /api/push/subscribe', err);
                     if (statusEl) statusEl.textContent = 'Errore durante il salvataggio della subscription.';
                 }
 
@@ -1354,33 +1376,44 @@
             }
 
             async function unsubscribe() {
+                console.log('[PUSH] unsubscribe() chiamato');
+
                 const reg = await getRegistration();
                 if (!reg || !('pushManager' in reg)) return;
                 const sub = await reg.pushManager.getSubscription();
-                if (!sub) return;
+                if (!sub) {
+                    console.log('[PUSH] Nessuna subscription da cancellare');
+                    return;
+                }
 
                 const endpoint = sub.endpoint;
 
                 try {
+                    console.log('[PUSH] Unsubscribe lato client...');
                     await sub.unsubscribe();
                 } catch (err) {
-                    console.warn('Errore unsubscribe client', err);
+                    console.warn('[PUSH] Errore unsubscribe client', err);
                 }
 
                 try {
-                    await fetch('/api/push/unsubscribe', {
+                    console.log('[PUSH] Notifico il backend /api/push/unsubscribe', endpoint);
+                    const res = await fetch('/api/push/unsubscribe', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ endpoint })
                     });
+                    console.log('[PUSH] /api/push/unsubscribe status =', res.status);
                 } catch (err) {
-                    console.warn('Errore /api/push/unsubscribe', err);
+                    console.warn('[PUSH] Errore /api/push/unsubscribe', err);
                 }
             }
 
-            // Inizializzazione UI in base allo stato attuale
+            // Inizializzazione UI (controlla se c'è già una subscription)
             (async function init() {
+                console.log('[PUSH] init()');
+
                 if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+                    console.warn('[PUSH] SW o Notification non supportati dal browser');
                     if (statusEl) statusEl.textContent = 'Il tuo browser non supporta le notifiche push.';
                     btn.disabled = true;
                     return;
@@ -1390,18 +1423,26 @@
                     const reg = await navigator.serviceWorker.getRegistration();
                     const sub = reg && await reg.pushManager.getSubscription();
                     const enabled = !!sub && Notification.permission === 'granted';
+                    console.log('[PUSH] Stato iniziale: enabled=', enabled, 'permission=', Notification.permission);
                     setUi(enabled);
                 } catch (err) {
-                    console.error('Errore init push toggle', err);
+                    console.error('[PUSH] Errore init push toggle', err);
                 }
             })();
 
             btn.addEventListener('click', async () => {
-                if (btn.disabled) return;
+                console.log('[PUSH] CLICK sul bottone notifiche');
+
+                if (btn.disabled) {
+                    console.log('[PUSH] Bottone disabilitato, esco.');
+                    return;
+                }
 
                 const reg = await getRegistration();
                 const currentSub = reg && await reg.pushManager.getSubscription();
                 const currentlyEnabled = !!currentSub && Notification.permission === 'granted';
+
+                console.log('[PUSH] currentlyEnabled =', currentlyEnabled);
 
                 if (!currentlyEnabled) {
                     const sub = await ensureSubscribed();
@@ -1413,6 +1454,7 @@
             });
         })();
     </script>
+
 
 }
 

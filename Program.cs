@@ -15,6 +15,9 @@ using static NextStakeWebApp.Services.IMatchBannerService;
 using NextStakeWebApp.ApiSports;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using WebPush;
+using DbPushSubscription = NextStakeWebApp.Models.PushSubscription;
+using WebPushSubscription = WebPush.PushSubscription;
 
 // NOTE: niente Microsoft.Extensions.Options qui: non lo usiamo
 
@@ -342,7 +345,7 @@ app.MapPost("/api/push/subscribe", async (
 
     if (existing is null)
     {
-        existing = new PushSubscription
+        existing = new DbPushSubscription
         {
             UserId = userId,
             Endpoint = body.Endpoint,
@@ -354,6 +357,7 @@ app.MapPost("/api/push/subscribe", async (
         };
         db.PushSubscriptions.Add(existing);
     }
+
     else
     {
         // Aggiorna dati e ri-attiva
@@ -369,6 +373,97 @@ app.MapPost("/api/push/subscribe", async (
     return Results.Ok(new { ok = true });
 })
 .RequireAuthorization(); // richiede login
+// --- Test invio push ---
+// Manda una notifica di test a tutte le subscription dell'utente loggato
+app.MapPost("/api/push/test", async (
+    HttpContext httpContext,
+    ApplicationDbContext db,
+    UserManager<ApplicationUser> userManager,
+    IConfiguration cfg) =>
+{
+    // Utente loggato
+    var user = await userManager.GetUserAsync(httpContext.User);
+    if (user == null)
+    {
+        return Results.Unauthorized();
+    }
+
+    // Recupera tutte le subscription attive per questo utente
+    var subs = await db.PushSubscriptions
+        .Where(s => s.UserId == user.Id && s.IsActive && s.MatchNotificationsEnabled)
+        .ToListAsync();
+
+    if (subs.Count == 0)
+    {
+        return Results.NotFound(new { message = "Nessuna subscription attiva per questo utente." });
+    }
+
+    // Legge le chiavi VAPID da config / env
+    var publicKey =
+        cfg["VAPID_PUBLIC_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+    var privateKey =
+        cfg["VAPID_PRIVATE_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+    var subject =
+        cfg["VAPID_SUBJECT"] ??
+        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
+        "mailto:info@nextstake.app";
+
+    if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
+    {
+        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
+    }
+
+    var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
+    var client = new WebPushClient();
+
+    // Payload della notifica
+    var payloadObj = new
+    {
+        title = "Test notifica NextStake",
+        body = "Le notifiche push sono attive 👍",
+        url = "/Events" // dove portarti al click
+    };
+    var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
+
+    int success = 0;
+    int failed = 0;
+
+    foreach (var s in subs)
+    {
+        var pushSub = new WebPushSubscription(s.Endpoint, s.P256Dh, s.Auth);
+
+
+        try
+        {
+            await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
+            success++;
+        }
+        catch (WebPushException wex)
+        {
+            // Se l'endpoint è scaduto o non valido, segna la subscription come inattiva
+            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
+                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                s.IsActive = false;
+            }
+
+            failed++;
+            Console.WriteLine($"[PUSH][ERROR] {wex.StatusCode} {wex.Message}");
+        }
+        catch (Exception ex)
+        {
+            failed++;
+            Console.WriteLine($"[PUSH][ERROR] {ex.Message}");
+        }
+    }
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { success, failed });
+})
+.RequireAuthorization(); // richiede utente loggato
 
 
 app.MapPost("/api/push/unsubscribe", async (
