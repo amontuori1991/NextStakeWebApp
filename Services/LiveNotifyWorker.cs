@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using WebPush;
+using System.Runtime.InteropServices;
+
 
 // alias per evitare ambiguità
 using DbPushSubscription = NextStakeWebApp.Models.PushSubscription;
@@ -98,41 +100,58 @@ namespace NextStakeWebApp.Services
             using var scope = _scopeFactory.CreateScope();
             var readDb = scope.ServiceProvider.GetRequiredService<ReadDbContext>();
             var writeDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
-            var pushClient = new WebPushClient();
-            var nowUtc = DateTime.UtcNow;
 
-            // 🔍 1) Verifica se ci sono partite "rilevanti" nei preferiti
-            //    - Data partita in una finestra [-3h, +3h] rispetto ad "adesso" (ora server)
-            //    - Così evitiamo chiamate quando non c'è nulla di interessante
+            // --- 0) Verifica se esistono match preferiti NON FINITI nella finestra ---
+            // Se non ce ne sono, NON chiamiamo proprio ApiSports.
+            TimeZoneInfo tzRome;
+            try
+            {
+                tzRome = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? TimeZoneInfo.FindSystemTimeZoneById("W. Europe Standard Time")
+                    : TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            }
+            catch
+            {
+                tzRome = TimeZoneInfo.Local;
+            }
 
-            var nowLocal = DateTime.Now;              // i tuoi m.Date sono già "ora Italia"
+            var nowLocal = TimeZoneInfo.ConvertTime(DateTime.UtcNow, tzRome);
             var from = nowLocal.AddHours(-3);
-            var to = nowLocal.AddHours(3);
+            var to = nowLocal.AddHours(+3);
 
             // 1) leggo solo gli ID dei preferiti dal DB WRITE
             var favoriteIds = await writeDb.FavoriteMatches
                 .Select(fm => fm.MatchId)
+                .Distinct()
                 .ToListAsync(ct);
 
             // se non ho proprio preferiti → esco subito
             if (favoriteIds.Count == 0)
                 return;
 
-            // 2) verifico se almeno uno di questi match è nella finestra temporale
+            // 2) verifico se almeno uno di questi match:
+            //    - è nella finestra temporale
+            //    - NON ha uno status "finale" (FT / AET / PEN)
             var hasRelevantFavorites = await readDb.Matches
                 .Where(m =>
                     favoriteIds.Contains((long)m.Id) &&
                     m.Date >= from &&
-                    m.Date <= to
+                    m.Date <= to &&
+                    (m.StatusShort == null || !FINISHED_STATUSES.Contains(m.StatusShort))
                 )
                 .AnyAsync(ct);
 
             if (!hasRelevantFavorites)
             {
-                // Nessuna partita rilevante → NON CHIAMO L'API
+                _logger.LogDebug("LiveNotifyWorker: nessun match preferito live o imminente → skip chiamata API.");
                 return;
             }
+
+            // solo se arriviamo qui ci serve davvero il client push
+            var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
+            var pushClient = new WebPushClient();
+            var nowUtc = DateTime.UtcNow;
+
 
 
             // --- 2) Chiamata API-FOOTBALL per i live --------------------------

@@ -2,7 +2,12 @@
 @model NextStakeWebApp.Areas.Admin.Pages.ConsumiApiModel
 @using System.Text.Json
 @{
+    Layout = "/Pages/Shared/_Layout.cshtml";
     ViewData["Title"] = "Consumi API";
+
+    var percCap = Model.DailyCap > 0
+        ? Math.Min(100, Math.Round(Model.TodayTotal * 100.0 / Model.DailyCap, 1))
+        : 0;
 }
 
 <div class="container py-4 consumi-page">
@@ -22,8 +27,7 @@
 
         <!-- Tabella -->
         <div class="col-lg-6 d-flex align-items-center justify-content-center">
-
-            <div class="card h-100">
+            <div class="card h-100 w-100">
                 <div class="card-header">
                     Storico chiamate API
                 </div>
@@ -49,7 +53,6 @@
                                 else
                                 {
                                     @foreach (var r in Model.Records.OrderByDescending(x => x.Date))
-
                                     {
                                         <tr>
                                             <td>@r.Date.ToString("dd/MM/yyyy")</td>
@@ -67,7 +70,7 @@
 
         <!-- Grafico a torta -->
         <div class="col-lg-6">
-            <div class="card h-100">
+            <div class="card h-100 w-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Distribuzione per origine (giorno più recente)</span>
                     <span class="badge bg-secondary">
@@ -75,12 +78,10 @@
                     </span>
                 </div>
                 <div class="card-body d-flex flex-column">
+
                     <div class="mb-2 small text-muted">
                         @if (Model.TodayTotal > 0)
                         {
-                            var percCap = Model.DailyCap > 0
-                            ? Math.Min(100, Math.Round(Model.TodayTotal * 100.0 / Model.DailyCap, 1))
-                            : 0;
                             <text>Ultimo giorno registrato: @Model.TodayTotal chiamate (@percCap% del tetto).</text>
                         }
                         else
@@ -88,6 +89,20 @@
                             <text>Nessun dato per il giorno più recente.</text>
                         }
                     </div>
+
+                    @if (Model.TodayTotal > 0)
+                    {
+                        <div class="usage-progress mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span>Utilizzo giornaliero</span>
+                                <span>@percCap% (@Model.TodayTotal / @Model.DailyCap)</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-info" role="progressbar"
+                                     style="width:@percCap%"></div>
+                            </div>
+                        </div>
+                    }
 
                     <div class="chart-wrapper">
                         <canvas id="apiUsagePie"></canvas>
@@ -101,7 +116,7 @@
 </div>
 
 <style>
-    /* === Stesso sistema temi globali usato nel resto di NextStake === */
+    /* === Stesso sistema temi globali === */
     :root[data-theme="dark"] {
         --bg: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
         --text: #e9edf3;
@@ -151,29 +166,23 @@
         color: #fff;
     }
 
-    /* === Grafico centrato, pulito, stile NextStake === */
-    .chart-wrapper {
-        max-width: 300px;
-        width: 100%;
-        margin: 0 auto;
-        padding: 1rem 0;
+    /* === Tabella leggibile in dark / light === */
+    :root[data-theme="dark"] .consumi-page .table {
+        --bs-table-color: #e9edf3;
+        --bs-table-bg: transparent;
+        --bs-table-striped-bg: rgba(255,255,255,.03);
+        --bs-table-border-color: rgba(255,255,255,.18);
+        --bs-table-hover-bg: rgba(255,255,255,.08);
     }
 
-        .chart-wrapper canvas {
-            width: 100% !important;
-            height: auto !important;
-        }
-
-    @@media (max-width: 768px) {
-        .chart-wrapper
-
-    {
-        max-width: 230px;
+    :root[data-theme="light"] .consumi-page .table {
+        --bs-table-color: #1a2230;
+        --bs-table-bg: transparent;
+        --bs-table-striped-bg: rgba(0,0,0,.015);
+        --bs-table-border-color: rgba(0,0,0,.06);
+        --bs-table-hover-bg: rgba(0,0,0,.03);
     }
 
-    }
-
-    /* === Tabella uniforme al resto del sito === */
     .consumi-page table th {
         font-size: .85rem;
         text-transform: uppercase;
@@ -183,16 +192,58 @@
     .consumi-page table td {
         font-size: .9rem;
     }
+    /* === Forza il colore del testo tabella in base al tema === */
+    :root[data-theme="dark"] .consumi-page .table thead th,
+    :root[data-theme="dark"] .consumi-page .table tbody td {
+        color: #e9edf3 !important; /* testo chiaro */
+    }
+
+    :root[data-theme="light"] .consumi-page .table thead th,
+    :root[data-theme="light"] .consumi-page .table tbody td {
+        color: #1a2230 !important; /* testo scuro */
+    }
+
+    /* === Barra di avanzamento === */
+    .consumi-page .usage-progress .progress {
+        height: 0.6rem;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    :root[data-theme="dark"] .consumi-page .usage-progress .progress {
+        background-color: rgba(255,255,255,.12);
+    }
+
+    :root[data-theme="light"] .consumi-page .usage-progress .progress {
+        background-color: rgba(0,0,0,.08);
+    }
+
+    /* === Grafico centrato, un po' più grande ma responsive === */
+    .chart-wrapper {
+        max-width: 360px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 1rem 0 0.5rem;
+    }
+
+        .chart-wrapper canvas {
+            width: 100% !important;
+            height: auto !important;
+        }
+
+    @@media (max-width: 768px) {
+        .chart-wrapper {
+            max-width: 260px;
+        }
+    }
 </style>
-
-
 
 <!-- Chart.js + plugin etichette -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
 <script>
-    // === Toggle tema semplice (usa data-theme su <html>) ===
+    // === Toggle tema (usa data-theme su <html>) ===
     (function () {
         function currentTheme() {
             const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
@@ -201,12 +252,11 @@
             return (stored === 'light' || stored === 'dark') ? stored : 'dark';
         }
 
-    function applyTheme(choice) {
-        const applied = (choice === 'light') ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', applied);
-        document.body.setAttribute('data-theme', applied);
-    }
-
+        function applyTheme(choice) {
+            const applied = (choice === 'light') ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', applied);
+            document.body.setAttribute('data-theme', applied);
+        }
 
         function persist(choice) {
             const applied = (choice === 'light') ? 'light' : 'dark';
@@ -233,38 +283,38 @@
         });
     })();
 
-    // === Grafico a torta ===
+    // === Grafico a torta: Disponibile + origini ===
     (function () {
         const canvas = document.getElementById('apiUsagePie');
         if (!canvas) return;
 
-        const labels = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Origin)));
-    const dataRaw = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Counter)));
-    const dailyCap = @Model.DailyCap;
+        const originLabels = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Origin)));
+        const originCounters = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Counter)));
+        const dailyCap = @Model.DailyCap;
 
-    // Convertiamo in % rispetto al tetto (7500)
-    const data = dataRaw.map(v => (v / dailyCap) * 100);
-    const totalPercent = data.reduce((a, b) => a + b, 0);
+        if (!originCounters.length || dailyCap === 0) {
+            return; // nessun dato → niente grafico
+        }
 
-    if (!data.length || dailyCap === 0) {
-        return; // nessun dato → niente grafico
-    }
+        const usedToday = originCounters.reduce((a, b) => a + b, 0);
+        const remaining = Math.max(0, dailyCap - usedToday);
 
+        const labels = ['Disponibile', ...originLabels];
+        const data = [remaining, ...originCounters];
 
         const colors = [
+            '#6c757d', // Disponibile
             '#0d6efd', '#6610f2', '#198754', '#dc3545', '#fd7e14',
-            '#20c997', '#6f42c1', '#0dcaf0', '#ffc107', '#6c757d'
+            '#20c997', '#6f42c1', '#0dcaf0', '#ffc107'
         ];
 
         Chart.register(ChartDataLabels);
 
-        // colore testo in base al tema corrente
-    function getTextColor() {
-        const computed = getComputedStyle(document.documentElement);
-        const c = computed.getPropertyValue('--text').trim();
-        return c || '#ffffff';
-    }
-
+        function getTextColor() {
+            const computed = getComputedStyle(document.documentElement);
+            const c = computed.getPropertyValue('--text').trim();
+            return c || '#ffffff';
+        }
 
         new Chart(canvas, {
             type: 'pie',
@@ -281,23 +331,19 @@
                 plugins: {
                     legend: {
                         position: 'right',
-    labels: {
-        usePointStyle: true,
-        boxWidth: 10,
-        padding: 14,
-        color: getComputedStyle(document.documentElement)
-            .getPropertyValue('--text')
-            .trim()
-    }
-
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 10,
+                            padding: 14,
+                            color: getTextColor()
+                        }
                     },
                     tooltip: {
                         callbacks: {
                             label: function (context) {
                                 const val = context.raw || 0;
-                                const perc = val;
-
-                                return context.label + ': ' + val + ' (' + perc.toFixed(1) + '%)';
+                                const perc = dailyCap ? (val / dailyCap * 100) : 0;
+                                return `${context.label}: ${val} chiamate (${perc.toFixed(2)}% del tetto)`;
                             }
                         }
                     },
@@ -305,11 +351,12 @@
                         color: '#ffffff',
                         font: {
                             weight: 'bold',
-                            size: 12
+                            size: 11
                         },
                         formatter: function (value) {
-                           return value >= 0.5 ? value.toFixed(2) + '%' : '';
-
+                            if (!dailyCap) return '';
+                            const perc = value / dailyCap * 100;
+                            return perc >= 1 ? perc.toFixed(1) + '%' : '';
                         }
                     }
                 }
