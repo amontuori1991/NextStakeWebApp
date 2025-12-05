@@ -1073,6 +1073,69 @@ app.MapGet("/_debug/db", () => Results.Json(new
     write = new { wcsb.Host, wcsb.Database, wcsb.Username },
     read = new { rcsb.Host, rcsb.Database, rcsb.Username }
 }));
+// === Consumi API (JSON per pagina Admin/Consumi) ===
+app.MapGet("/admin/api/consumi", async (
+    ApplicationDbContext db,
+    IConfiguration cfg,
+    CancellationToken ct
+) =>
+{
+    // Tetto giornaliero (stessa logica che usi nel PageModel)
+    var dailyCapStr = cfg["ApiSports:DailyCap"];
+    int dailyCap = 0;
+    int.TryParse(dailyCapStr, out dailyCap);
+
+    // Leggo un po' di righe di storico (es. ultime 60)
+    var records = await db.CallCounter
+        .OrderByDescending(c => c.Date)
+        .Take(60)
+        .ToListAsync(ct);
+
+    if (!records.Any())
+    {
+        return Results.Json(new
+        {
+            dailyCap,
+            todayTotal = 0,
+            todayUsage = Array.Empty<object>(),
+            records = Array.Empty<object>()
+        });
+    }
+
+    // giorno più recente presente in tabella
+    var latestDate = records.Max(r => r.Date);
+
+    var todayUsage = records
+        .Where(r => r.Date == latestDate)
+        .GroupBy(r => r.Origin)
+        .Select(g => new
+        {
+            origin = g.Key,
+            counter = g.Sum(x => x.Counter)
+        })
+        .ToList();
+
+    var todayTotal = todayUsage.Sum(x => x.counter);
+
+    // DTO "piatto" per la tabella
+    var recDtos = records
+        .Select(r => new
+        {
+            date = r.Date,
+            origin = r.Origin,
+            counter = r.Counter
+        })
+        .ToList();
+
+    return Results.Json(new
+    {
+        dailyCap,
+        todayTotal,
+        todayUsage,
+        records = recDtos
+    });
+})
+.RequireAuthorization(); // stessa protezione della pagina Admin
 
 app.Run();
 

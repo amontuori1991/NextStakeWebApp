@@ -41,7 +41,7 @@
                                     <th>Origine</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="consumi-tbody">
                                 @if (!Model.Records.Any())
                                 {
                                     <tr>
@@ -73,13 +73,21 @@
             <div class="card h-100 w-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Distribuzione per origine (giorno più recente)</span>
-                    <span class="badge bg-secondary">
-                        Tetto giornaliero: @Model.DailyCap
-                    </span>
+
+                    <div class="d-flex flex-column align-items-end">
+                        <span id="daily-cap-badge" class="badge bg-secondary mb-1">
+                            Tetto giornaliero: @Model.DailyCap
+                        </span>
+                        <small id="last-updated"
+                               class="text-muted small">
+                            Ultimo aggiornamento: --:--:--
+                        </small>
+                    </div>
                 </div>
+
                 <div class="card-body d-flex flex-column">
 
-                    <div class="mb-2 small text-muted">
+                    <div id="usage-summary" class="mb-2 small text-muted">
                         @if (Model.TodayTotal > 0)
                         {
                             <text>Ultimo giorno registrato: @Model.TodayTotal chiamate (@percCap% del tetto).</text>
@@ -90,19 +98,16 @@
                         }
                     </div>
 
-                    @if (Model.TodayTotal > 0)
-                    {
-                        <div class="usage-progress mb-3">
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span>Utilizzo giornaliero</span>
-                                <span>@percCap% (@Model.TodayTotal / @Model.DailyCap)</span>
-                            </div>
-                            <div class="progress">
-                                <div class="progress-bar bg-info" role="progressbar"
-                                     style="width:@percCap%"></div>
-                            </div>
+                    <div id="usage-progress" class="usage-progress mb-3 @(Model.TodayTotal > 0 ? "" : "d-none")">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span>Utilizzo giornaliero</span>
+                            <span id="usage-progress-label">@percCap% (@Model.TodayTotal / @Model.DailyCap)</span>
                         </div>
-                    }
+                        <div class="progress">
+                            <div id="usage-progress-bar" class="progress-bar bg-info" role="progressbar"
+                                 style="width:@percCap%"></div>
+                        </div>
+                    </div>
 
                     <div class="chart-wrapper">
                         <canvas id="apiUsagePie"></canvas>
@@ -111,9 +116,10 @@
                 </div>
             </div>
         </div>
-    </div>
 
-</div>
+    </div> <!-- fine .row -->
+</div> <!-- fine .container -->
+
 
 <style>
     /* === Stesso sistema temi globali === */
@@ -243,124 +249,280 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
 <script>
-    // === Toggle tema (usa data-theme su <html>) ===
-    (function () {
-        function currentTheme() {
-            const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
-            const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
-            const stored = cookieValue || localStorage.getItem('theme');
-            return (stored === 'light' || stored === 'dark') ? stored : 'dark';
-        }
-
-        function applyTheme(choice) {
-            const applied = (choice === 'light') ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', applied);
-            document.body.setAttribute('data-theme', applied);
-        }
-
-        function persist(choice) {
-            const applied = (choice === 'light') ? 'light' : 'dark';
-            localStorage.setItem('theme', applied);
-            document.cookie = "theme=" + encodeURIComponent(applied)
-                + "; path=/; max-age=31536000; samesite=lax";
-        }
-
-        const btns = document.querySelectorAll('.consumi-page [data-theme-choice]');
-        const initial = currentTheme();
-        applyTheme(initial);
-
-        btns.forEach(b => {
-            if (b.getAttribute('data-theme-choice') === initial) {
-                b.classList.add('active');
+        // === Toggle tema (usa data-theme su <html>) ===
+        (function () {
+            function currentTheme() {
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+                const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+                const stored = cookieValue || localStorage.getItem('theme');
+                return (stored === 'light' || stored === 'dark') ? stored : 'dark';
             }
-            b.addEventListener('click', () => {
-                const choice = b.getAttribute('data-theme-choice');
-                applyTheme(choice);
-                persist(choice);
-                btns.forEach(x => x.classList.remove('active'));
-                b.classList.add('active');
+
+            function applyTheme(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', applied);
+                document.body.setAttribute('data-theme', applied);
+            }
+
+            function persist(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                localStorage.setItem('theme', applied);
+                document.cookie = "theme=" + encodeURIComponent(applied)
+                    + "; path=/; max-age=31536000; samesite=lax";
+            }
+
+            const btns = document.querySelectorAll('.consumi-page [data-theme-choice]');
+            const initial = currentTheme();
+            applyTheme(initial);
+
+            btns.forEach(b => {
+                if (b.getAttribute('data-theme-choice') === initial) {
+                    b.classList.add('active');
+                }
+                b.addEventListener('click', () => {
+                    const choice = b.getAttribute('data-theme-choice');
+                    applyTheme(choice);
+                    persist(choice);
+                    btns.forEach(x => x.classList.remove('active'));
+                    b.classList.add('active');
+                });
             });
-        });
-    })();
+        })();
 
-    // === Grafico a torta: Disponibile + origini ===
-    (function () {
-        const canvas = document.getElementById('apiUsagePie');
-        if (!canvas) return;
+        // === Grafico + tabella + barra in realtime (polling ogni 3s) ===
+        (function () {
+            const DEFAULT_DAILY_CAP = 7500; // tetto giornaliero di default
 
-        const originLabels = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Origin)));
-        const originCounters = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Counter)));
-        const dailyCap = @Model.DailyCap;
+            const REFRESH_MS = 3000;
+            const canvas = document.getElementById('apiUsagePie');
+            if (!canvas) return;
 
-        if (!originCounters.length || dailyCap === 0) {
-            return; // nessun dato → niente grafico
-        }
+            const tbody = document.getElementById('consumi-tbody');
+            const summaryEl = document.getElementById('usage-summary');
+            const progressBlock = document.getElementById('usage-progress');
+            const progressLabel = document.getElementById('usage-progress-label');
+            const progressBar = document.getElementById('usage-progress-bar');
+            const capBadge = document.getElementById('daily-cap-badge');
+            const lastUpdatedEl = document.getElementById('last-updated');
 
-        const usedToday = originCounters.reduce((a, b) => a + b, 0);
-        const remaining = Math.max(0, dailyCap - usedToday);
+            let pieChart = null;
 
-        const labels = ['Disponibile', ...originLabels];
-        const data = [remaining, ...originCounters];
+            function getTextColor() {
+                const computed = getComputedStyle(document.documentElement);
+                const c = computed.getPropertyValue('--text').trim();
+                return c || '#ffffff';
+            }
 
-        const colors = [
-            '#6c757d', // Disponibile
-            '#0d6efd', '#6610f2', '#198754', '#dc3545', '#fd7e14',
-            '#20c997', '#6f42c1', '#0dcaf0', '#ffc107'
-        ];
+            function buildOrUpdateChart(dailyCap, todayUsage) {
+                // se non ci sono dati, distruggo il grafico e basta
+                if (!todayUsage || !todayUsage.length) {
+                    if (pieChart) {
+                        pieChart.destroy();
+                        pieChart = null;
+                    }
+                    return;
+                }
 
-        Chart.register(ChartDataLabels);
+                const originLabels = todayUsage.map(x => x.origin);
+                const originCounters = todayUsage.map(x => x.counter);
+                const usedToday = originCounters.reduce((a, b) => a + b, 0);
 
-        function getTextColor() {
-            const computed = getComputedStyle(document.documentElement);
-            const c = computed.getPropertyValue('--text').trim();
-            return c || '#ffffff';
-        }
+                let labels, data;
 
-        new Chart(canvas, {
-            type: 'pie',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: labels.map((_, i) => colors[i % colors.length]),
-                    borderColor: '#ffffff',
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            usePointStyle: true,
-                            boxWidth: 10,
-                            padding: 14,
-                            color: getTextColor()
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function (context) {
-                                const val = context.raw || 0;
-                                const perc = dailyCap ? (val / dailyCap * 100) : 0;
-                                return `${context.label}: ${val} chiamate (${perc.toFixed(2)}% del tetto)`;
+                if (dailyCap > 0) {
+                    const remaining = Math.max(0, dailyCap - usedToday);
+                    labels = ['Disponibile', ...originLabels];
+                    data = [remaining, ...originCounters];
+                } else {
+                    // nessun tetto impostato → grafico solo delle origini
+                    labels = [...originLabels];
+                    data = [...originCounters];
+                }
+
+                const colors = [
+                    '#6c757d', // Disponibile (se presente)
+                    '#0d6efd', '#6610f2', '#198754', '#dc3545', '#fd7e14',
+                    '#20c997', '#6f42c1', '#0dcaf0', '#ffc107'
+                ];
+
+                if (!pieChart) {
+                    Chart.register(ChartDataLabels);
+
+                    pieChart = new Chart(canvas, {
+                        type: 'pie',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: data,
+                                backgroundColor: labels.map((_, i) => colors[i % colors.length]),
+                                borderColor: '#ffffff',
+                                borderWidth: 2
+                            }]
+                        },
+                        options: {
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                    labels: {
+                                        usePointStyle: true,
+                                        boxWidth: 10,
+                                        padding: 14,
+                                        color: getTextColor()
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function (context) {
+                                            const val = context.raw || 0;
+                                            let denom, perc, suffix;
+
+                                            if (dailyCap > 0) {
+                                                denom = dailyCap;
+                                                perc = denom ? (val / denom * 100) : 0;
+                                                suffix = 'del tetto';
+                                            } else {
+                                                denom = usedToday || 1;
+                                                perc = val / denom * 100;
+                                                suffix = 'del totale del giorno';
+                                            }
+
+                                            return `${context.label}: ${val} chiamate (${perc.toFixed(2)}% ${suffix})`;
+                                        }
+                                    }
+                                },
+                                datalabels: {
+                                    color: '#ffffff',
+                                    font: {
+                                        weight: 'bold',
+                                        size: 11
+                                    },
+                                    formatter: function (value) {
+                                        let denom;
+                                        if (dailyCap > 0) {
+                                            denom = dailyCap;
+                                        } else {
+                                            denom = usedToday || 1;
+                                        }
+                                        const perc = value / denom * 100;
+                                        return perc >= 3 ? perc.toFixed(1) + '%' : '';
+                                    }
+                                }
                             }
                         }
-                    },
-                    datalabels: {
-                        color: '#ffffff',
-                        font: {
-                            weight: 'bold',
-                            size: 11
-                        },
-                        formatter: function (value) {
-                            if (!dailyCap) return '';
-                            const perc = value / dailyCap * 100;
-                            return perc >= 1 ? perc.toFixed(1) + '%' : '';
-                        }
-                    }
+                    });
+                } else {
+                    pieChart.data.labels = labels;
+                    pieChart.data.datasets[0].data = data;
+                    pieChart.options.plugins.legend.labels.color = getTextColor();
+                    pieChart.update();
                 }
             }
-        });
-    })();
+
+            function renderTable(records) {
+                if (!tbody) return;
+
+                if (!records || !records.length) {
+                    tbody.innerHTML = `
+    <tr>
+      <td colspan="3" class="text-center text-muted py-4">
+        Nessun dato disponibile
+      </td>
+    </tr>`;
+                    return;
+                }
+
+                const rowsHtml = records
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .map(r => {
+                        const d = new Date(r.date);
+                        const dateStr = d.toLocaleDateString('it-IT');
+                        return `
+    <tr>
+      <td>${dateStr}</td>
+      <td>${r.counter}</td>
+      <td>${r.origin}</td>
+    </tr>`;
+                    })
+                    .join('');
+
+                tbody.innerHTML = rowsHtml;
+            }
+
+            function renderSummaryAndProgress(dailyCap, todayTotal) {
+                // testo di riepilogo
+                if (summaryEl) {
+                    if (todayTotal > 0 && dailyCap > 0) {
+                        const percCap = Math.min(100, Math.round(todayTotal * 1000.0 / dailyCap) / 10);
+                        summaryEl.textContent = `Ultimo giorno registrato: ${todayTotal} chiamate (${percCap}% del tetto).`;
+                    } else if (todayTotal > 0) {
+                        summaryEl.textContent = `Ultimo giorno registrato: ${todayTotal} chiamate. (tetto non impostato)`;
+                    } else {
+                        summaryEl.textContent = 'Nessun dato per il giorno più recente.';
+                    }
+                }
+
+                // barra di avanzamento
+                if (!progressBlock || !progressLabel || !progressBar) return;
+
+                if (todayTotal > 0) {
+                    progressBlock.classList.remove('d-none');
+
+                    if (dailyCap > 0) {
+                        const percCap = Math.min(100, Math.round(todayTotal * 1000.0 / dailyCap) / 10);
+                        progressLabel.textContent = `${percCap}% (${todayTotal} / ${dailyCap})`;
+                        progressBar.style.width = `${percCap}%`;
+                    } else {
+                        // nessun tetto: la barra va al 100% e mostra solo il numero di chiamate
+                        progressLabel.textContent = `${todayTotal} chiamate (tetto non impostato)`;
+                        progressBar.style.width = '100%';
+                    }
+                } else {
+                    progressBlock.classList.add('d-none');
+                }
+            }
+
+            async function loadConsumi() {
+                try {
+                    const res = await fetch('/admin/api/consumi', { cache: 'no-store' });
+                    if (!res.ok) return;
+
+                        const payload = await res.json();
+
+    // se l'API manda 0, usiamo il tetto di default (7500)
+    const rawDailyCap = payload.dailyCap || 0;
+    const dailyCap = rawDailyCap > 0 ? rawDailyCap : DEFAULT_DAILY_CAP;
+
+    const todayTotal = payload.todayTotal || 0;
+    const todayUsage = payload.todayUsage || [];
+    const records = payload.records || [];
+    
+
+                    // badge tetto
+                    if (capBadge) {
+                        capBadge.textContent = `Tetto giornaliero: ${dailyCap}`;
+                    }
+
+                    // orario ultimo aggiornamento
+                    if (lastUpdatedEl) {
+                        const now = new Date();
+                        const timeStr = now.toLocaleTimeString('it-IT', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+                        lastUpdatedEl.textContent = `Ultimo aggiornamento: ${timeStr}`;
+                    }
+
+                    renderTable(records);
+                    renderSummaryAndProgress(dailyCap, todayTotal);
+                    buildOrUpdateChart(dailyCap, todayUsage);
+                } catch (err) {
+                    console.error('[Consumi] errore caricamento dati', err);
+                }
+            }
+
+            // Bootstrap + polling ogni 3s
+            loadConsumi();
+            setInterval(loadConsumi, REFRESH_MS);
+        })();
 </script>
