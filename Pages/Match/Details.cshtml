@@ -8,6 +8,34 @@
 @{
     ViewData["Title"] = "Dettaglio Match";
 }
+@{
+    // Ricostruisco l'URL di ritorno agli eventi mantenendo i filtri
+    var query = Request.Query;
+
+    string? d = query["d"];
+    string? fav = query["fav"];
+    string? country = query["country"];
+    string? q = query["q"];
+    string? bestFlag = query["best"];   // ✅ rinominato per evitare conflitti
+
+    var backParams = new List<string>();
+
+    if (!string.IsNullOrWhiteSpace(d))
+        backParams.Add($"d={d}");
+    if (!string.IsNullOrWhiteSpace(fav))
+        backParams.Add($"fav={fav}");
+    if (!string.IsNullOrWhiteSpace(country))
+        backParams.Add($"country={country}");
+    if (!string.IsNullOrWhiteSpace(q))
+        backParams.Add($"q={q}");
+    if (!string.IsNullOrWhiteSpace(bestFlag))
+        backParams.Add($"best={bestFlag}");
+
+    var backUrl = "/Events";
+    if (backParams.Count > 0)
+        backUrl += "?" + string.Join("&", backParams);
+}
+
 
 <div id="snow-container-details"></div>
 
@@ -165,7 +193,8 @@
             <button type="submit" class="btn @(Model.Data.IsFavorite ? "btn-warning" : "btn-outline-secondary")">⭐ Preferito</button>
         </form>
 
-        <a class="btn btn-outline-secondary" href="/Events">← Torna agli eventi</a>
+        <a class="btn btn-outline-secondary" href="@backUrl">← Torna agli eventi</a>
+
 
             @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
             @{

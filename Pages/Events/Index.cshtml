@@ -320,7 +320,8 @@
                                                     <div class="list-group-item">
                                                         <div class="match-item">
 
-                                                            <a href="/Match/Details?id=@bp.R.Id" class="match-grid">
+                                                            <a href="/Match/Details?id=@bp.R.Id&d=@Model.SelectedDate.ToString("yyyy-MM-dd")@common" class="match-grid">
+
                                                                 <div class="team home">
                                                                     @if (!string.IsNullOrWhiteSpace(bp.A?.HomeLogo))
                                                                     {
@@ -445,7 +446,8 @@
                                                     var ko = r.KickoffLocal.ToString("HH:mm");
                                                 }
 
-                                                <a href="/Match/Details?id=@r.MatchId" class="match-grid">
+                                                <a href="/Match/Details?id=@r.MatchId&d=@Model.SelectedDate.ToString("yyyy-MM-dd")@common" class="match-grid">
+
                                                     <div class="team home">
                                                         @if (!string.IsNullOrWhiteSpace(r.HomeLogo))
                                                         {
@@ -1250,13 +1252,11 @@
             const btn = document.getElementById('btn-live-filter');
             if (!btn) return;
 
-            let active = false;
+            // Leggo stato salvato (0/1) da localStorage
+            let active = localStorage.getItem('events_live_filter') === '1';
 
-            btn.addEventListener('click', function () {
-                active = !active;
-
+            function applyFilter() {
                 const allMatches = document.querySelectorAll('.list-group-item[data-live]');
-
                 allMatches.forEach(el => {
                     const isLive = el.getAttribute('data-live') === '1';
 
@@ -1264,7 +1264,7 @@
                         // Mostra solo i LIVE
                         el.style.display = isLive ? '' : 'none';
                     } else {
-                        // Ripristina tutto
+                        // Mostra tutti
                         el.style.display = '';
                     }
                 });
@@ -1279,9 +1279,20 @@
                     btn.classList.remove('btn-danger');
                     btn.textContent = '🔴 LIVE';
                 }
+            }
+
+            btn.addEventListener('click', function () {
+                active = !active;
+                // Salvo lo stato
+                localStorage.setItem('events_live_filter', active ? '1' : '0');
+                applyFilter();
             });
+
+            // Applico stato iniziale appena carica la pagina
+            applyFilter();
         })();
     </script>
+
     <script>
         (function () {
             console.log('[PUSH] Script push toggle caricato.');
