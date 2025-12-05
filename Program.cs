@@ -400,15 +400,22 @@ app.MapPost("/api/push/test", async (
 
     // Legge le chiavi VAPID da config / env
     var publicKey =
+        cfg["VAPID:PublicKey"] ??
         cfg["VAPID_PUBLIC_KEY"] ??
         Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+
     var privateKey =
+        cfg["VAPID:PrivateKey"] ??
         cfg["VAPID_PRIVATE_KEY"] ??
         Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+
     var subject =
+        cfg["VAPID:Subject"] ??
         cfg["VAPID_SUBJECT"] ??
         Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
         "mailto:info@nextstake.app";
+
+    Console.WriteLine($"[PUSH][VAPID] pub len={publicKey?.Length ?? 0}, priv len={privateKey?.Length ?? 0}");
 
     if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
     {
