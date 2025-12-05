@@ -216,7 +216,8 @@ namespace NextStakeWebApp.Services
 
 
             // --- 5) Rilevazione eventi LIVE (inizio, goal, HT, ecc.) ----------
-            var toSend = new List<(DbPushSubscription sub, string title, string body, string url, string icon, string? image)>();
+            var toSend = new List<(DbPushSubscription sub, long matchId, string title, string body, string url)>();
+
 
             foreach (var item in liveList)
             {
@@ -395,8 +396,9 @@ namespace NextStakeWebApp.Services
 
                             foreach (var sub in userSubs)
                             {
-                                toSend.Add((sub, title, body, url, icon, image));
+                                toSend.Add((sub, id, title, body, url));
                             }
+
                         }
                     }
                 }
@@ -456,8 +458,9 @@ namespace NextStakeWebApp.Services
 
                         foreach (var sub in userSubs)
                         {
-                            toSend.Add((sub, title, body, url, icon, image));
+                            toSend.Add((sub, endedId, title, body, url));
                         }
+
                     }
 
                     // aggiorno stato a FT
@@ -480,10 +483,12 @@ namespace NextStakeWebApp.Services
                 {
                     title = item.title,
                     body = item.body,
-                    url = item.url,
-                    icon = item.icon,
-                    image = item.image
+                    icon = "/icons/favicon.svg",                        // 👈 logo NextStake
+                    image = $"/api/notification-banner/{item.matchId}", // 👈 banner home+away
+                    url = item.url
                 };
+
+
 
                 var payloadJson = JsonSerializer.Serialize(payloadObj);
                 var pushSub = new WebPushSubscription(sub.Endpoint, sub.P256Dh, sub.Auth);
