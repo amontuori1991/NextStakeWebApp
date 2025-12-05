@@ -916,6 +916,26 @@
                 try {
                     new Notification(title, options);
                 } catch { }
+
+                                // 🔔 Invia anche una push server-side per questo evento
+                try {
+                    fetch('/api/push/match-event', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            matchId: Number(id),
+                            kind: kind,
+                            home: home,
+                            away: away,
+                            minute: minute ?? null
+                        })
+                    }).catch(function (err) {
+                        console.warn('[PUSH] errore chiamata /api/push/match-event', err);
+                    });
+                } catch (e) {
+                    console.warn('[PUSH] eccezione match-event', e);
+                }
+
             }
 
             function initLiveScores() {
@@ -950,6 +970,11 @@
 
                     // Trova il "root" della partita e verifica se è preferita
                     const root = (homeEl || awayEl || minuteEl)?.closest('.list-group-item');
+                            if (root) {
+            // aggiorna il flag data-live in base allo stato corrente
+            root.setAttribute('data-live', isLiveNow ? '1' : '0');
+        }
+
                     const isFav = root && root.getAttribute('data-fav') === '1';
 
                     let homeName = '';

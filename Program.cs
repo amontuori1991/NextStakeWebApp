@@ -472,6 +472,145 @@ app.MapPost("/api/push/test", async (
 })
 .RequireAuthorization(); // richiede utente loggato
 
+app.MapPost("/api/push/match-event", async (
+    [FromBody] MatchEventPushDto body,
+    ApplicationDbContext writeDb,
+    ReadDbContext readDb,
+    IConfiguration cfg
+) =>
+{
+    if (body.MatchId <= 0 || string.IsNullOrWhiteSpace(body.Kind))
+        return Results.BadRequest(new { error = "Dati evento non validi" });
+
+    // Match + nomi squadre dal DB READ
+    var match = await readDb.Matches.FirstOrDefaultAsync(m => m.Id == body.MatchId);
+    if (match == null)
+        return Results.NotFound(new { error = "Match non trovato" });
+
+    var homeName = await readDb.Teams
+        .Where(t => t.Id == match.HomeId)
+        .Select(t => t.Name)
+        .FirstOrDefaultAsync() ?? "Home";
+
+    var awayName = await readDb.Teams
+        .Where(t => t.Id == match.AwayId)
+        .Select(t => t.Name)
+        .FirstOrDefaultAsync() ?? "Away";
+
+    // Utenti che hanno questo match tra i preferiti
+    var userIds = await writeDb.FavoriteMatches
+        .Where(f => f.MatchId == body.MatchId)
+        .Select(f => f.UserId)
+        .Distinct()
+        .ToListAsync();
+
+    if (userIds.Count == 0)
+        return Results.Ok(new { success = 0, failed = 0, message = "Nessun utente con questo match tra i preferiti." });
+
+    // Subscription push per quegli utenti
+    var subs = await writeDb.PushSubscriptions
+        .Where(s => userIds.Contains(s.UserId) && s.IsActive && s.MatchNotificationsEnabled)
+        .ToListAsync();
+
+    if (subs.Count == 0)
+        return Results.Ok(new { success = 0, failed = 0, message = "Nessuna subscription attiva per questo match." });
+
+    // Chiavi VAPID da config/env (stesso schema di /api/push/test)
+    var publicKey =
+        cfg["VAPID_PUBLIC_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+    var privateKey =
+        cfg["VAPID_PRIVATE_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+    var subject =
+        cfg["VAPID_SUBJECT"] ??
+        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
+        "mailto:info@nextstake.app";
+
+    if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
+        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
+
+    var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
+    var client = new WebPushClient();
+
+    // Costruisci testo notifica in base al "kind"
+    var scoreStr = (body.Home.HasValue && body.Away.HasValue)
+        ? $"{body.Home}-{body.Away}"
+        : "";
+
+    string title;
+    string bodyText;
+
+    switch (body.Kind)
+    {
+        case "start":
+            title = "Inizio partita";
+            bodyText = $"{homeName} - {awayName} è iniziata.";
+            break;
+        case "halftime":
+            title = "Fine primo tempo";
+            bodyText = $"{homeName} - {awayName} | HT {scoreStr}";
+            break;
+        case "second":
+            title = "Inizio secondo tempo";
+            bodyText = $"{homeName} - {awayName} | Ripresa in corso.";
+            break;
+        case "end":
+            title = "Partita terminata";
+            bodyText = $"{homeName} - {awayName} | Finale {scoreStr}";
+            break;
+        case "goal":
+            title = "GOAL!";
+            var minutePart = body.Minute.HasValue ? $" al {body.Minute}'" : "";
+            bodyText = $"{homeName} - {awayName} | {scoreStr}{minutePart}";
+            break;
+        default:
+            title = "Aggiornamento match";
+            bodyText = $"{homeName} - {awayName}";
+            break;
+    }
+
+    var payloadObj = new
+    {
+        title = title,
+        body = bodyText,
+        url = $"/Match/Details?id={body.MatchId}"
+    };
+    var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
+
+    int success = 0, failed = 0;
+
+    foreach (var s in subs)
+    {
+        var pushSub = new WebPushSubscription(s.Endpoint, s.P256Dh, s.Auth);
+
+        try
+        {
+            await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
+            success++;
+        }
+        catch (WebPushException wex)
+        {
+            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
+                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                s.IsActive = false;
+            }
+            failed++;
+            Console.WriteLine($"[PUSH MATCH][ERROR] {wex.StatusCode} {wex.Message}");
+        }
+        catch (Exception ex)
+        {
+            failed++;
+            Console.WriteLine($"[PUSH MATCH][ERROR] {ex.Message}");
+        }
+    }
+
+    await writeDb.SaveChangesAsync();
+
+    return Results.Ok(new { success, failed });
+})
+.RequireAuthorization();
 
 app.MapPost("/api/push/unsubscribe", async (
     [FromBody] PushUnsubscribeDto body,
@@ -565,4 +704,12 @@ public record PushSubscribeDto(
 
 public record PushUnsubscribeDto(
     string Endpoint
+);
+
+public record MatchEventPushDto(
+    long MatchId,
+    string Kind,
+    int? Home,
+    int? Away,
+    int? Minute
 );
