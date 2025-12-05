@@ -127,13 +127,45 @@ namespace NextStakeWebApp.Services
                 .Distinct()
                 .ToList();   // List<long>
 
-            // --- 2) Meta-dati (lega, loghi, nomi squadre) ---------------------
+            // --- 2) Stati precedenti dei match (per TUTTI quelli già in LiveMatchStates) ---
+            var existingStates = await writeDb.LiveMatchStates
+                .ToListAsync(ct);
+
+            var stateById = existingStates.ToDictionary(s => (long)s.MatchId, s => s);
+
+            // Match che risultano "live" nello stato precedente
+            var prevLiveStates = existingStates
+                .Where(s => !string.IsNullOrEmpty(s.LastStatus) &&
+                            LIVE_STATUSES.Contains(s.LastStatus))
+                .ToList();
+
+            var prevLiveIds = prevLiveStates
+                .Select(s => (long)s.MatchId)
+                .Distinct()
+                .ToList();
+
+            // Partite che PRIMA erano live ma ORA non sono più presenti in live=all -> considerate finite
+            var endedIds = prevLiveIds
+                .Where(id => !liveIds.Contains(id))
+                .Distinct()
+                .ToList();
+
+            // Tutti gli ID che ci interessano per meta + preferiti: live + ended
+            var allIds = liveIds
+                .Concat(endedIds)
+                .Distinct()
+                .ToList();
+
+            if (allIds.Count == 0)
+                return;
+
+            // --- 3) Meta-dati (lega, loghi, nomi squadre) per live+ended -------
             var meta = await (
                 from m in readDb.Matches
                 join lg in readDb.Leagues on m.LeagueId equals lg.Id
                 join th in readDb.Teams on m.HomeId equals th.Id
                 join ta in readDb.Teams on m.AwayId equals ta.Id
-                where liveIds.Contains((long)m.Id)
+                where allIds.Contains((long)m.Id)
                 select new
                 {
                     MatchId = (long)m.Id,
@@ -148,16 +180,9 @@ namespace NextStakeWebApp.Services
 
             var metaById = meta.ToDictionary(x => x.MatchId, x => x);
 
-            // --- 3) Stati precedenti dei live ---------------------------------
-            var existingStates = await writeDb.LiveMatchStates
-                .Where(s => liveIds.Contains((long)s.MatchId))
-                .ToListAsync(ct);
-
-            var stateById = existingStates.ToDictionary(s => (long)s.MatchId, s => s);
-
-            // --- 4) Preferiti + subscription per utente -----------------------
+            // --- 4) Preferiti + subscription per utente (per live+ended) ------
             var favPerMatch = await writeDb.FavoriteMatches
-                .Where(fm => liveIds.Contains(fm.MatchId)) // fm.MatchId è long → OK
+                .Where(fm => allIds.Contains(fm.MatchId)) // fm.MatchId è long → OK
                 .GroupBy(fm => fm.MatchId)
                 .Select(g => new
                 {
@@ -176,7 +201,7 @@ namespace NextStakeWebApp.Services
                 .GroupBy(s => s.UserId!)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
-            // --- 5) Rilevazione eventi + costruzione notifiche ----------------
+            // --- 5) Rilevazione eventi LIVE (inizio, goal, HT, ecc.) ----------
             var toSend = new List<(DbPushSubscription sub, string title, string body, string url)>();
 
             foreach (var item in liveList)
@@ -215,7 +240,7 @@ namespace NextStakeWebApp.Services
                 int prevTotal = prevHomeVal + prevAwayVal;
                 int currTotal = (currHome ?? 0) + (currAway ?? 0);
 
-                // Non ci sono utenti che hanno questo match nei preferiti -> aggiorniamo solo stato
+                // Nessun utente con questo match nei preferiti → aggiorno solo stato
                 if (!favUsersByMatch.TryGetValue(id, out var userIdsForMatch) || userIdsForMatch.Count == 0)
                 {
                     if (prev == null)
@@ -242,7 +267,7 @@ namespace NextStakeWebApp.Services
                     continue;
                 }
 
-                // Se non avevamo stato precedente -> inizializziamo e non notifichiamo
+                // Primo stato: inizializzo, non notifico
                 if (prev == null)
                 {
                     writeDb.LiveMatchStates.Add(new LiveMatchState
@@ -257,7 +282,7 @@ namespace NextStakeWebApp.Services
                     continue;
                 }
 
-                // Abbiamo prev: calcoliamo gli "eventi"
+                // Abbiamo uno stato precedente → calcolo eventi
                 var events = new List<string>();
 
                 // Inizio partita: da NON-live a live
@@ -278,7 +303,7 @@ namespace NextStakeWebApp.Services
                     events.Add("second");
                 }
 
-                // Fine partita (se un giorno avremo FT in live=all)
+                // Fine partita (nel caso in cui un domani arrivasse FT anche qui)
                 if (!isFinishedPrev && isFinishedNow)
                 {
                     events.Add("end");
@@ -359,7 +384,7 @@ namespace NextStakeWebApp.Services
                     }
                 }
 
-                // Aggiorna stato a DB
+                // Aggiorna stato live a DB
                 prev.LastStatus = status;
                 prev.LastHome = currHome;
                 prev.LastAway = currAway;
@@ -367,10 +392,64 @@ namespace NextStakeWebApp.Services
                 prev.LastUpdatedUtc = nowUtc;
             }
 
+            // --- 6) Rilevazione "fine partita" per scomparsa dai live ----------
+            if (endedIds.Count > 0)
+            {
+                foreach (var endedId in endedIds)
+                {
+                    // stato precedente
+                    if (!stateById.TryGetValue(endedId, out var prev))
+                        continue;
+
+                    // niente preferiti su questo match → aggiorno solo stato
+                    if (!favUsersByMatch.TryGetValue(endedId, out var userIdsForMatch) ||
+                        userIdsForMatch.Count == 0)
+                    {
+                        prev.LastStatus = "FT";
+                        prev.LastUpdatedUtc = nowUtc;
+                        continue;
+                    }
+
+                    // meta (lega, nomi)
+                    metaById.TryGetValue(endedId, out var mMeta);
+                    var leagueName = mMeta?.LeagueName ?? "Match";
+                    var homeName = mMeta?.HomeName ?? "Home";
+                    var awayName = mMeta?.AwayName ?? "Away";
+
+                    var currHome = prev.LastHome;
+                    var currAway = prev.LastAway;
+                    var scoreStr = (currHome.HasValue && currAway.HasValue)
+                        ? $"{currHome}-{currAway}"
+                        : "";
+
+                    var matchLabel = $"{homeName} - {awayName}";
+                    var leagueLabel = leagueName;
+
+                    // notifica "fine partita"
+                    var title = "Partita terminata";
+                    var body = $"{leagueLabel} | {matchLabel} | Finale {scoreStr}";
+                    var url = $"/Match/Details?id={endedId}";
+
+                    foreach (var userId in userIdsForMatch)
+                    {
+                        if (!subsByUser.TryGetValue(userId, out var userSubs)) continue;
+
+                        foreach (var sub in userSubs)
+                        {
+                            toSend.Add((sub, title, body, url));
+                        }
+                    }
+
+                    // aggiorno stato a FT
+                    prev.LastStatus = "FT";
+                    prev.LastUpdatedUtc = nowUtc;
+                }
+            }
+
             // Salva gli stati aggiornati
             await writeDb.SaveChangesAsync(ct);
 
-            // --- 6) Invio WebPush ----------------------------------------------
+            // --- 7) Invio WebPush ----------------------------------------------
             int success = 0, failed = 0;
 
             foreach (var item in toSend)
