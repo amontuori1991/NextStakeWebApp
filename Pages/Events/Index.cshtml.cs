@@ -354,7 +354,12 @@ namespace NextStakeWebApp.Pages.Events
             }
         }
 
-        public async Task<IActionResult> OnPostToggleFavoriteAsync(long matchId, string? d = null, int? fav = null, string? country = null, string? q = null)
+        public async Task<IActionResult> OnPostToggleFavoriteAsync(
+            long matchId,
+            string? d = null,
+            int? fav = null,
+            string? country = null,
+            string? q = null)
         {
             var userId = _userManager.GetUserId(User)!;
 
@@ -362,21 +367,71 @@ namespace NextStakeWebApp.Pages.Events
                 .FirstOrDefaultAsync(f => f.UserId == userId && f.MatchId == matchId);
 
             if (existing == null)
-                _write.FavoriteMatches.Add(new FavoriteMatch { UserId = userId, MatchId = matchId });
+            {
+                // ✅ 1) Aggiungo ai preferiti
+                existing = new FavoriteMatch
+                {
+                    UserId = userId,
+                    MatchId = matchId
+                };
+                _write.FavoriteMatches.Add(existing);
+
+                // ✅ 2) Inizializzo lo stato live se NON esiste già
+                var existingState = await _write.LiveMatchStates
+                    .FirstOrDefaultAsync(s => s.MatchId == (int)matchId);
+
+                if (existingState == null)
+                {
+                    // Prendo lo stato attuale dal DB di lettura
+                    var match = await _read.Matches
+                        .Where(m => m.Id == matchId)
+                        .Select(m => new
+                        {
+                            m.StatusShort,
+                            m.HomeGoal,
+                            m.AwayGoal
+                        })
+                        .FirstOrDefaultAsync();
+
+                    var status = (match?.StatusShort ?? "NS").ToUpperInvariant();
+                    int? home = match?.HomeGoal;
+                    int? away = match?.AwayGoal;
+
+                    // Elapsed non ce l’abbiamo in Matches, partiamo da 0
+                    var state = new LiveMatchState
+                    {
+                        MatchId = (int)matchId,   // LiveMatchStates.MatchId è int
+                        LastStatus = status,
+                        LastHome = home,
+                        LastAway = away,
+                        LastElapsed = 0,
+                        LastUpdatedUtc = DateTime.UtcNow
+                    };
+
+                    _write.LiveMatchStates.Add(state);
+                }
+            }
             else
+            {
+                // ❌ Rimozione dai preferiti
                 _write.FavoriteMatches.Remove(existing);
+                // NON tocchiamo LiveMatchStates: lo gestisce il job, ed è per match globale
+            }
 
             await _write.SaveChangesAsync();
+
+            // Torna alla stessa pagina con i filtri correnti
             return RedirectToPage(new { d, fav, country, q });
         }
-    }
 
-    // Rimuovi se hai già la tua entity
-    public class Analysis
+
+        // Rimuovi se hai già la tua entity
+        public class Analysis
     {
         public int Id { get; set; }
         public string ViewName { get; set; } = "";
         public string Description { get; set; } = "";
         public string ViewValue { get; set; } = "";
     }
+}
 }

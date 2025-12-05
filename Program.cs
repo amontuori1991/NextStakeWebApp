@@ -159,6 +159,8 @@ builder.Services.AddRazorPages(o =>
 
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>();
+
 
 var app = builder.Build();
 

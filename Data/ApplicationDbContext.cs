@@ -15,7 +15,7 @@ namespace NextStakeWebApp.Data
         public DbSet<Analysis> Analyses { get; set; } = default!;
         public DbSet<PushSubscription> PushSubscriptions { get; set; } = default!;
 
-        public DbSet<LiveMatchState> LiveMatchStates { get; set; } = null!;
+        public DbSet<LiveMatchState> LiveMatchStates { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
