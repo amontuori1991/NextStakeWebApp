@@ -1037,64 +1037,63 @@
                         away: it.away
                     };
 
-                    if (isFav) {
-                        const isLivePrev = prev && prev.status && LIVE_STATUSES.includes(prev.status);
-                        const isFinishedPrev = prev && prev.status && FINISHED_STATUSES.includes(prev.status);
+        if (isFav && prev) {
+            const isLivePrev = prev.status && LIVE_STATUSES.includes(prev.status);
+            const isFinishedPrev = prev.status && FINISHED_STATUSES.includes(prev.status);
 
-                        const prevHome = prev?.home ?? null;
-                        const prevAway = prev?.away ?? null;
+            const prevHome = prev.home ?? null;
+            const prevAway = prev.away ?? null;
 
-                        const homeChanged = prev ? (prevHome !== (it.home ?? null)) : false;
-                        const awayChanged = prev ? (prevAway !== (it.away ?? null)) : false;
+            const homeChanged = (prevHome !== (it.home ?? null));
+            const awayChanged = (prevAway !== (it.away ?? null));
 
-                        const prevTotal = (prevHome ?? 0) + (prevAway ?? 0);
-                        const currTotal = (it.home ?? 0) + (it.away ?? 0);
+            const prevTotal = (prevHome ?? 0) + (prevAway ?? 0);
+            const currTotal = (it.home ?? 0) + (it.away ?? 0);
 
-                        const commonData = {
-                            id,
-                            homeName,
-                            awayName,
-                            home: it.home,
-                            away: it.away,
-                            minute: typeof it.elapsed === 'number' ? it.elapsed : null,
-                            status,
-                            leagueName,
-                            leagueLogo
-                        };
+            const commonData = {
+                id,
+                homeName,
+                awayName,
+                home: it.home,
+                away: it.away,
+                minute: typeof it.elapsed === 'number' ? it.elapsed : null,
+                status,
+                leagueName,
+                leagueLogo
+            };
 
-                        // ✅ PRIMO ARRIVO LIVE: nessun prev, ma già live → inizio partita
-                        if (!prev && isLiveNow) {
-                            fireLocalNotification('start', commonData);
-                        }
+            // Inizio partita (davvero transizione da non-live a live)
+            if (!isLivePrev && isLiveNow) {
+                fireLocalNotification('start', commonData);
+            }
 
-                        if (prev) {
-                            // Fine primo tempo
-                            if (prev.status === '1H' && status === 'HT') {
-                                fireLocalNotification('halftime', commonData);
-                            }
+            // Fine primo tempo
+            if (prev.status === '1H' && status === 'HT') {
+                fireLocalNotification('halftime', commonData);
+            }
 
-                            // Inizio secondo tempo
-                            if (prev.status === 'HT' && status === '2H') {
-                                fireLocalNotification('second', commonData);
-                            }
+            // Inizio secondo tempo
+            if (prev.status === 'HT' && status === '2H') {
+                fireLocalNotification('second', commonData);
+            }
 
-                            // Fine partita
-                            if (!isFinishedPrev && isFinishedNow) {
-                                fireLocalNotification('end', commonData);
-                            }
+            // Fine partita
+            if (!isFinishedPrev && isFinishedNow) {
+                fireLocalNotification('end', commonData);
+            }
 
-                            // Goal / Rettifica punteggio
-                            if (homeChanged || awayChanged) {
-                                if (!isFinishedNow) {
-                                    if (currTotal > prevTotal) {
-                                        fireLocalNotification('goal', commonData);
-                                    } else if (currTotal < prevTotal) {
-                                        fireLocalNotification('correction', commonData);
-                                    }
-                                }
-                            }
-                        }
+            // Goal / Rettifica punteggio
+            if (homeChanged || awayChanged) {
+                if (!isFinishedNow) {
+                    if (currTotal > prevTotal) {
+                        fireLocalNotification('goal', commonData);
+                    } else if (currTotal < prevTotal) {
+                        fireLocalNotification('correction', commonData);
                     }
+                }
+            }
+        }
+
 
                     // Salva stato corrente
                     prevState.set(id, current);
