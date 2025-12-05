@@ -3665,11 +3665,20 @@ switch (esitoCards)
 }
 
             /* Stile generale (preso dal Layout) */
+:root[data-theme="dark"] body {
+    background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+    color: #e9edf3;
+}
+
+:root[data-theme="light"] body {
+    background: #f0f2f5; /* grigino chiaro */
+    color: #1a2230;
+}
+
 body {
-    background: var(--bg);
-    color: var(--text);
     font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
 
 
 .details-page .card,
@@ -3682,6 +3691,7 @@ body {
     -webkit-backdrop-filter: blur(8px);
     color: var(--text);
 }
+
 
 
             .details-page .card-header {
@@ -3702,28 +3712,28 @@ body {
  
 
                 /* 🔧 REGOLA BASE PER LE TABELLE (Zebratura/Divisori Grigio Scuro) */
-                .details-page .table {
-                    --bs-table-color: #e9edf3;
-                    --bs-table-bg: transparent;
-                    --bs-table-border-color: rgba(255,255,255,.14);
-                    --bs-table-striped-color: #e9edf3;
-                    --bs-table-hover-bg: rgba(255,255,255,.10);
-                    --bs-table-hover-color: #fff;
-                }
+/* Tabelle theme-aware */
+.details-page .table {
+    --bs-table-color: var(--text);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--border);
+    --bs-table-striped-color: var(--text);
+    --bs-table-hover-bg: rgba(0,0,0,.04);
+    --bs-table-hover-color: var(--text);
+}
 
-                    /* Intestazione e testo generale */
-                    .details-page .table thead th {
-                        color: #f4f7fb;
-                        background: rgba(255,255,255,.08);
-                        border-bottom-color: rgba(255,255,255,.18);
-                        white-space: nowrap;
-                    }
+.details-page .table thead th {
+    color: var(--text);
+    background: rgba(0,0,0,.04);
+    border-bottom-color: var(--border);
+    white-space: nowrap;
+}
 
-                    /* Logica Zebratura */
-                    .details-page .table tbody tr > * {
-                        color: #e9edf3 !important;
-                        border-top-color: rgba(255,255,255,.10);
-                    }
+.details-page .table tbody tr > * {
+    color: var(--text) !important;
+    border-top-color: var(--border);
+}
+
 
                     .details-page .table.table-striped > tbody > tr:nth-of-type(odd) > * {
                         background-color: rgba(255,255,255,.08) !important;
@@ -3771,16 +3781,29 @@ body {
                         color: #9be0ff;
                     }
 
-                .details-page .form-control, .details-page .form-select {
-                    background: rgba(255,255,255,.10);
-                    border: 1px solid rgba(255,255,255,.24);
-                    color: #fff;
-                }
+  /* Input / select theme-aware */
+:root[data-theme="dark"] .details-page .form-control,
+:root[data-theme="dark"] .details-page .form-select {
+    background: rgba(255,255,255,.10);
+    border: 1px solid rgba(255,255,255,.24);
+    color: #fff;
+}
 
-                    .details-page .form-control:focus, .details-page .form-select:focus {
-                        border-color: #00c3ff;
-                        box-shadow: 0 0 0 4px rgba(0,195,255,.18);
-                    }
+:root[data-theme="light"] .details-page .form-control,
+:root[data-theme="light"] .details-page .form-select {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,.15);
+    color: #1a2230;
+}
+
+/* Focus per entrambi i temi */
+.details-page .form-control:focus,
+.details-page .form-select:focus {
+    border-color: #00c3ff;
+    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
+    outline: none;
+}
+
 
                 .details-page .btn-primary {
                     background: #00baff;
@@ -3792,18 +3815,41 @@ body {
                         border-color: #009cdc;
                     }
 
-                .details-page .btn-outline-secondary {
-                    color: #e9edf3;
-                    border-color: rgba(255,255,255,.28);
-                }
+/* Bottoni outline secondari (⭐ Preferito / ← Torna agli eventi) */
+:root[data-theme="dark"] .details-page .btn-outline-secondary {
+    color: #e9edf3;
+    border-color: rgba(255,255,255,.35);
+    background-color: transparent;
+}
 
-                    .details-page .btn-outline-secondary:hover {
-                        background: rgba(255,255,255,.10);
-                    }
+:root[data-theme="dark"] .details-page .btn-outline-secondary:hover {
+    background-color: rgba(255,255,255,.12);
+}
 
-                .details-page .bg-light .fw-bold, .details-page .bg-light span, .details-page .bg-light small {
-                    color: #e9edf3 !important;
-                }
+/* In light: testo scuro, bordo visibile, hover grigino */
+:root[data-theme="light"] .details-page .btn-outline-secondary {
+    color: #1a2230;
+    border-color: rgba(0,0,0,.25);
+    background-color: transparent;
+}
+
+:root[data-theme="light"] .details-page .btn-outline-secondary:hover {
+    background-color: #e9ecef;
+}
+
+
+:root[data-theme="dark"] .details-page .bg-light .fw-bold,
+:root[data-theme="dark"] .details-page .bg-light span,
+:root[data-theme="dark"] .details-page .bg-light small {
+    color: #e9edf3 !important;
+}
+
+:root[data-theme="light"] .details-page .bg-light .fw-bold,
+:root[data-theme="light"] .details-page .bg-light span,
+:root[data-theme="light"] .details-page .bg-light small {
+    color: #1a2230 !important;
+}
+
                 
 
             .loading-overlay {
@@ -3835,10 +3881,17 @@ body {
                 }
 
                             /* Fix leggibilità opzioni select in tema scuro */
-            .details-page .form-select option {
-                background-color: #1a2230;
-                color: #e9edf3;
-            }
+/* Opzioni del select, per tema */
+:root[data-theme="dark"] .details-page .form-select option {
+    background-color: #1a2230;
+    color: #e9edf3;
+}
+
+:root[data-theme="light"] .details-page .form-select option {
+    background-color: #ffffff;
+    color: #1a2230;
+}
+
             /* Evita che i tab si tengano l'altezza massima mai avuta (buco sotto i contenuti) */
 .details-page .tab-content,
 .details-page .tab-pane {
