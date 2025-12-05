@@ -136,7 +136,6 @@
                     <div class="d-flex gap-2 mt-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-theme-choice="light">Light</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-theme-choice="dark">Dark</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" data-theme-choice="system">Sistema</button>
                     </div>
                 </div>
                 <div class="card p-3 mb-3">
@@ -1197,56 +1196,66 @@
 
 
     <script>
-        (function(){
-          // Inizializza stato bottoni in base al tema corrente
-          function currentChoice(){
-            const cookie = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
-            const c = cookie ? decodeURIComponent(cookie[1]) : null;
-            return c || localStorage.getItem('theme') || 'system';
-          }
-          function applyTheme(choice){
-            // “system” -> calcola dark/light dal media query
-            let applied = choice;
-            if (choice === 'system'){
-              applied = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        (function () {
+            // Inizializza stato bottoni in base al tema corrente
+            function currentChoice() {
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+                const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+                const stored = cookieValue || localStorage.getItem('theme');
+
+                // Accettiamo solo "light" o "dark".
+                // Qualsiasi altro valore (o "system" vecchio) → default "dark"
+                if (stored === 'light' || stored === 'dark') return stored;
+                return 'dark';
             }
-            document.documentElement.setAttribute('data-theme', applied);
-          }
-          function persist(choice){
-            localStorage.setItem('theme', choice);
-            document.cookie = "theme="+encodeURIComponent(choice)+"; path=/; max-age=31536000; samesite=lax";
-          }
-          async function saveServer(choice){
-            try{
-              await fetch('?handler=SetTheme', {
-                method:'POST',
-                headers:{'Content-Type':'application/json','X-Requested-With':'fetch'},
-                body: JSON.stringify({ theme: choice })
-              });
-            }catch{}
-          }
 
-          // Wiring bottoni
-          const btns = document.querySelectorAll('[data-theme-choice]');
-          btns.forEach(b=>{
-            b.addEventListener('click', async ()=>{
-              const choice = b.getAttribute('data-theme-choice');
-              applyTheme(choice);
-              persist(choice);
-              await saveServer(choice); // se anonimo, il server terrà solo il cookie
-              // Aggiorna aspetto dei bottoni (attivo)
-              btns.forEach(x=>x.classList.remove('active'));
-              b.classList.add('active');
+            function applyTheme(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', applied);
+            }
+
+            function persist(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                localStorage.setItem('theme', applied);
+                document.cookie = "theme=" + encodeURIComponent(applied) + "; path=/; max-age=31536000; samesite=lax";
+            }
+
+            async function saveServer(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                try {
+                    await fetch('?handler=SetTheme', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'fetch'
+                        },
+                        body: JSON.stringify({ theme: applied })
+                    });
+                } catch { }
+            }
+
+            const btns = document.querySelectorAll('[data-theme-choice]');
+            btns.forEach(b => {
+                b.addEventListener('click', async () => {
+                    const choice = b.getAttribute('data-theme-choice');
+                    applyTheme(choice);
+                    persist(choice);
+                    await saveServer(choice);
+
+                    // Aggiorna stato "active"
+                    btns.forEach(x => x.classList.remove('active'));
+                    b.classList.add('active');
+                });
             });
-          });
 
-          // Stato iniziale
-          const choice = currentChoice();
-          applyTheme(choice);
-          const active = document.querySelector(`[data-theme-choice="${choice}"]`);
-          if (active) active.classList.add('active');
+            // Stato iniziale
+            const choice = currentChoice();
+            applyTheme(choice);
+            const active = document.querySelector(`[data-theme-choice="${choice}"]`);
+            if (active) active.classList.add('active');
         })();
     </script>
+
     <script>
         (function () {
             const btn = document.getElementById('btn-live-filter');
@@ -1577,7 +1586,7 @@
             }
 
             :root[data-theme="light"] {
-                --bg: #f7f9fc;
+                --bg: #f0f2f5;
                 --text: #1a2230;
                 --muted-text: #566079;
                 --card: #ffffff;
@@ -1718,11 +1727,15 @@
             }
 
             .is-selected {
-                background: #0d6efd;
-                color: #fff;
-                border-color: #0d6efd;
-                box-shadow: 0 8px 18px rgba(13,110,253,.28);
+                /* Colore più leggibile in light, ma ok anche in dark */
+                background: #0b5ed7;
+                color: #ffffff !important;
+                border-color: #0b5ed7;
+                box-shadow: 0 8px 18px rgba(11, 94, 215, 0.35);
+                font-weight: 700;
+                text-shadow: 0 0 2px rgba(0,0,0,0.45);
             }
+
 
             /* Gruppi/league header */
             .league-toggle-btn {
@@ -2023,6 +2036,18 @@
                 border-color: var(--primary);
                 color: #fff;
             }
+            /* ========== FIX LIGHT MODE: BTN SUCCESS (MIGLIORI PRONOSTICI) ========== */
+            :root[data-theme="light"] .btn-success {
+                color: #ffffff !important;
+                background-color: #198754;
+                border-color: #198754;
+            }
+
+                :root[data-theme="light"] .btn-success:hover {
+                    color: #ffffff !important;
+                    background-color: #157347;
+                    border-color: #146c43;
+                }
 
 
         </style>
