@@ -611,6 +611,388 @@ app.MapPost("/api/push/match-event", async (
     return Results.Ok(new { success, failed });
 })
 .RequireAuthorization();
+// === Job live notify: rileva eventi sui match e invia Web Push agli utenti che li hanno nei preferiti ===
+app.MapPost("/internal/jobs/live-notify", async (
+    [FromQuery] string key,
+    IHttpClientFactory httpFactory,
+    IConfiguration cfg,
+    ReadDbContext readDb,
+    ApplicationDbContext writeDb
+) =>
+{
+    // --- 1) Sicurezza job ----------------------------------------------------
+    var expectedKey =
+        cfg["JOBS_LIVE_NOTIFY_KEY"] ??
+        Environment.GetEnvironmentVariable("JOBS_LIVE_NOTIFY_KEY");
+
+    if (string.IsNullOrWhiteSpace(expectedKey) || key != expectedKey)
+    {
+        return Results.Unauthorized();
+    }
+
+    // --- 2) Chiavi API-FOOTBALL ---------------------------------------------
+    var apiKey =
+        cfg["ApiSports:Key"] ??
+        Environment.GetEnvironmentVariable("ApiSports__Key");
+
+    if (string.IsNullOrWhiteSpace(apiKey))
+    {
+        return Results.Problem("ApiSports:Key non impostata.");
+    }
+
+    // --- 3) Chiavi VAPID -----------------------------------------------------
+    var publicKey =
+        cfg["VAPID_PUBLIC_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+    var privateKey =
+        cfg["VAPID_PRIVATE_KEY"] ??
+        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+    var subject =
+        cfg["VAPID_SUBJECT"] ??
+        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
+        "mailto:info@nextstake.app";
+
+    if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
+    {
+        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
+    }
+
+    var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
+    var client = new WebPushClient();
+
+    // --- 4) Chiamata API-FOOTBALL per i live ---------------------------------
+    var http = httpFactory.CreateClient("ApiSports");
+
+    var req = new HttpRequestMessage(
+        HttpMethod.Get,
+        "fixtures?live=all&timezone=Europe/Rome"
+    );
+    req.Headers.Add("x-apisports-key", apiKey);
+
+    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+    if (!resp.IsSuccessStatusCode)
+    {
+        return Results.StatusCode((int)resp.StatusCode);
+    }
+
+    var raw = await resp.Content.ReadAsStringAsync();
+    var fixtures = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
+
+    var liveList = fixtures?.Response ?? new List<ApiFixtureItem>();
+    if (liveList.Count == 0)
+    {
+        // Nessuna partita live = niente da fare
+        return Results.Ok(new { message = "Nessuna partita live al momento." });
+    }
+
+    var liveIds = liveList
+        .Select(f => (long)f.Fixture.Id)
+        .Distinct()
+        .ToList();
+
+    // --- 5) Dati aggiuntivi dal DB (nomi squadre, logo, lega) ----------------
+    var meta = await (
+        from m in readDb.Matches
+        join lg in readDb.Leagues on m.LeagueId equals lg.Id
+        join th in readDb.Teams on m.HomeId equals th.Id
+        join ta in readDb.Teams on m.AwayId equals ta.Id
+        where liveIds.Contains(m.Id)
+        select new
+        {
+            MatchId = m.Id,
+            LeagueName = lg.Name,
+            LeagueLogo = lg.Logo,
+            HomeName = th.Name,
+            HomeLogo = th.Logo,
+            AwayName = ta.Name,
+            AwayLogo = ta.Logo
+        }
+    ).ToListAsync();
+
+    var metaById = meta.ToDictionary(x => x.MatchId, x => x);
+
+    // --- 6) Stato precedente dei match live ----------------------------------
+    var existingStates = await writeDb.LiveMatchStates
+        .Where(s => liveIds.Contains(s.MatchId))
+        .ToListAsync();
+
+    var stateById = existingStates.ToDictionary(s => s.MatchId, s => s);
+
+    // --- 7) Preferiti + subscription per utente ------------------------------
+    var favPerMatch = await writeDb.FavoriteMatches
+        .Where(fm => liveIds.Contains(fm.MatchId))
+        .GroupBy(fm => fm.MatchId)
+        .Select(g => new
+        {
+            MatchId = g.Key,
+            UserIds = g.Select(fm => fm.UserId).Distinct().ToList()
+        })
+        .ToListAsync();
+
+    var favUsersByMatch = favPerMatch.ToDictionary(x => x.MatchId, x => x.UserIds);
+
+    var activeSubs = await writeDb.PushSubscriptions
+        .Where(s => s.IsActive && s.MatchNotificationsEnabled && s.UserId != null)
+        .ToListAsync();
+
+    var subsByUser = activeSubs
+        .GroupBy(s => s.UserId!)
+        .ToDictionary(g => g.Key, g => g.ToList());
+
+    // --- 8) Rilevazione eventi + costruzione notifiche -----------------------
+    string[] LIVE_STATUSES = { "1H", "2H", "ET", "P", "BT", "LIVE", "HT" };
+    string[] FINISHED_STATUSES = { "FT", "AET", "PEN" }; // per ora non li vediamo da live=all, ma li consideriamo
+
+    var nowUtc = DateTime.UtcNow;
+    var toSend = new List<(DbPushSubscription sub, string title, string body, string url)>();
+
+    foreach (var item in liveList)
+    {
+        var id = item.Fixture.Id; // <-- int
+
+        var status = (item.Fixture.Status.Short ?? "").ToUpperInvariant();
+        var elapsed = item.Fixture.Status.Elapsed;
+        var home = item.Goals.Home;
+        var away = item.Goals.Away;
+
+        metaById.TryGetValue(id, out var m);
+        var leagueName = m?.LeagueName ?? "Match";
+        var homeName = m?.HomeName ?? "Home";
+        var awayName = m?.AwayName ?? "Away";
+
+        stateById.TryGetValue(id, out var prev);
+
+        var prevStatus = prev?.LastStatus;
+        var prevHome = prev?.LastHome;
+        var prevAway = prev?.LastAway;
+
+        bool isLiveNow = LIVE_STATUSES.Contains(status);
+        bool isLivePrev = prevStatus != null && LIVE_STATUSES.Contains(prevStatus);
+        bool isFinishedNow = FINISHED_STATUSES.Contains(status);
+        bool isFinishedPrev = prevStatus != null && FINISHED_STATUSES.Contains(prevStatus);
+
+        int? currHome = home;
+        int? currAway = away;
+        int prevHomeVal = prevHome ?? 0;
+        int prevAwayVal = prevAway ?? 0;
+
+        bool scoreChanged = prev != null &&
+                            (prevHome != currHome || prevAway != currAway);
+
+        int prevTotal = prevHomeVal + prevAwayVal;
+        int currTotal = (currHome ?? 0) + (currAway ?? 0);
+
+        // Nessun favorito su questo match? Salta
+        if (!favUsersByMatch.TryGetValue(id, out var userIdsForMatch) || userIdsForMatch.Count == 0)
+        {
+            // Aggiorna comunque lo stato in DB e vai avanti
+            if (prev == null)
+            {
+                writeDb.LiveMatchStates.Add(new LiveMatchState
+                {
+                    MatchId = id,
+                    LastStatus = status,
+                    LastHome = currHome,
+                    LastAway = currAway,
+                    LastElapsed = elapsed,
+                    LastUpdatedUtc = nowUtc
+                });
+            }
+            else
+            {
+                prev.LastStatus = status;
+                prev.LastHome = currHome;
+                prev.LastAway = currAway;
+                prev.LastElapsed = elapsed;
+                prev.LastUpdatedUtc = nowUtc;
+            }
+            continue;
+        }
+
+        // Se non abbiamo stato precedente, inizializziamo solo e NON notifichiamo
+        if (prev == null)
+        {
+            writeDb.LiveMatchStates.Add(new LiveMatchState
+            {
+                MatchId = id,
+                LastStatus = status,
+                LastHome = currHome,
+                LastAway = currAway,
+                LastElapsed = elapsed,
+                LastUpdatedUtc = nowUtc
+            });
+            continue;
+        }
+
+        // Abbiamo un prev: possiamo rilevare eventi
+        var events = new List<string>();
+
+        // Inizio partita: da non-live a live
+        if (!isLivePrev && isLiveNow)
+        {
+            events.Add("start");
+        }
+
+        // Fine primo tempo: 1H -> HT
+        if (prevStatus == "1H" && status == "HT")
+        {
+            events.Add("halftime");
+        }
+
+        // Inizio secondo tempo: HT -> 2H
+        if (prevStatus == "HT" && status == "2H")
+        {
+            events.Add("second");
+        }
+
+        // Fine partita (se un giorno useremo anche FT da qualche sorgente coerente)
+        if (!isFinishedPrev && isFinishedNow)
+        {
+            events.Add("end");
+        }
+
+        // Goal / Rettifica
+        if (scoreChanged && !isFinishedNow)
+        {
+            if (currTotal > prevTotal)
+            {
+                events.Add("goal");
+            }
+            else if (currTotal < prevTotal)
+            {
+                events.Add("correction");
+            }
+        }
+
+        if (events.Count > 0)
+        {
+            var scoreStr = (currHome.HasValue && currAway.HasValue)
+                ? $"{currHome}-{currAway}"
+                : "";
+
+            var minuteStr = elapsed.HasValue ? $"{elapsed}'" : null;
+            var matchLabel = $"{homeName} - {awayName}";
+            var leagueLabel = leagueName;
+
+            foreach (var ev in events)
+            {
+                string title;
+                string body;
+
+                switch (ev)
+                {
+                    case "start":
+                        title = "Inizio partita";
+                        body = $"{leagueLabel} | {matchLabel} è iniziata.";
+                        break;
+                    case "halftime":
+                        title = "Fine primo tempo";
+                        body = $"{leagueLabel} | {matchLabel} | HT {scoreStr}";
+                        break;
+                    case "second":
+                        title = "Inizio secondo tempo";
+                        body = $"{leagueLabel} | {matchLabel} | Ripresa in corso.";
+                        break;
+                    case "end":
+                        title = "Partita terminata";
+                        body = $"{leagueLabel} | {matchLabel} | Finale {scoreStr}";
+                        break;
+                    case "goal":
+                        title = "GOAL!";
+                        body = $"{leagueLabel} | {matchLabel} | {scoreStr}"
+                             + (minuteStr != null ? $" al {minuteStr}" : "");
+                        break;
+                    case "correction":
+                        title = "Rettifica punteggio";
+                        body = $"{leagueLabel} | {matchLabel} | Nuovo punteggio {scoreStr}";
+                        break;
+                    default:
+                        title = "Aggiornamento match";
+                        body = $"{leagueLabel} | {matchLabel}";
+                        break;
+                }
+
+                var url = $"/Match/Details?id={id}";
+
+                foreach (var userId in userIdsForMatch)
+                {
+                    if (!subsByUser.TryGetValue(userId, out var userSubs)) continue;
+
+                    foreach (var sub in userSubs)
+                    {
+                        toSend.Add((sub, title, body, url));
+                    }
+                }
+            }
+        }
+
+        // Aggiorna stato in DB
+        prev.LastStatus = status;
+        prev.LastHome = currHome;
+        prev.LastAway = currAway;
+        prev.LastElapsed = elapsed;
+        prev.LastUpdatedUtc = nowUtc;
+    }
+
+    // Salva stati aggiornati
+    await writeDb.SaveChangesAsync();
+
+    // --- 9) Invio Web Push ----------------------------------------------------
+    int success = 0;
+    int failed = 0;
+
+    foreach (var item in toSend)
+    {
+        var sub = item.sub;
+
+        var payloadObj = new
+        {
+            title = item.title,
+            body = item.body,
+            url = item.url
+            // volendo in futuro: icon = leagueLogo
+        };
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
+
+        var pushSub = new WebPushSubscription(sub.Endpoint, sub.P256Dh, sub.Auth);
+
+        try
+        {
+            await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
+            success++;
+        }
+        catch (WebPushException wex)
+        {
+            // Endpoint scaduto/non valido → disattivo
+            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
+                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                sub.IsActive = false;
+            }
+
+            failed++;
+            Console.WriteLine($"[LIVEPUSH][ERROR] {wex.StatusCode} {wex.Message}");
+        }
+        catch (Exception ex)
+        {
+            failed++;
+            Console.WriteLine($"[LIVEPUSH][ERROR] {ex.Message}");
+        }
+    }
+
+    if (failed > 0)
+    {
+        await writeDb.SaveChangesAsync();
+    }
+
+    return Results.Ok(new
+    {
+        liveCount = liveList.Count,
+        sent = success,
+        failed,
+        events = toSend.Count
+    });
+});
 
 app.MapPost("/api/push/unsubscribe", async (
     [FromBody] PushUnsubscribeDto body,

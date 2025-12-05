@@ -15,9 +15,13 @@ namespace NextStakeWebApp.Data
         public DbSet<Analysis> Analyses { get; set; } = default!;
         public DbSet<PushSubscription> PushSubscriptions { get; set; } = default!;
 
+        public DbSet<LiveMatchState> LiveMatchStates { get; set; } = null!;
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+            builder.Entity<LiveMatchState>()
+       .HasKey(x => x.MatchId);
 
             // << AGGIUNGI QUESTA RIGA >>
             builder.HasDefaultSchema("public");
