@@ -67,6 +67,25 @@
             @Model.Data.KickoffUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
         </div>
     </div>
+        <div class="card p-3 mb-3">
+        <div class="d-flex align-items-center justify-content-between">
+            <label class="form-label fw-semibold mb-0">Tema interfaccia</label>
+            <small class="text-muted">vale per tutte le pagine</small>
+        </div>
+
+        <div class="d-flex gap-2 mt-2">
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-theme-choice="light">
+                Light
+            </button>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-theme-choice="dark">
+                Dark
+            </button>
+        </div>
+    </div>
 
     <!-- Match Widget (API-SPORTS) -->
     <div class="card mb-3">
@@ -3538,6 +3557,54 @@ switch (esitoCards)
 })();
 
     </script>
+        <script>
+        (function () {
+            // Lettura tema corrente: cookie > localStorage > default "dark"
+            function currentChoice() {
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+                const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+                const stored = cookieValue || localStorage.getItem('theme');
+
+                // Compatibilità con vecchio "system": lo trattiamo come dark
+                if (stored === 'light' || stored === 'dark') return stored;
+                return 'dark';
+            }
+
+            function applyTheme(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', applied);
+            }
+
+            function persist(choice) {
+                const applied = (choice === 'light') ? 'light' : 'dark';
+                localStorage.setItem('theme', applied);
+                document.cookie = "theme=" + encodeURIComponent(applied) +
+                    "; path=/; max-age=31536000; samesite=lax";
+            }
+
+            const btns = document.querySelectorAll('[data-theme-choice]');
+
+            btns.forEach(b => {
+                b.addEventListener('click', () => {
+                    const choice = b.getAttribute('data-theme-choice');
+
+                    applyTheme(choice);
+                    persist(choice); // 🔁 salva per TUTTE le pagine
+
+                    // Aggiorna stato "active"
+                    btns.forEach(x => x.classList.remove('active'));
+                    b.classList.add('active');
+                });
+            });
+
+            // Stato iniziale quando apro il dettaglio
+            const choice = currentChoice();
+            applyTheme(choice);
+            const active = document.querySelector(`[data-theme-choice="${choice}"]`);
+            if (active) active.classList.add('active');
+        })();
+    </script>
+
 }
 
 
@@ -3545,24 +3612,77 @@ switch (esitoCards)
 @section Styles {
     <text>
         <style>
-            /* Stile generale (preso dal Layout) */
-            body {
-                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
-                color: #e9edf3;
-                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            }
 
-            /* Card/list nel tema scuro */
-            .details-page .card,
-            .details-page .list-group-item,
-            .details-page .dropdown-menu,
-            .details-page .modal-content {
-                background: rgba(255,255,255,0.06);
-                border: 1px solid rgba(255,255,255,0.16);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-                color: #e9edf3;
-            }
+/* === Palette a variabili: due temi pilotati da [data-theme] su <html> === */
+:root[data-theme="dark"] {
+    --bg: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+    --text: #e9edf3;
+    --muted-text: rgba(255,255,255,.6);
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.16);
+    --divider: rgba(255,255,255,0.14);
+    --select-bg: #1f2a3a;
+    --select-bg-focus: #213044;
+    --select-text: #e9edf3;
+    --link: #7bd3ff;
+    --link-hover: #9be0ff;
+    --primary: #00baff;
+    --primary-hover: #009cdc;
+    --mini-day: rgba(255,255,255,.08);
+    --mini-day-hover: rgba(255,255,255,.14);
+    --mini-day-border: rgba(255,255,255,.20);
+    --league-toggle-bg: #2b3445;
+    --league-toggle-bg-hover: #364056;
+    --vs-border: rgba(255,255,255,.22);
+    --list-border: rgba(255,255,255,.20);
+    --live: #dc3545;
+    --live-soft: #ff6b6b;
+}
+
+:root[data-theme="light"] {
+    --bg: #f0f2f5; /* grigino chiaro come abbiamo messo su Events */
+    --text: #1a2230;
+    --muted-text: #566079;
+    --card: #ffffff;
+    --border: rgba(0,0,0,0.10);
+    --divider: rgba(0,0,0,0.12);
+    --select-bg: #ffffff;
+    --select-bg-focus: #ffffff;
+    --select-text: #1a2230;
+    --link: #0d6efd;
+    --link-hover: #0b5ed7;
+    --primary: #0d6efd;
+    --primary-hover: #0b5ed7;
+    --mini-day: #ffffff;
+    --mini-day-hover: #f2f4f8;
+    --mini-day-border: rgba(0,0,0,.12);
+    --league-toggle-bg: #f7f7f7;
+    --league-toggle-bg-hover: #e9ecef;
+    --vs-border: rgba(0,0,0,.12);
+    --list-border: #dee2e6;
+    --live: #dc3545;
+    --live-soft: #ff6b6b;
+}
+
+            /* Stile generale (preso dal Layout) */
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+
+.details-page .card,
+.details-page .list-group-item,
+.details-page .dropdown-menu,
+.details-page .modal-content {
+    background: var(--card);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--text);
+}
+
 
             .details-page .card-header {
                 background: rgba(255,255,255,0.06);
@@ -3614,13 +3734,23 @@ switch (esitoCards)
                     }
 
                 /* --- FIX ANALISI: Sfondo Scuro e Testo Chiaro per BOX/STATISTICHE (.bg-light) --- */
-                .details-page .bg-light,
-                .details-page .p-2.bg-light,
-                .details-page .vstack .bg-light {
-                    background-color: rgba(255,255,255,.12) !important; /* Grisio scuro per il box */
-                    color: #e9edf3 !important; /* Testo chiaro */
-                    border: 1px solid rgba(255,255,255,.18);
-                }
+:root[data-theme="dark"] .details-page .bg-light,
+:root[data-theme="dark"] .details-page .p-2.bg-light,
+:root[data-theme="dark"] .details-page .vstack .bg-light {
+    background-color: rgba(255,255,255,.12) !important;
+    color: #e9edf3 !important;
+    border: 1px solid rgba(255,255,255,.18);
+}
+
+/* In light lasciamo che bg-light sia davvero “light” */
+:root[data-theme="light"] .details-page .bg-light,
+:root[data-theme="light"] .details-page .p-2.bg-light,
+:root[data-theme="light"] .details-page .vstack .bg-light {
+    background-color: #f8f9fa !important;
+    color: #1a2230 !important;
+    border: 1px solid rgba(0,0,0,.06);
+}
+
 
 
                 /* --- Altri stili minori (per completezza) --- */

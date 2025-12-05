@@ -28,7 +28,7 @@ namespace NextStakeWebApp.Services
         private readonly ILogger<LiveNotifyWorker> _logger;
 
         // intervallo tra un ciclo e l’altro
-        private static readonly TimeSpan Interval = TimeSpan.FromSeconds(3);
+        private static readonly TimeSpan Interval = TimeSpan.FromSeconds(15);
 
         private static readonly string[] LIVE_STATUSES = { "1H", "2H", "ET", "P", "BT", "LIVE", "HT" };
         private static readonly string[] FINISHED_STATUSES = { "FT", "AET", "PEN" };
@@ -102,8 +102,42 @@ namespace NextStakeWebApp.Services
             var pushClient = new WebPushClient();
             var nowUtc = DateTime.UtcNow;
 
-            // --- 1) Chiamata API-FOOTBALL per i live --------------------------
+            // 🔍 1) Verifica se ci sono partite "rilevanti" nei preferiti
+            //    - Data partita in una finestra [-3h, +3h] rispetto ad "adesso" (ora server)
+            //    - Così evitiamo chiamate quando non c'è nulla di interessante
+
+            var nowLocal = DateTime.Now;              // i tuoi m.Date sono già "ora Italia"
+            var from = nowLocal.AddHours(-3);
+            var to = nowLocal.AddHours(3);
+
+            // 1) leggo solo gli ID dei preferiti dal DB WRITE
+            var favoriteIds = await writeDb.FavoriteMatches
+                .Select(fm => fm.MatchId)
+                .ToListAsync(ct);
+
+            // se non ho proprio preferiti → esco subito
+            if (favoriteIds.Count == 0)
+                return;
+
+            // 2) verifico se almeno uno di questi match è nella finestra temporale
+            var hasRelevantFavorites = await readDb.Matches
+                .Where(m =>
+                    favoriteIds.Contains((long)m.Id) &&
+                    m.Date >= from &&
+                    m.Date <= to
+                )
+                .AnyAsync(ct);
+
+            if (!hasRelevantFavorites)
+            {
+                // Nessuna partita rilevante → NON CHIAMO L'API
+                return;
+            }
+
+
+            // --- 2) Chiamata API-FOOTBALL per i live --------------------------
             var http = _httpFactory.CreateClient("ApiSports");
+
             var req = new HttpRequestMessage(
                 HttpMethod.Get,
                 "fixtures?live=all&timezone=Europe/Rome"
