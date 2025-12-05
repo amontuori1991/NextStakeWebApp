@@ -413,7 +413,7 @@ app.MapPost("/api/push/test", async (
         cfg["VAPID:Subject"] ??
         cfg["VAPID_SUBJECT"] ??
         Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:info@nextstake.app";
+        "mailto:nextstakeai@gmail.com";
 
     Console.WriteLine($"[PUSH][VAPID] pub len={publicKey?.Length ?? 0}, priv len={privateKey?.Length ?? 0}");
 
@@ -525,7 +525,7 @@ app.MapPost("/api/push/match-event", async (
     var subject =
         cfg["VAPID_SUBJECT"] ??
         Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:info@nextstake.app";
+        "mailto:nextstakeai@gmail.com";
 
     if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
         return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
@@ -612,6 +612,7 @@ app.MapPost("/api/push/match-event", async (
 })
 .RequireAuthorization();
 // === Job live notify: rileva eventi sui match e invia Web Push agli utenti che li hanno nei preferiti ===
+// === Job live notify: rileva eventi sui match e invia Web Push agli utenti che li hanno nei preferiti ===
 app.MapPost("/internal/jobs/live-notify", async (
     [FromQuery] string key,
     IHttpClientFactory httpFactory,
@@ -650,7 +651,7 @@ app.MapPost("/internal/jobs/live-notify", async (
     var subject =
         cfg["VAPID_SUBJECT"] ??
         Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:info@nextstake.app";
+        "mailto:nextstakeai@gmail.com";
 
     if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
     {
@@ -686,7 +687,7 @@ app.MapPost("/internal/jobs/live-notify", async (
     }
 
     var liveIds = liveList
-        .Select(f => (long)f.Fixture.Id)
+        .Select(f => f.Fixture.Id)   // ✅ int
         .Distinct()
         .ToList();
 
@@ -720,7 +721,7 @@ app.MapPost("/internal/jobs/live-notify", async (
 
     // --- 7) Preferiti + subscription per utente ------------------------------
     var favPerMatch = await writeDb.FavoriteMatches
-        .Where(fm => liveIds.Contains(fm.MatchId))
+        .Where(fm => liveIds.Contains((int)fm.MatchId))   // 👈 cast esplicito
         .GroupBy(fm => fm.MatchId)
         .Select(g => new
         {
@@ -728,6 +729,7 @@ app.MapPost("/internal/jobs/live-notify", async (
             UserIds = g.Select(fm => fm.UserId).Distinct().ToList()
         })
         .ToListAsync();
+
 
     var favUsersByMatch = favPerMatch.ToDictionary(x => x.MatchId, x => x.UserIds);
 
@@ -748,7 +750,7 @@ app.MapPost("/internal/jobs/live-notify", async (
 
     foreach (var item in liveList)
     {
-        var id = item.Fixture.Id; // <-- int
+        var id = item.Fixture.Id; // ✅ int
 
         var status = (item.Fixture.Status.Short ?? "").ToUpperInvariant();
         var elapsed = item.Fixture.Status.Elapsed;
@@ -782,10 +784,9 @@ app.MapPost("/internal/jobs/live-notify", async (
         int prevTotal = prevHomeVal + prevAwayVal;
         int currTotal = (currHome ?? 0) + (currAway ?? 0);
 
-        // Nessun favorito su questo match? Salta
+        // Nessun favorito su questo match? Salta le notifiche, ma aggiorna lo stato
         if (!favUsersByMatch.TryGetValue(id, out var userIdsForMatch) || userIdsForMatch.Count == 0)
         {
-            // Aggiorna comunque lo stato in DB e vai avanti
             if (prev == null)
             {
                 writeDb.LiveMatchStates.Add(new LiveMatchState
@@ -845,7 +846,7 @@ app.MapPost("/internal/jobs/live-notify", async (
             events.Add("second");
         }
 
-        // Fine partita (se un giorno useremo anche FT da qualche sorgente coerente)
+        // Fine partita
         if (!isFinishedPrev && isFinishedNow)
         {
             events.Add("end");
@@ -950,7 +951,6 @@ app.MapPost("/internal/jobs/live-notify", async (
             title = item.title,
             body = item.body,
             url = item.url
-            // volendo in futuro: icon = leagueLogo
         };
         var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
 
@@ -993,6 +993,7 @@ app.MapPost("/internal/jobs/live-notify", async (
         events = toSend.Count
     });
 });
+
 
 app.MapPost("/api/push/unsubscribe", async (
     [FromBody] PushUnsubscribeDto body,
