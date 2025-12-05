@@ -483,10 +483,9 @@ namespace NextStakeWebApp.Services
                 {
                     title = item.title,
                     body = item.body,
-                    icon = "/icons/favicon.svg",                        // 👈 logo NextStake
-                    image = $"/api/notification-banner/{item.matchId}", // 👈 banner home+away
                     url = item.url
                 };
+
 
 
 

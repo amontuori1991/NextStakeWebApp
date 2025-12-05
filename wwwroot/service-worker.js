@@ -1,11 +1,11 @@
 ﻿// wwwroot/service-worker.js
 
-// (opzionale) semplice install/activate
+// Install: attiviamo subito il SW
 self.addEventListener('install', event => {
-    // Subito attivo
     self.skipWaiting();
 });
 
+// Activate: prendiamo il controllo delle pagine aperte
 self.addEventListener('activate', event => {
     event.waitUntil(clients.claim());
 });
@@ -27,23 +27,15 @@ self.addEventListener('push', event => {
     const body = data.body || 'Nuova notifica';
     const url = data.url || '/';
 
-    // 👇 NUOVO: supporto per icon e image dal payload
-    const icon = data.icon || '/icons/android-chrome-192x192.png';
-    const image = data.image || null;
-
     const options = {
         body: body,
-        icon: icon,
+        // icona piccola: usa pure quella che hai già in wwwroot/icons
+        icon: '/icons/android-chrome-192x192.png',
         badge: '/icons/android-chrome-192x192.png',
         data: {
             url: url
         }
     };
-
-    // se abbiamo un'immagine grande, la aggiungiamo
-    if (image) {
-        options.image = image;
-    }
 
     event.waitUntil(
         self.registration.showNotification(title, options)
@@ -60,15 +52,15 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true })
             .then(windowClients => {
-                // Se esiste già una scheda aperta, la porta in primo piano
+                // Se esiste già una scheda del sito, la riutilizziamo
                 for (const client of windowClients) {
-                    if (client.url.includes(self.location.origin)) {
+                    if (client.url && client.url.startsWith(self.location.origin)) {
                         client.focus();
                         client.navigate(url);
                         return;
                     }
                 }
-                // Altrimenti apre una nuova scheda
+                // Altrimenti apriamo una nuova scheda
                 return clients.openWindow(url);
             })
     );
