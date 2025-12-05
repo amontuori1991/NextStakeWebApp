@@ -27,14 +27,23 @@ self.addEventListener('push', event => {
     const body = data.body || 'Nuova notifica';
     const url = data.url || '/';
 
+    // 👇 NUOVO: supporto per icon e image dal payload
+    const icon = data.icon || '/icons/android-chrome-192x192.png';
+    const image = data.image || null;
+
     const options = {
         body: body,
-        icon: '/icons/android-chrome-192x192.png',
+        icon: icon,
         badge: '/icons/android-chrome-192x192.png',
         data: {
             url: url
         }
     };
+
+    // se abbiamo un'immagine grande, la aggiungiamo
+    if (image) {
+        options.image = image;
+    }
 
     event.waitUntil(
         self.registration.showNotification(title, options)

@@ -201,8 +201,22 @@ namespace NextStakeWebApp.Services
                 .GroupBy(s => s.UserId!)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
+            // helper per scegliere icon/image
+            string ResolveIcon(string? leagueLogo, string? homeLogo, string? awayLogo)
+                => "/icons/favicon.svg"; // teniamo sempre il logo NextStake come icona piccola
+
+            string? ResolveImage(string? leagueLogo, string? homeLogo, string? awayLogo)
+            {
+                // 👉 Priorità squadre: prima HOME, poi AWAY, e solo dopo la lega
+                if (!string.IsNullOrWhiteSpace(homeLogo)) return homeLogo;
+                if (!string.IsNullOrWhiteSpace(awayLogo)) return awayLogo;
+                if (!string.IsNullOrWhiteSpace(leagueLogo)) return leagueLogo;
+                return null;
+            }
+
+
             // --- 5) Rilevazione eventi LIVE (inizio, goal, HT, ecc.) ----------
-            var toSend = new List<(DbPushSubscription sub, string title, string body, string url)>();
+            var toSend = new List<(DbPushSubscription sub, string title, string body, string url, string icon, string? image)>();
 
             foreach (var item in liveList)
             {
@@ -217,6 +231,9 @@ namespace NextStakeWebApp.Services
                 var leagueName = mMeta?.LeagueName ?? "Match";
                 var homeName = mMeta?.HomeName ?? "Home";
                 var awayName = mMeta?.AwayName ?? "Away";
+
+                var icon = ResolveIcon(mMeta?.LeagueLogo, mMeta?.HomeLogo, mMeta?.AwayLogo);
+                var image = ResolveImage(mMeta?.LeagueLogo, mMeta?.HomeLogo, mMeta?.AwayLogo);
 
                 stateById.TryGetValue(id, out var prev);
 
@@ -378,7 +395,7 @@ namespace NextStakeWebApp.Services
 
                             foreach (var sub in userSubs)
                             {
-                                toSend.Add((sub, title, body, url));
+                                toSend.Add((sub, title, body, url, icon, image));
                             }
                         }
                     }
@@ -401,20 +418,14 @@ namespace NextStakeWebApp.Services
                     if (!stateById.TryGetValue(endedId, out var prev))
                         continue;
 
-                    // niente preferiti su questo match → aggiorno solo stato
-                    if (!favUsersByMatch.TryGetValue(endedId, out var userIdsForMatch) ||
-                        userIdsForMatch.Count == 0)
-                    {
-                        prev.LastStatus = "FT";
-                        prev.LastUpdatedUtc = nowUtc;
-                        continue;
-                    }
-
-                    // meta (lega, nomi)
+                    // meta (lega, nomi, loghi)
                     metaById.TryGetValue(endedId, out var mMeta);
                     var leagueName = mMeta?.LeagueName ?? "Match";
                     var homeName = mMeta?.HomeName ?? "Home";
                     var awayName = mMeta?.AwayName ?? "Away";
+
+                    var icon = ResolveIcon(mMeta?.LeagueLogo, mMeta?.HomeLogo, mMeta?.AwayLogo);
+                    var image = ResolveImage(mMeta?.LeagueLogo, mMeta?.HomeLogo, mMeta?.AwayLogo);
 
                     var currHome = prev.LastHome;
                     var currAway = prev.LastAway;
@@ -424,6 +435,15 @@ namespace NextStakeWebApp.Services
 
                     var matchLabel = $"{homeName} - {awayName}";
                     var leagueLabel = leagueName;
+
+                    // niente preferiti su questo match → aggiorno solo stato
+                    if (!favUsersByMatch.TryGetValue(endedId, out var userIdsForMatch) ||
+                        userIdsForMatch.Count == 0)
+                    {
+                        prev.LastStatus = "FT";
+                        prev.LastUpdatedUtc = nowUtc;
+                        continue;
+                    }
 
                     // notifica "fine partita"
                     var title = "Partita terminata";
@@ -436,7 +456,7 @@ namespace NextStakeWebApp.Services
 
                         foreach (var sub in userSubs)
                         {
-                            toSend.Add((sub, title, body, url));
+                            toSend.Add((sub, title, body, url, icon, image));
                         }
                     }
 
@@ -460,8 +480,9 @@ namespace NextStakeWebApp.Services
                 {
                     title = item.title,
                     body = item.body,
-                    url = item.url
-                    // in futuro: icon = leagueLogo / homeLogo, ecc.
+                    url = item.url,
+                    icon = item.icon,
+                    image = item.image
                 };
 
                 var payloadJson = JsonSerializer.Serialize(payloadObj);
