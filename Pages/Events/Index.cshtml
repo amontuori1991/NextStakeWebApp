@@ -952,7 +952,15 @@
                     return;
                 }
 
-                console.debug('Livescores inizializzati, fixture IDs:', ids);
+                      console.debug('Livescores inizializzati, fixture IDs:', ids);
+
+        // 🔴 Nuovo: se non c'è nessuna partita LIVE in pagina, non avviamo il polling
+        const anyLiveDom = document.querySelector('.list-group-item[data-live="1"]') !== null;
+        if (!anyLiveDom) {
+            console.debug('Livescores: nessun match LIVE in pagina, non avvio il polling.');
+            return;
+        }
+
 
                 function applyUpdate(it) {
                     if (!it || !it.id) return;
@@ -1152,36 +1160,58 @@
                     }
                 }
 
-                // === BOOTSTRAP: inizializza stato senza notificare il passato ===
-                (async function bootstrap() {
-                    await fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' });
-                })().finally(() => {
-                    // === POLLING LIVE ===
-                    let timerHandle = null;
+          // === BOOTSTRAP: inizializza stato senza notificare il passato ===
+        (async function bootstrap() {
+            await fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' });
+        })().finally(() => {
+            // === POLLING LIVE ===
+            let timerHandle = null;
 
-                    async function liveTick() {
-                        await fetchAndApplyAll({});
-                    }
+            async function liveTick() {
+                // Aggiorna i live
+                await fetchAndApplyAll({});
 
-                    function start() {
-                        if (timerHandle) return;
-                        liveTick();
-                        timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
-                    }
+                // 🔴 Se dopo l'aggiornamento non c'è più nessun match live, fermiamo il polling
+                const anyLiveAfter = document.querySelector('.list-group-item[data-live="1"]') !== null;
+                if (!anyLiveAfter) {
+                    console.debug('Livescores: nessun match LIVE dopo l\'ultimo tick, fermo il polling.');
+                    stop();
+                }
+            }
 
-                    function stop() {
-                        if (timerHandle) {
-                            clearInterval(timerHandle);
-                            timerHandle = null;
-                        }
-                    }
+            function start() {
+                if (timerHandle) return;
 
-                    document.addEventListener('visibilitychange', () => {
-                        if (document.hidden) stop(); else start();
-                    });
+                // Se non c'è alcun live in questo momento, non ha senso partire
+                const anyLiveNow = document.querySelector('.list-group-item[data-live="1"]') !== null;
+                if (!anyLiveNow) {
+                    console.debug('Livescores: nessun match LIVE al momento dello start, non avvio il polling.');
+                    return;
+                }
 
+                liveTick(); // primo giro subito
+                timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
+            }
+
+            function stop() {
+                if (timerHandle) {
+                    clearInterval(timerHandle);
+                    timerHandle = null;
+                }
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    stop();
+                } else {
                     start();
-                });
+                }
+            });
+
+            // Avvio iniziale (solo se ci sono live)
+            start();
+        });
+
             }
 
             // Avvia dopo che il DOM è pronto
