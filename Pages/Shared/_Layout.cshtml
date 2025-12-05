@@ -85,6 +85,16 @@
                             <li class="nav-item">
                                 <a class="nav-link text-warning fw-bold" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
                             </li>
+                            @* Voce visibile SOLO al ruolo SuperAdmin *@
+                            @if (User.IsInRole("SuperAdmin"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-info" asp-area="Admin" asp-page="/ConsumiApi">
+                                        Consumi API
+                                    </a>
+                                </li>
+                            }
+
                         }
 
                     </ul>

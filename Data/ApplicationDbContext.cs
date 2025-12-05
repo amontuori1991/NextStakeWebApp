@@ -16,12 +16,30 @@ namespace NextStakeWebApp.Data
         public DbSet<PushSubscription> PushSubscriptions { get; set; } = default!;
 
         public DbSet<LiveMatchState> LiveMatchStates { get; set; } = default!;
+        public DbSet<CallCounter> CallCounter { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
             builder.Entity<LiveMatchState>()
        .HasKey(x => x.MatchId);
+            builder.Entity<CallCounter>(entity =>
+            {
+                entity.ToTable("callcounter"); // nome esatto della tabella
+
+                // PK composta: (date, origin) come nel tuo ON CONFLICT
+                entity.HasKey(e => new { e.Date, e.Origin });
+
+                entity.Property(e => e.Date)
+                      .HasColumnName("date")
+                      .HasColumnType("date");
+
+                entity.Property(e => e.Origin)
+                      .HasColumnName("origin");
+
+                entity.Property(e => e.Counter)
+                      .HasColumnName("counter");
+            });
 
             // << AGGIUNGI QUESTA RIGA >>
             builder.HasDefaultSchema("public");

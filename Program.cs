@@ -57,9 +57,30 @@ Console.WriteLine($"[DB:READ ] Host={rcsb.Host}; Port={rcsb.Port}; Db={rcsb.Data
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, AppClaimsPrincipalFactory>();
 builder.Services.AddAuthorization(options =>
 {
+    // Policy "storica", se la usi da qualche parte
     options.AddPolicy("Plan1", policy =>
-        policy.RequireClaim("plan", "1"));
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("plan", "1");
+    });
+
+    // Policy usata sulla pagina [Authorize(Policy = "RequirePlan1")]
+    options.AddPolicy("RequirePlan1", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+
+        policy.RequireAssertion(ctx =>
+            // Utente con claim plan = 1
+            ctx.User.HasClaim(c =>
+                string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal)
+            )
+            // oppure SuperAdmin (se vuoi che il superadmin veda sempre tutto)
+            || ctx.User.IsInRole("SuperAdmin")
+        );
+    });
 });
+
 builder.Services.AddRazorPages()
     .AddRazorPagesOptions(o =>
     {
@@ -269,8 +290,10 @@ app.MapGet("/api/livescores", async (
     IHttpClientFactory httpFactory,
     IConfiguration cfg,
     IMemoryCache cache,
+    ApplicationDbContext writeDb,           // 👈 AGGIUNTO
     [FromQuery] string? ids // "123,456,789" (opzionale, usato solo per caching)
 ) =>
+
 {
     var key = cfg["ApiSports:Key"];
     if (string.IsNullOrWhiteSpace(key))
@@ -291,6 +314,23 @@ app.MapGet("/api/livescores", async (
     req.Headers.Add("x-apisports-key", key);
 
     using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+    // 👇 LOG CALLCOUNTER per Origin = 'WidgetWebApp'
+    const string origin = "WidgetWebApp";
+    try
+    {
+        await writeDb.Database.ExecuteSqlRawAsync(
+            @"INSERT INTO callcounter(date, origin, counter)
+              VALUES (CURRENT_DATE, {0}, 1)
+              ON CONFLICT (date, origin)
+              DO UPDATE SET counter = callcounter.counter + 1;",
+            origin);
+    }
+    catch (Exception ex)
+    {
+        // Non blocchiamo l'API se il log fallisce
+        Console.WriteLine($"[CALLCOUNTER][WidgetWebApp] ERROR: {ex.Message}");
+    }
+
     if (!resp.IsSuccessStatusCode)
         return Results.StatusCode((int)resp.StatusCode);
 

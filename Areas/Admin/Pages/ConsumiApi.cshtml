@@ -1,0 +1,319 @@
+﻿@page
+@model NextStakeWebApp.Areas.Admin.Pages.ConsumiApiModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Consumi API";
+}
+
+<div class="container py-4 consumi-page">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">📊 Consumi API</h3>
+
+        <div class="btn-group btn-group-sm theme-toggle" role="group" aria-label="Tema">
+            <button type="button" class="btn btn-outline-secondary" data-theme-choice="dark">Dark</button>
+            <button type="button" class="btn btn-outline-secondary" data-theme-choice="light">Light</button>
+        </div>
+    </div>
+
+    <p class="text-muted mb-3">Storico chiamate API</p>
+
+    <div class="row g-4 flex-column-reverse flex-lg-row">
+
+        <!-- Tabella -->
+        <div class="col-lg-6 d-flex align-items-center justify-content-center">
+
+            <div class="card h-100">
+                <div class="card-header">
+                    Storico chiamate API
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Contatore</th>
+                                    <th>Origine</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!Model.Records.Any())
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-4">
+                                            Nessun dato disponibile
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var r in Model.Records.OrderByDescending(x => x.Date))
+
+                                    {
+                                        <tr>
+                                            <td>@r.Date.ToString("dd/MM/yyyy")</td>
+                                            <td>@r.Counter</td>
+                                            <td>@r.Origin</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grafico a torta -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Distribuzione per origine (giorno più recente)</span>
+                    <span class="badge bg-secondary">
+                        Tetto giornaliero: @Model.DailyCap
+                    </span>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <div class="mb-2 small text-muted">
+                        @if (Model.TodayTotal > 0)
+                        {
+                            var percCap = Model.DailyCap > 0
+                            ? Math.Min(100, Math.Round(Model.TodayTotal * 100.0 / Model.DailyCap, 1))
+                            : 0;
+                            <text>Ultimo giorno registrato: @Model.TodayTotal chiamate (@percCap% del tetto).</text>
+                        }
+                        else
+                        {
+                            <text>Nessun dato per il giorno più recente.</text>
+                        }
+                    </div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="apiUsagePie"></canvas>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    /* === Stesso sistema temi globali usato nel resto di NextStake === */
+    :root[data-theme="dark"] {
+        --bg: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+        --text: #e9edf3;
+        --muted: rgba(255,255,255,.6);
+        --card: rgba(255,255,255,0.06);
+        --border: rgba(255,255,255,0.16);
+    }
+
+    :root[data-theme="light"] {
+        --bg: #f0f2f5;
+        --text: #1a2230;
+        --muted: #566079;
+        --card: #ffffff;
+        --border: rgba(0,0,0,0.10);
+    }
+
+    html[data-theme] body {
+        background: var(--bg);
+        color: var(--text);
+    }
+
+    .consumi-page {
+        color: var(--text);
+    }
+
+        .consumi-page .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            box-shadow: 0 10px 26px rgba(0,0,0,.25);
+            backdrop-filter: blur(6px);
+        }
+
+        .consumi-page .card-header {
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            background: transparent;
+        }
+
+        .consumi-page .text-muted {
+            color: var(--muted) !important;
+        }
+
+    .theme-toggle .btn.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+
+    /* === Grafico centrato, pulito, stile NextStake === */
+    .chart-wrapper {
+        max-width: 300px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 1rem 0;
+    }
+
+        .chart-wrapper canvas {
+            width: 100% !important;
+            height: auto !important;
+        }
+
+    @@media (max-width: 768px) {
+        .chart-wrapper
+
+    {
+        max-width: 230px;
+    }
+
+    }
+
+    /* === Tabella uniforme al resto del sito === */
+    .consumi-page table th {
+        font-size: .85rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    .consumi-page table td {
+        font-size: .9rem;
+    }
+</style>
+
+
+
+<!-- Chart.js + plugin etichette -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+
+<script>
+    // === Toggle tema semplice (usa data-theme su <html>) ===
+    (function () {
+        function currentTheme() {
+            const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+            const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+            const stored = cookieValue || localStorage.getItem('theme');
+            return (stored === 'light' || stored === 'dark') ? stored : 'dark';
+        }
+
+    function applyTheme(choice) {
+        const applied = (choice === 'light') ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', applied);
+        document.body.setAttribute('data-theme', applied);
+    }
+
+
+        function persist(choice) {
+            const applied = (choice === 'light') ? 'light' : 'dark';
+            localStorage.setItem('theme', applied);
+            document.cookie = "theme=" + encodeURIComponent(applied)
+                + "; path=/; max-age=31536000; samesite=lax";
+        }
+
+        const btns = document.querySelectorAll('.consumi-page [data-theme-choice]');
+        const initial = currentTheme();
+        applyTheme(initial);
+
+        btns.forEach(b => {
+            if (b.getAttribute('data-theme-choice') === initial) {
+                b.classList.add('active');
+            }
+            b.addEventListener('click', () => {
+                const choice = b.getAttribute('data-theme-choice');
+                applyTheme(choice);
+                persist(choice);
+                btns.forEach(x => x.classList.remove('active'));
+                b.classList.add('active');
+            });
+        });
+    })();
+
+    // === Grafico a torta ===
+    (function () {
+        const canvas = document.getElementById('apiUsagePie');
+        if (!canvas) return;
+
+        const labels = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Origin)));
+    const dataRaw = @Html.Raw(JsonSerializer.Serialize(Model.TodayUsage.Select(x => x.Counter)));
+    const dailyCap = @Model.DailyCap;
+
+    // Convertiamo in % rispetto al tetto (7500)
+    const data = dataRaw.map(v => (v / dailyCap) * 100);
+    const totalPercent = data.reduce((a, b) => a + b, 0);
+
+    if (!data.length || dailyCap === 0) {
+        return; // nessun dato → niente grafico
+    }
+
+
+        const colors = [
+            '#0d6efd', '#6610f2', '#198754', '#dc3545', '#fd7e14',
+            '#20c997', '#6f42c1', '#0dcaf0', '#ffc107', '#6c757d'
+        ];
+
+        Chart.register(ChartDataLabels);
+
+        // colore testo in base al tema corrente
+    function getTextColor() {
+        const computed = getComputedStyle(document.documentElement);
+        const c = computed.getPropertyValue('--text').trim();
+        return c || '#ffffff';
+    }
+
+
+        new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: labels.map((_, i) => colors[i % colors.length]),
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'right',
+    labels: {
+        usePointStyle: true,
+        boxWidth: 10,
+        padding: 14,
+        color: getComputedStyle(document.documentElement)
+            .getPropertyValue('--text')
+            .trim()
+    }
+
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const val = context.raw || 0;
+                                const perc = val;
+
+                                return context.label + ': ' + val + ' (' + perc.toFixed(1) + '%)';
+                            }
+                        }
+                    },
+                    datalabels: {
+                        color: '#ffffff',
+                        font: {
+                            weight: 'bold',
+                            size: 12
+                        },
+                        formatter: function (value) {
+                           return value >= 0.5 ? value.toFixed(2) + '%' : '';
+
+                        }
+                    }
+                }
+            }
+        });
+    })();
+</script>

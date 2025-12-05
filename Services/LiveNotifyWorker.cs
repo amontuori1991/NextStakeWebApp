@@ -148,8 +148,25 @@ namespace NextStakeWebApp.Services
             if (!resp.IsSuccessStatusCode)
                 return;
 
+            // 👇 LOG CALLCOUNTER per Origin = 'LiveNotifyWorker'
+            try
+            {
+                const string originWorker = "LiveNotifyWorker";
+                await writeDb.Database.ExecuteSqlRawAsync(
+                    @"INSERT INTO callcounter(date, origin, counter)
+          VALUES (CURRENT_DATE, {0}, 1)
+          ON CONFLICT (date, origin)
+          DO UPDATE SET counter = callcounter.counter + 1;",
+                    originWorker);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CALLCOUNTER][LiveNotifyWorker] errore incremento contatore");
+            }
+
             var raw = await resp.Content.ReadAsStringAsync(ct);
             var fixtures = JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
+
 
             var liveList = fixtures?.Response ?? new List<ApiFixtureItem>();
             if (liveList.Count == 0)
