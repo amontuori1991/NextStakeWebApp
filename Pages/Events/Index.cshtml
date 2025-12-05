@@ -433,7 +433,11 @@
                                         <div class="list-group-item"
                                              data-live="@(isLive ? "1" : "0")"
                                              data-fixture-root="@r.MatchId"
-                                             data-fav="@(isFav ? "1" : "0")">
+                                             data-fav="@(isFav ? "1" : "0")"
+                                             data-league-name="@group.Key.LeagueName"
+                                             data-league-logo="@group.Key.LeagueLogo">
+
+
                                             <div class="match-item">
                                                 @{
                                                     var homeScoreStr = FormatScore(r.HomeGoal, r.StatusShort);
@@ -843,7 +847,6 @@
     <script>
         /**
          * Live scores NextStake + notifiche locali:
-         * - chiede tutti i fixtures in pagina a /api/livescores
          * - aggiorna punteggi/minuti
          * - per i match nei preferiti, mostra notifiche su:
          *   - inizio partita
@@ -851,6 +854,7 @@
          *   - inizio secondo tempo
          *   - fine partita
          *   - goal
+         *   - rettifica punteggio (gol annullato / VAR)
          */
         (function () {
             const ENDPOINT = '/api/livescores';
@@ -871,7 +875,17 @@
                 if (!('Notification' in window)) return;
                 if (Notification.permission !== 'granted') return;
 
-                const { id, homeName, awayName, home, away, minute, status } = data;
+                const {
+                    id,
+                    homeName,
+                    awayName,
+                    home,
+                    away,
+                    minute,
+                    status,
+                    leagueName,
+                    leagueLogo
+                } = data;
 
                 let title = 'Notifica match';
                 let body = '';
@@ -880,66 +894,53 @@
                     ? `${home} - ${away}`
                     : '';
 
+                const leaguePart = leagueName ? ` (${leagueName})` : '';
+
                 switch (kind) {
                     case 'start':
                         title = 'Inizio partita';
-                        body = `${homeName} - ${awayName} è iniziata.`;
+                        body = `${homeName} - ${awayName}${leaguePart} è iniziata.`;
                         break;
                     case 'halftime':
                         title = 'Fine primo tempo';
-                        body = `${homeName} - ${awayName} | HT ${scoreStr}`;
+                        body = `${homeName} - ${awayName}${leaguePart} | HT ${scoreStr}`;
                         break;
                     case 'second':
                         title = 'Inizio secondo tempo';
-                        body = `${homeName} - ${awayName} | Ripresa in corso.`;
+                        body = `${homeName} - ${awayName}${leaguePart} | Ripresa in corso.`;
                         break;
                     case 'end':
                         title = 'Partita terminata';
-                        body = `${homeName} - ${awayName} | Finale ${scoreStr}`;
+                        body = `${homeName} - ${awayName}${leaguePart} | Finale ${scoreStr}`;
                         break;
                     case 'goal':
                         title = 'GOAL!';
-                        body = `${homeName} - ${awayName} | ${scoreStr}` + (minute ? ` al ${minute}'` : '');
+                        body = `${homeName} - ${awayName}${leaguePart} | ${scoreStr}` +
+                            (minute ? ` al ${minute}'` : '');
+                        break;
+                    case 'correction':
+                        title = 'Rettifica punteggio';
+                        body = `${homeName} - ${awayName}${leaguePart} | Nuovo punteggio: ${scoreStr}`;
                         break;
                     default:
-                        body = `${homeName} - ${awayName}`;
+                        body = `${homeName} - ${awayName}${leaguePart}`;
                         break;
                 }
 
                 const options = {
                     body: body,
-                    icon: '/icons/android-chrome-192x192.png',
+                    icon: leagueLogo || '/icons/android-chrome-192x192.png',
                     badge: '/icons/android-chrome-192x192.png',
-                    tag: `match-${id}-${kind}`, // evita spam infinito, raggruppa per tipo
+                    tag: `match-${id}-${kind}`, // raggruppa per tipo di evento
                 };
 
                 try {
                     new Notification(title, options);
                 } catch { }
-
-                                // 🔔 Invia anche una push server-side per questo evento
-                try {
-                    fetch('/api/push/match-event', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            matchId: Number(id),
-                            kind: kind,
-                            home: home,
-                            away: away,
-                            minute: minute ?? null
-                        })
-                    }).catch(function (err) {
-                        console.warn('[PUSH] errore chiamata /api/push/match-event', err);
-                    });
-                } catch (e) {
-                    console.warn('[PUSH] eccezione match-event', e);
-                }
-
             }
 
             function initLiveScores() {
-                // Raccogli TUTTI gli ID presenti in pagina (dopo che il DOM è pronto)
+                // Raccogli TUTTI gli ID presenti in pagina
                 const scoreNodes = document.querySelectorAll('[data-fixture][data-side]');
                 const ids = [...new Set(
                     [...scoreNodes].map(n => n.getAttribute('data-fixture')).filter(Boolean)
@@ -968,27 +969,30 @@
                     const hasDom = !!(homeEl || awayEl || minuteEl);
                     if (!hasDom) return;
 
-                    // Trova il "root" della partita e verifica se è preferita
                     const root = (homeEl || awayEl || minuteEl)?.closest('.list-group-item');
-                            if (root) {
-            // aggiorna il flag data-live in base allo stato corrente
-            root.setAttribute('data-live', isLiveNow ? '1' : '0');
-        }
-
                     const isFav = root && root.getAttribute('data-fav') === '1';
 
                     let homeName = '';
                     let awayName = '';
+                    let leagueName = '';
+                    let leagueLogo = '';
+
                     if (root) {
                         const h = root.querySelector('.team.home .team-name');
                         const a = root.querySelector('.team.away .team-name');
                         homeName = h ? h.textContent.trim() : '';
                         awayName = a ? a.textContent.trim() : '';
+
+                        leagueName = root.getAttribute('data-league-name') || '';
+                        leagueLogo = root.getAttribute('data-league-logo') || '';
+
+                        // 🔴 aggiorna il flag live per il filtro
+                        root.setAttribute('data-live', isLiveNow ? '1' : '0');
                     }
 
                     console.debug('Live update item', id, 'status=', status, 'fav=', isFav, it);
 
-                    // --- Punteggi (sia live che finali) ---
+                    // --- Aggiorna punteggi ---
                     if (homeEl && it.home !== null && it.home !== undefined) {
                         homeEl.textContent = String(it.home);
                     }
@@ -1025,7 +1029,7 @@
                     mark(homeEl);
                     mark(awayEl);
 
-                    // --- Rilevazione eventi vs stato precedente (solo per preferiti) ---
+                    // --- Stato precedente / corrente ---
                     const prev = prevState.get(id);
                     const current = {
                         status,
@@ -1033,12 +1037,18 @@
                         away: it.away
                     };
 
-                    if (isFav && prev) {
-                        const isLivePrev = prev.status && LIVE_STATUSES.includes(prev.status);
-                        const isFinishedPrev = prev.status && FINISHED_STATUSES.includes(prev.status);
+                    if (isFav) {
+                        const isLivePrev = prev && prev.status && LIVE_STATUSES.includes(prev.status);
+                        const isFinishedPrev = prev && prev.status && FINISHED_STATUSES.includes(prev.status);
 
-                        const homeChanged = (prev.home ?? null) !== (it.home ?? null);
-                        const awayChanged = (prev.away ?? null) !== (it.away ?? null);
+                        const prevHome = prev?.home ?? null;
+                        const prevAway = prev?.away ?? null;
+
+                        const homeChanged = prev ? (prevHome !== (it.home ?? null)) : false;
+                        const awayChanged = prev ? (prevAway !== (it.away ?? null)) : false;
+
+                        const prevTotal = (prevHome ?? 0) + (prevAway ?? 0);
+                        const currTotal = (it.home ?? 0) + (it.away ?? 0);
 
                         const commonData = {
                             id,
@@ -1047,39 +1057,46 @@
                             home: it.home,
                             away: it.away,
                             minute: typeof it.elapsed === 'number' ? it.elapsed : null,
-                            status
+                            status,
+                            leagueName,
+                            leagueLogo
                         };
 
-                        // Inizio partita (non era live prima, è live ora)
-                        if (!isLivePrev && isLiveNow) {
+                        // ✅ PRIMO ARRIVO LIVE: nessun prev, ma già live → inizio partita
+                        if (!prev && isLiveNow) {
                             fireLocalNotification('start', commonData);
                         }
 
-                        // Fine primo tempo
-                        if (prev.status === '1H' && status === 'HT') {
-                            fireLocalNotification('halftime', commonData);
-                        }
+                        if (prev) {
+                            // Fine primo tempo
+                            if (prev.status === '1H' && status === 'HT') {
+                                fireLocalNotification('halftime', commonData);
+                            }
 
-                        // Inizio secondo tempo
-                        if (prev.status === 'HT' && status === '2H') {
-                            fireLocalNotification('second', commonData);
-                        }
+                            // Inizio secondo tempo
+                            if (prev.status === 'HT' && status === '2H') {
+                                fireLocalNotification('second', commonData);
+                            }
 
-                        // Fine partita (non finita prima, finita ora)
-                        if (!isFinishedPrev && isFinishedNow) {
-                            fireLocalNotification('end', commonData);
-                        }
+                            // Fine partita
+                            if (!isFinishedPrev && isFinishedNow) {
+                                fireLocalNotification('end', commonData);
+                            }
 
-                        // Goal (cambiato uno dei due punteggi)
-                        if (homeChanged || awayChanged) {
-                            // Evita di segnalare goal dopo il fischio finale
-                            if (!isFinishedNow) {
-                                fireLocalNotification('goal', commonData);
+                            // Goal / Rettifica punteggio
+                            if (homeChanged || awayChanged) {
+                                if (!isFinishedNow) {
+                                    if (currTotal > prevTotal) {
+                                        fireLocalNotification('goal', commonData);
+                                    } else if (currTotal < prevTotal) {
+                                        fireLocalNotification('correction', commonData);
+                                    }
+                                }
                             }
                         }
                     }
 
-                    // Aggiorna stato corrente
+                    // Salva stato corrente
                     prevState.set(id, current);
                 }
 
@@ -1135,7 +1152,7 @@
                     }
                 }
 
-                // === BOOTSTRAP: inizializza stato senza notificare passato ===
+                // === BOOTSTRAP: inizializza stato senza notificare il passato ===
                 (async function bootstrap() {
                     await fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' });
                 })().finally(() => {
@@ -1175,6 +1192,7 @@
             }
         })();
     </script>
+
 
 
     <script>
