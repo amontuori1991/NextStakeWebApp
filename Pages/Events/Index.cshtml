@@ -952,14 +952,7 @@
                     return;
                 }
 
-                      console.debug('Livescores inizializzati, fixture IDs:', ids);
 
-        // 🔴 Nuovo: se non c'è nessuna partita LIVE in pagina, non avviamo il polling
-        const anyLiveDom = document.querySelector('.list-group-item[data-live="1"]') !== null;
-        if (!anyLiveDom) {
-            console.debug('Livescores: nessun match LIVE in pagina, non avvio il polling.');
-            return;
-        }
 
 
                 function applyUpdate(it) {
@@ -1161,6 +1154,7 @@
                 }
 
           // === BOOTSTRAP: inizializza stato senza notificare il passato ===
+         // === BOOTSTRAP: inizializza stato senza notificare il passato ===
         (async function bootstrap() {
             await fetchAndApplyAll({ includeFinished: 1, status: 'FT,AET,PEN', scope: 'all' });
         })().finally(() => {
@@ -1168,28 +1162,16 @@
             let timerHandle = null;
 
             async function liveTick() {
-                // Aggiorna i live
+                // Aggiorna sempre lo stato delle partite visibili
                 await fetchAndApplyAll({});
-
-                // 🔴 Se dopo l'aggiornamento non c'è più nessun match live, fermiamo il polling
-                const anyLiveAfter = document.querySelector('.list-group-item[data-live="1"]') !== null;
-                if (!anyLiveAfter) {
-                    console.debug('Livescores: nessun match LIVE dopo l\'ultimo tick, fermo il polling.');
-                    stop();
-                }
             }
 
             function start() {
                 if (timerHandle) return;
 
-                // Se non c'è alcun live in questo momento, non ha senso partire
-                const anyLiveNow = document.querySelector('.list-group-item[data-live="1"]') !== null;
-                if (!anyLiveNow) {
-                    console.debug('Livescores: nessun match LIVE al momento dello start, non avvio il polling.');
-                    return;
-                }
-
-                liveTick(); // primo giro subito
+                // Primo giro subito
+                liveTick();
+                // Poi ogni LIVE_INTERVAL_MS
                 timerHandle = setInterval(liveTick, LIVE_INTERVAL_MS);
             }
 
@@ -1208,9 +1190,10 @@
                 }
             });
 
-            // Avvio iniziale (solo se ci sono live)
+            // Avvio iniziale
             start();
         });
+
 
             }
 
