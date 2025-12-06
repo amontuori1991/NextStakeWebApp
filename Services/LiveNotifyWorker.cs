@@ -30,7 +30,7 @@ namespace NextStakeWebApp.Services
         private readonly ILogger<LiveNotifyWorker> _logger;
 
         // intervallo tra un ciclo e l’altro
-        private static readonly TimeSpan Interval = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan Interval = TimeSpan.FromSeconds(40);
 
         private static readonly string[] LIVE_STATUSES = { "1H", "2H", "ET", "P", "BT", "LIVE", "HT" };
         private static readonly string[] FINISHED_STATUSES = { "FT", "AET", "PEN" };
