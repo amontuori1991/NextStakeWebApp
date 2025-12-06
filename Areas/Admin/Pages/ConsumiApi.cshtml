@@ -618,7 +618,7 @@
     // Se nel controller hai un endpoint /admin/api/consumi/provider-status,
     // questo blocco lo può interrogare ogni 15s.
     (function () {
-        const PROVIDER_REFRESH_MS = 15000;
+        const PROVIDER_REFRESH_MS = 30000;
 
         const currentEl = document.getElementById('provider-current');
         const limitDayEl = document.getElementById('provider-limit-day');
