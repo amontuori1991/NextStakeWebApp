@@ -101,6 +101,12 @@ namespace NextStakeWebApp.Pages.Match
             public List<OddsRow> Odds { get; set; } = new();
             public List<int> BetIds { get; set; } = new();
 
+            // 🔹 Nuovo tab "Squadre & Giocatori"
+            public List<PlayerListItem> HomePlayers { get; set; } = new();
+            public List<PlayerListItem> AwayPlayers { get; set; } = new();
+
+            // Giocatore selezionato dal tab (quando clicchi "Apri")
+            public PlayerListItem? SelectedPlayer { get; set; }
 
         }
         public class TableStandingRow
@@ -117,6 +123,63 @@ namespace NextStakeWebApp.Pages.Match
             public int GA { get; set; }
             public int Diff { get; set; }
         }
+
+        // 🔹 Rappresenta un giocatore (anagrafica + principali statistiche)
+        //  Mappato da players + players_statistics su Neon
+        public class PlayerListItem
+        {
+            public int PlayerId { get; set; }
+            public int TeamId { get; set; }
+
+            // Anagrafica
+            public string Name { get; set; } = "";
+            public int? Age { get; set; }
+            public string? Nationality { get; set; }
+            public string? Height { get; set; }
+            public string? Weight { get; set; }
+            public bool Injured { get; set; }
+            public string? Photo { get; set; }
+
+            // Statistiche principali
+            public int Minutes { get; set; }
+            public string? Rating { get; set; }
+
+            public int ShotsTotal { get; set; }
+            public int ShotsOn { get; set; }
+
+            public int GoalsTotal { get; set; }
+            public int GoalsConceded { get; set; }
+            public int Assists { get; set; }
+            public int GoalsSaves { get; set; }
+
+            public int PassesTotal { get; set; }
+            public int PassesKey { get; set; }
+            public int PassesAccuracy { get; set; }
+
+            public int TacklesTotal { get; set; }
+            public int TacklesBlocks { get; set; }
+            public int Interceptions { get; set; }
+
+            public int DuelsTotal { get; set; }
+            public int DuelsWon { get; set; }
+
+            public int DribblesAttempts { get; set; }
+            public int DribblesSuccess { get; set; }
+            public int DribblesPast { get; set; }
+
+            public int FoulsDrawn { get; set; }
+            public int FoulsCommitted { get; set; }
+
+            public int CardsYellow { get; set; }
+            public int CardsRed { get; set; }
+
+            public int PenaltyWon { get; set; }
+            public int PenaltyCommitted { get; set; }
+            public int PenaltyScored { get; set; }
+            public int PenaltyMissed { get; set; }
+            public int PenaltySaved { get; set; }
+        }
+
         public class OddsRow
         {
             public int Bookmaker { get; set; }       // es. 8 = Bet365 (per ora numero)
@@ -1542,12 +1605,13 @@ TESTO DA RISCRIVERE:
             StatusMessage = "✅ Immagine e testo inviati su Telegram (Idee).";
             return RedirectToPage(new { id });
         }
- 
+
 
         // =======================
         // GET: carica dati + analyses da Neon
         // =======================
-        public async Task<IActionResult> OnGetAsync(long id)
+        public async Task<IActionResult> OnGetAsync(long id, int? playerId = null)
+
         {
             var dto = await (
                 from mm in _read.Matches
@@ -1654,6 +1718,31 @@ TESTO DA RISCRIVERE:
                 Odds = odds,
                 BetIds = betIds
             };
+            // 🔹 Nuovo: carica i giocatori per le due squadre (tab "Squadre & Giocatori")
+            // 🔹 Nuovo: carica i giocatori per le due squadre (usando il NOME squadra)
+            // 🔹 carica i giocatori per le due squadre (tab "Squadre & Giocatori")
+            if (Data.HomeId > 0)
+            {
+                Data.HomePlayers = await LoadPlayersForTeamAsync(Data.HomeId);
+            }
+
+            if (Data.AwayId > 0)
+            {
+                Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId);
+            }
+
+
+
+            // 🔹 Se è stato passato un playerId, selezioniamo il giocatore
+            if (playerId.HasValue)
+            {
+                var allPlayers = Data.HomePlayers
+                    .Concat(Data.AwayPlayers)
+                    .ToList();
+
+                Data.SelectedPlayer = allPlayers
+                    .FirstOrDefault(p => p.PlayerId == playerId.Value);
+            }
 
             return Page();
         }
@@ -2104,6 +2193,130 @@ TESTO DA RISCRIVERE:
         // ------------------------ NUMERIC HELPERS ------------------------
         // Calcola Pronostico Cartellini Totali usando
         // la stessa logica del tab Analisi (Razor)
+        // 🔹 Carica giocatori + statistiche da Neon per una squadra
+        // 🔹 Carica giocatori + statistiche da Neon usando il NOME squadra
+        private async Task<List<PlayerListItem>> LoadPlayersForTeamAsync(long teamId)
+        {
+            var result = new List<PlayerListItem>();
+
+            if (teamId <= 0)
+                return result;
+
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT
+            p.id                       AS ""PlayerId"",
+            ps.teamid                  AS ""TeamId"",
+            COALESCE(NULLIF(p.name, ''), 
+                     TRIM(COALESCE(p.firstname, '') || ' ' || COALESCE(p.lastname, ''))) AS ""Name"",
+            p.age                      AS ""Age"",
+            p.nationality              AS ""Nationality"",
+            p.height                   AS ""Height"",
+            p.weight                   AS ""Weight"",
+            p.injured                  AS ""Injured"",
+            p.photo                    AS ""Photo"",
+            ps.minutes                 AS ""Minutes"",
+            ps.rating                  AS ""Rating"",
+            ps.shotstotal              AS ""ShotsTotal"",
+            ps.shotson                 AS ""ShotsOn"",
+            ps.goalstotal              AS ""GoalsTotal"",
+            ps.goalsconceded           AS ""GoalsConceded"",
+            ps.assists                 AS ""Assists"",
+            ps.goalssaves              AS ""GoalsSaves"",
+            ps.passestotal             AS ""PassesTotal"",
+            ps.passeskey               AS ""PassesKey"",
+            ps.passesaccuracy          AS ""PassesAccuracy"",
+            ps.tacklestotal            AS ""TacklesTotal"",
+            ps.tacklesblocks           AS ""TacklesBlocks"",
+            ps.interceptions           AS ""Interceptions"",
+            ps.duelstotal              AS ""DuelsTotal"",
+            ps.duelswon                AS ""DuelsWon"",
+            ps.dribblesattempts        AS ""DribblesAttempts"",
+            ps.dribblessuccess         AS ""DribblesSuccess"",
+            ps.dribblespast            AS ""DribblesPast"",
+            ps.foulsdrawn              AS ""FoulsDrawn"",
+            ps.foulscommitted          AS ""FoulsCommitted"",
+            ps.cardsyellow             AS ""CardsYellow"",
+            ps.cardsred                AS ""CardsRed"",
+            ps.penaltywon              AS ""PenaltyWon"",
+            ps.penaltycommitted        AS ""PenaltyCommitted"",
+            ps.penaltyscored           AS ""PenaltyScored"",
+            ps.penaltymissed           AS ""PenaltyMissed"",
+            ps.penaltysaved            AS ""PenaltySaved""
+        FROM players_statistics ps
+        INNER JOIN players p ON p.id = ps.playerid
+        WHERE ps.teamid = @teamId
+        ORDER BY ""Name"";
+    ";
+
+            cmd.Parameters.AddWithValue("teamId", (int)teamId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var item = new PlayerListItem
+                {
+                    PlayerId = GetField<int>(reader, "PlayerId"),
+                    TeamId = GetField<int>(reader, "TeamId"),
+
+                    Name = GetField<string>(reader, "Name") ?? "",
+                    Age = GetField<int?>(reader, "Age"),
+                    Nationality = GetField<string>(reader, "Nationality"),
+                    Height = GetField<string>(reader, "Height"),
+                    Weight = GetField<string>(reader, "Weight"),
+                    Injured = GetField<bool?>(reader, "Injured") ?? false,
+                    Photo = GetField<string>(reader, "Photo"),
+
+                    Minutes = GetField<int?>(reader, "Minutes") ?? 0,
+                    Rating = GetField<string>(reader, "Rating"),
+
+                    ShotsTotal = GetField<int?>(reader, "ShotsTotal") ?? 0,
+                    ShotsOn = GetField<int?>(reader, "ShotsOn") ?? 0,
+
+                    GoalsTotal = GetField<int?>(reader, "GoalsTotal") ?? 0,
+                    GoalsConceded = GetField<int?>(reader, "GoalsConceded") ?? 0,
+                    Assists = GetField<int?>(reader, "Assists") ?? 0,
+                    GoalsSaves = GetField<int?>(reader, "GoalsSaves") ?? 0,
+
+                    PassesTotal = GetField<int?>(reader, "PassesTotal") ?? 0,
+                    PassesKey = GetField<int?>(reader, "PassesKey") ?? 0,
+                    PassesAccuracy = GetField<int?>(reader, "PassesAccuracy") ?? 0,
+
+                    TacklesTotal = GetField<int?>(reader, "TacklesTotal") ?? 0,
+                    TacklesBlocks = GetField<int?>(reader, "TacklesBlocks") ?? 0,
+                    Interceptions = GetField<int?>(reader, "Interceptions") ?? 0,
+
+                    DuelsTotal = GetField<int?>(reader, "DuelsTotal") ?? 0,
+                    DuelsWon = GetField<int?>(reader, "DuelsWon") ?? 0,
+
+                    DribblesAttempts = GetField<int?>(reader, "DribblesAttempts") ?? 0,
+                    DribblesSuccess = GetField<int?>(reader, "DribblesSuccess") ?? 0,
+                    DribblesPast = GetField<int?>(reader, "DribblesPast") ?? 0,
+
+                    FoulsDrawn = GetField<int?>(reader, "FoulsDrawn") ?? 0,
+                    FoulsCommitted = GetField<int?>(reader, "FoulsCommitted") ?? 0,
+
+                    CardsYellow = GetField<int?>(reader, "CardsYellow") ?? 0,
+                    CardsRed = GetField<int?>(reader, "CardsRed") ?? 0,
+
+                    PenaltyWon = GetField<int?>(reader, "PenaltyWon") ?? 0,
+                    PenaltyCommitted = GetField<int?>(reader, "PenaltyCommitted") ?? 0,
+                    PenaltyScored = GetField<int?>(reader, "PenaltyScored") ?? 0,
+                    PenaltyMissed = GetField<int?>(reader, "PenaltyMissed") ?? 0,
+                    PenaltySaved = GetField<int?>(reader, "PenaltySaved") ?? 0
+                };
+
+                result.Add(item);
+            }
+
+            return result;
+        }
+
+
         private static decimal? ComputePronosticoCartelliniTotali(
     string? esitoCards,
     IDictionary<string, string>? cardsMetrics)

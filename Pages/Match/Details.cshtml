@@ -353,7 +353,19 @@
                 Corner
             </button>
         </li>
-    </ul>
+
+
+    <!-- Nuova tab principale: Squadre & Giocatori -->
+<li class="nav-item group-anal">
+    <button class="nav-link"
+            id="tab-teams-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#tab-teams"
+            type="button">
+        Squadre &amp; Giocatori
+    </button>
+</li>
+</ul>
 
     <div class="tab-content border-start border-end border-bottom p-3">
         <!-- PRONOSTICI: Pronostici consigliati -->
@@ -3172,8 +3184,232 @@ switch (esitoCards)
                     </form>
                 }
             }
+    </div>
+
+<!-- TAB: Squadre & Giocatori -->
+<div class="tab-pane fade" id="tab-teams" role="tabpanel" aria-labelledby="tab-teams-tab">
+@{
+    var homePlayers = Model.Data.HomePlayers?
+        .GroupBy(p => p.PlayerId)
+        .Select(g => g.First())
+        .OrderBy(p => p.Name)
+        .ToList();
+
+    var awayPlayers = Model.Data.AwayPlayers?
+        .GroupBy(p => p.PlayerId)
+        .Select(g => g.First())
+        .OrderBy(p => p.Name)
+        .ToList();
+}
+
+    <div class="row g-3 mb-4">
+        <!-- Colonna Home -->
+        <div class="col-md-6">
+            <h6 class="mb-2">@Model.Data.Home</h6>
+
+            @if (homePlayers == null || !homePlayers.Any())
+            {
+                <div class="text-muted small">Nessun dato giocatori per questa squadra.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Giocatore</th>
+                                <th class="text-end">Dettagli</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var p in homePlayers)
+                        {
+                            <tr>
+                                <td>@p.Name</td>
+                                <td class="text-end">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#playerModal-@p.PlayerId">
+                                        Apri
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <!-- Colonna Away -->
+        <div class="col-md-6">
+            <h6 class="mb-2">@Model.Data.Away</h6>
+
+            @if (awayPlayers == null || !awayPlayers.Any())
+            {
+                <div class="text-muted small">Nessun dato giocatori per questa squadra.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Giocatore</th>
+                                <th class="text-end">Dettagli</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var p in awayPlayers)
+                        {
+                            <tr>
+                                <td>@p.Name</td>
+                                <td class="text-end">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#playerModal-@p.PlayerId">
+                                        Apri
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
     </div>
+
+    @* MODAL GIOCATORI (Home + Away, una modale per ogni giocatore, ottimizzata mobile) *@
+@if ((homePlayers != null && homePlayers.Any()) ||
+     (awayPlayers != null && awayPlayers.Any()))
+{
+    var allPlayers = new List<NextStakeWebApp.Pages.Match.DetailsModel.PlayerListItem>();
+    if (homePlayers != null)
+        allPlayers.AddRange(homePlayers);
+    if (awayPlayers != null)
+        allPlayers.AddRange(awayPlayers);
+
+    var distinctPlayers = allPlayers
+        .GroupBy(p => p.PlayerId)
+        .Select(g => g.First())
+        .ToList();
+
+    foreach (var pl in distinctPlayers)
+    {
+        <div class="modal fade" id="playerModal-@pl.PlayerId" tabindex="-1"
+             aria-labelledby="playerModalLabel-@pl.PlayerId" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content bg-dark text-light">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="playerModalLabel-@pl.PlayerId">@pl.Name</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-12 text-center">
+                                    @if (!string.IsNullOrWhiteSpace(pl.Photo))
+                                    {
+                                        <img src="@pl.Photo"
+                                             alt="@pl.Name"
+                                             class="img-fluid rounded mb-3"
+                                             style="max-height: 260px; object-fit: cover;" />
+                                    }
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="card mb-3">
+                                        <div class="card-body p-2">
+                                            <p class="mb-1">
+                                                <strong>Nazionalità:</strong>
+                                                @if (!string.IsNullOrWhiteSpace(pl.Nationality))
+                                                {
+                                                    @pl.Nationality
+                                                }
+                                                else
+                                                {
+                                                    @:n/d
+                                                }
+                                            </p>
+                                            <p class="mb-1">
+                                                <strong>Età:</strong> @(pl.Age?.ToString() ?? "n/d")
+                                            </p>
+                                            <p class="mb-1">
+                                                <strong>Altezza:</strong> @(string.IsNullOrWhiteSpace(pl.Height) ? "n/d" : pl.Height)
+                                            </p>
+                                            <p class="mb-1">
+                                                <strong>Peso:</strong> @(string.IsNullOrWhiteSpace(pl.Weight) ? "n/d" : pl.Weight)
+                                            </p>
+                                            <p class="mb-0">
+                                                <strong>Infortunato:</strong> @(pl.Injured ? "Sì" : "No")
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            Statistiche giocatore
+                                        </div>
+                                        <div class="card-body p-0">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-striped mb-0">
+                                                    <tbody>
+                                                        <tr><th>Minuti</th><td class="text-end">@pl.Minutes</td></tr>
+                                                        <tr><th>Rating</th><td class="text-end">@((string.IsNullOrWhiteSpace(pl.Rating) ? "n/d" : pl.Rating))</td></tr>
+
+                                                        <tr><th>Tiri totali</th><td class="text-end">@pl.ShotsTotal</td></tr>
+                                                        <tr><th>Tiri in porta</th><td class="text-end">@pl.ShotsOn</td></tr>
+
+                                                        <tr><th>Goal</th><td class="text-end">@pl.GoalsTotal</td></tr>
+                                                        <tr><th>Assist</th><td class="text-end">@pl.Assists</td></tr>
+                                                        <tr><th>Goal subiti</th><td class="text-end">@pl.GoalsConceded</td></tr>
+                                                        <tr><th>Parate</th><td class="text-end">@pl.GoalsSaves</td></tr>
+
+                                                        <tr><th>Passaggi totali</th><td class="text-end">@pl.PassesTotal</td></tr>
+                                                        <tr><th>Passaggi chiave</th><td class="text-end">@pl.PassesKey</td></tr>
+                                                        <tr><th>Precisione passaggi</th><td class="text-end">@pl.PassesAccuracy%</td></tr>
+
+                                                        <tr><th>Contrasti</th><td class="text-end">@pl.TacklesTotal</td></tr>
+                                                        <tr><th>Blocchi</th><td class="text-end">@pl.TacklesBlocks</td></tr>
+                                                        <tr><th>Intercetti</th><td class="text-end">@pl.Interceptions</td></tr>
+
+                                                        <tr><th>Duelli totali</th><td class="text-end">@pl.DuelsTotal</td></tr>
+                                                        <tr><th>Duelli vinti</th><td class="text-end">@pl.DuelsWon</td></tr>
+
+                                                        <tr><th>Dribbling tentati</th><td class="text-end">@pl.DribblesAttempts</td></tr>
+                                                        <tr><th>Dribbling riusciti</th><td class="text-end">@pl.DribblesSuccess</td></tr>
+                                                        <tr><th>Volte superato</th><td class="text-end">@pl.DribblesPast</td></tr>
+
+                                                        <tr><th>Falli subiti</th><td class="text-end">@pl.FoulsDrawn</td></tr>
+                                                        <tr><th>Falli commessi</th><td class="text-end">@pl.FoulsCommitted</td></tr>
+
+                                                        <tr><th>Gialli</th><td class="text-end">@pl.CardsYellow</td></tr>
+                                                        <tr><th>Rossi</th><td class="text-end">@pl.CardsRed</td></tr>
+
+                                                        <tr><th>Rigori vinti</th><td class="text-end">@pl.PenaltyWon</td></tr>
+                                                        <tr><th>Rigori commessi</th><td class="text-end">@pl.PenaltyCommitted</td></tr>
+                                                        <tr><th>Rigori segnati</th><td class="text-end">@pl.PenaltyScored</td></tr>
+                                                        <tr><th>Rigori sbagliati</th><td class="text-end">@pl.PenaltyMissed</td></tr>
+                                                        <tr><th>Rigori parati</th><td class="text-end">@pl.PenaltySaved</td></tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div> <!-- row -->
+                        </div> <!-- modal-body -->
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
 
      <!-- Script per gruppi -->
     <script>
