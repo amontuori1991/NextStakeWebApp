@@ -1723,12 +1723,12 @@ TESTO DA RISCRIVERE:
             // 🔹 carica i giocatori per le due squadre (tab "Squadre & Giocatori")
             if (Data.HomeId > 0)
             {
-                Data.HomePlayers = await LoadPlayersForTeamAsync(Data.HomeId);
+                Data.HomePlayers = await LoadPlayersForTeamAsync(Data.HomeId,Data.Season,Data.LeagueId);
             }
 
             if (Data.AwayId > 0)
             {
-                Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId);
+                Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId,Data.Season, Data.LeagueId);
             }
 
 
@@ -2195,7 +2195,7 @@ TESTO DA RISCRIVERE:
         // la stessa logica del tab Analisi (Razor)
         // 🔹 Carica giocatori + statistiche da Neon per una squadra
         // 🔹 Carica giocatori + statistiche da Neon usando il NOME squadra
-        private async Task<List<PlayerListItem>> LoadPlayersForTeamAsync(long teamId)
+        private async Task<List<PlayerListItem>> LoadPlayersForTeamAsync(long teamId,int Season,int LeagueId)
         {
             var result = new List<PlayerListItem>();
 
@@ -2208,52 +2208,79 @@ TESTO DA RISCRIVERE:
 
             var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT
-            p.id                       AS ""PlayerId"",
-            ps.teamid                  AS ""TeamId"",
-            COALESCE(NULLIF(p.name, ''), 
-                     TRIM(COALESCE(p.firstname, '') || ' ' || COALESCE(p.lastname, ''))) AS ""Name"",
-            p.age                      AS ""Age"",
-            p.nationality              AS ""Nationality"",
-            p.height                   AS ""Height"",
-            p.weight                   AS ""Weight"",
-            p.injured                  AS ""Injured"",
-            p.photo                    AS ""Photo"",
-            ps.minutes                 AS ""Minutes"",
-            ps.rating                  AS ""Rating"",
-            ps.shotstotal              AS ""ShotsTotal"",
-            ps.shotson                 AS ""ShotsOn"",
-            ps.goalstotal              AS ""GoalsTotal"",
-            ps.goalsconceded           AS ""GoalsConceded"",
-            ps.assists                 AS ""Assists"",
-            ps.goalssaves              AS ""GoalsSaves"",
-            ps.passestotal             AS ""PassesTotal"",
-            ps.passeskey               AS ""PassesKey"",
-            ps.passesaccuracy          AS ""PassesAccuracy"",
-            ps.tacklestotal            AS ""TacklesTotal"",
-            ps.tacklesblocks           AS ""TacklesBlocks"",
-            ps.interceptions           AS ""Interceptions"",
-            ps.duelstotal              AS ""DuelsTotal"",
-            ps.duelswon                AS ""DuelsWon"",
-            ps.dribblesattempts        AS ""DribblesAttempts"",
-            ps.dribblessuccess         AS ""DribblesSuccess"",
-            ps.dribblespast            AS ""DribblesPast"",
-            ps.foulsdrawn              AS ""FoulsDrawn"",
-            ps.foulscommitted          AS ""FoulsCommitted"",
-            ps.cardsyellow             AS ""CardsYellow"",
-            ps.cardsred                AS ""CardsRed"",
-            ps.penaltywon              AS ""PenaltyWon"",
-            ps.penaltycommitted        AS ""PenaltyCommitted"",
-            ps.penaltyscored           AS ""PenaltyScored"",
-            ps.penaltymissed           AS ""PenaltyMissed"",
-            ps.penaltysaved            AS ""PenaltySaved""
-        FROM players_statistics ps
-        INNER JOIN players p ON p.id = ps.playerid
-        WHERE ps.teamid = @teamId
-        ORDER BY ""Name"";
+SELECT
+COUNT (*) AS ""Partite Giocate"",
+    p.id  AS ""PlayerId"",
+    ps.teamid AS ""TeamId"",
+
+    COALESCE(NULLIF(p.name, ''),
+        TRIM(COALESCE(p.firstname, '') || ' ' || COALESCE(p.lastname, ''))
+    ) AS ""Name"",
+
+    p.age          AS ""Age"",
+    p.nationality  AS ""Nationality"",
+    p.height       AS ""Height"",
+    p.weight       AS ""Weight"",
+    p.injured      AS ""Injured"",
+    p.photo        AS ""Photo"",
+
+    ROUND(AVG(ps.minutes::numeric), 2)             AS ""Minutes"",
+    ROUND(AVG(ps.rating::numeric), 2)              AS ""Rating"",
+    ROUND(AVG(ps.shotstotal::numeric), 2)          AS ""ShotsTotal"",
+    ROUND(AVG(ps.shotson::numeric), 2)             AS ""ShotsOn"",
+    ROUND(AVG(ps.goalstotal::numeric), 2)          AS ""GoalsTotal"",
+    ROUND(AVG(ps.goalsconceded::numeric), 2)       AS ""GoalsConceded"",
+    ROUND(AVG(ps.assists::numeric), 2)             AS ""Assists"",
+    ROUND(AVG(ps.goalssaves::numeric), 2)          AS ""GoalsSaves"",
+    ROUND(AVG(ps.passestotal::numeric), 2)         AS ""PassesTotal"",
+    ROUND(AVG(ps.passeskey::numeric), 2)           AS ""PassesKey"",
+    ROUND(AVG(ps.passesaccuracy::numeric), 2)      AS ""PassesAccuracy"",
+    ROUND(AVG(ps.tacklestotal::numeric), 2)        AS ""TacklesTotal"",
+    ROUND(AVG(ps.tacklesblocks::numeric), 2)       AS ""TacklesBlocks"",
+    ROUND(AVG(ps.interceptions::numeric), 2)       AS ""Interceptions"",
+    ROUND(AVG(ps.duelstotal::numeric), 2)          AS ""DuelsTotal"",
+    ROUND(AVG(ps.duelswon::numeric), 2)            AS ""DuelsWon"",
+    ROUND(AVG(ps.dribblesattempts::numeric), 2)    AS ""DribblesAttempts"",
+    ROUND(AVG(ps.dribblessuccess::numeric), 2)     AS ""DribblesSuccess"",
+    ROUND(AVG(ps.dribblespast::numeric), 2)        AS ""DribblesPast"",
+    ROUND(AVG(ps.foulsdrawn::numeric), 2)          AS ""FoulsDrawn"",
+    ROUND(AVG(ps.foulscommitted::numeric), 2)      AS ""FoulsCommitted"",
+    ROUND(AVG(ps.cardsyellow::numeric), 2)         AS ""CardsYellow"",
+    ROUND(AVG(ps.cardsred::numeric), 2)            AS ""CardsRed"",
+    ROUND(AVG(ps.penaltywon::numeric), 2)          AS ""PenaltyWon"",
+    ROUND(AVG(ps.penaltycommitted::numeric), 2)    AS ""PenaltyCommitted"",
+    ROUND(AVG(ps.penaltyscored::numeric), 2)       AS ""PenaltyScored"",
+    ROUND(AVG(ps.penaltymissed::numeric), 2)       AS ""PenaltyMissed"",
+    ROUND(AVG(ps.penaltysaved::numeric), 2)        AS ""PenaltySaved""
+
+FROM players_statistics ps
+INNER JOIN players p ON p.id = ps.playerid
+INNER JOIN matches m ON ps.id = m.id
+
+WHERE ps.teamid = @teamId
+  AND m.season = @Season
+  AND m.leagueid = @LeagueId
+
+GROUP BY
+    p.id,
+    ps.teamid,
+    p.name,
+    p.firstname,
+    p.lastname,
+    p.age,
+    p.nationality,
+    p.height,
+    p.weight,
+    p.injured,
+    p.photo
+
+ORDER BY ""Name"";
+
     ";
 
             cmd.Parameters.AddWithValue("teamId", (int)teamId);
+            cmd.Parameters.AddWithValue("Season", (int)Season);
+            cmd.Parameters.AddWithValue("LeagueId", (int)LeagueId);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
