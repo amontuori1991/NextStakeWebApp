@@ -206,6 +206,39 @@ namespace NextStakeWebApp.Pages.Events
                 LeagueFlag = r.Flag,
                 KickoffLocal = DateTime.SpecifyKind(r.Date, DateTimeKind.Unspecified) // manteniamo "locale" senza offset
             }).ToList();
+            // 🔚 Sovrascrivo risultati/stato con quelli definitivi da LiveMatchStates (FT/AET/PEN)
+            var matchIdsInPage = Rows
+                .Select(r => (int)r.MatchId)   // LiveMatchStates.MatchId è int
+                .Distinct()
+                .ToList();
+
+            if (matchIdsInPage.Count > 0)
+            {
+                var finalStates = await _write.LiveMatchStates
+                    .Where(s =>
+                        matchIdsInPage.Contains(s.MatchId) &&
+                        (s.LastStatus == "FT" || s.LastStatus == "AET" || s.LastStatus == "PEN"))
+                    .ToListAsync();
+
+                var finalById = finalStates.ToDictionary(s => s.MatchId, s => s);
+
+                foreach (var row in Rows)
+                {
+                    var key = (int)row.MatchId;
+                    if (!finalById.TryGetValue(key, out var st))
+                        continue;
+
+                    // Stato finale (non live → niente rosso lampeggiante)
+                    row.StatusShort = st.LastStatus;
+
+                    // Gol finali
+                    if (st.LastHome.HasValue)
+                        row.HomeGoal = st.LastHome;
+
+                    if (st.LastAway.HasValue)
+                        row.AwayGoal = st.LastAway;
+                }
+            }
 
             // Nazioni disponibili per il giorno (stessa finestra locale)
             var countriesQuery =
