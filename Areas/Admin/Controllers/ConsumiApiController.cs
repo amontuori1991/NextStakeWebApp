@@ -117,8 +117,7 @@ namespace NextStakeWebApp.Areas.Admin.Controllers
 
             var client = _httpFactory.CreateClient("ApiSports");
 
-            // Se hai già BaseAddress = "https://v3.football.api-sports.io/"
-            // basta "status"
+            // BaseAddress già = https://v3.football.api-sports.io/
             var req = new HttpRequestMessage(HttpMethod.Get, "status");
             req.Headers.Add("x-apisports-key", apiKey);
 
@@ -144,49 +143,53 @@ namespace NextStakeWebApp.Areas.Admin.Controllers
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                // Struttura tipica API-FOOTBALL:
-                // {
-                //   "response": [
-                //     {
-                //       "subscription": {
-                //          "plan": "...",
-                //          "requests": { "current": ..., "limit_day": ... }
-                //       },
-                //       "account": { "email": "..." }
-                //     }
-                //   ]
-                // }
-                if (root.TryGetProperty("response", out var respArr) &&
-                    respArr.ValueKind == JsonValueKind.Array &&
-                    respArr.GetArrayLength() > 0)
+                // ⚠️ response è un oggetto, NON un array
+                if (root.TryGetProperty("response", out var respObj) &&
+                    respObj.ValueKind == JsonValueKind.Object)
                 {
-                    var obj = respArr[0];
-
-                    if (obj.TryGetProperty("subscription", out var sub))
+                    // requests è a questo livello: response.requests
+                    if (respObj.TryGetProperty("requests", out var reqObj) &&
+                        reqObj.ValueKind == JsonValueKind.Object)
                     {
-                        if (sub.TryGetProperty("requests", out var reqObj))
+                        if (reqObj.TryGetProperty("current", out var curEl) &&
+                            curEl.TryGetInt32(out var cur))
                         {
-                            if (reqObj.TryGetProperty("current", out var curEl) && curEl.TryGetInt32(out var cur))
-                                requestsCurrent = cur;
-                            if (reqObj.TryGetProperty("limit_day", out var limEl) && limEl.TryGetInt32(out var lim))
-                                requestsLimitDay = lim;
+                            requestsCurrent = cur;
                         }
 
-                        if (sub.TryGetProperty("plan", out var planEl) && planEl.ValueKind == JsonValueKind.String)
-                            plan = planEl.GetString();
+                        if (reqObj.TryGetProperty("limit_day", out var limEl) &&
+                            limEl.TryGetInt32(out var lim))
+                        {
+                            requestsLimitDay = lim;
+                        }
                     }
 
-                    if (obj.TryGetProperty("account", out var acc) &&
-                        acc.TryGetProperty("email", out var emailEl) &&
-                        emailEl.ValueKind == JsonValueKind.String)
+                    // subscription.plan
+                    if (respObj.TryGetProperty("subscription", out var sub) &&
+                        sub.ValueKind == JsonValueKind.Object)
                     {
-                        accountEmail = emailEl.GetString();
+                        if (sub.TryGetProperty("plan", out var planEl) &&
+                            planEl.ValueKind == JsonValueKind.String)
+                        {
+                            plan = planEl.GetString();
+                        }
+                    }
+
+                    // account.email
+                    if (respObj.TryGetProperty("account", out var acc) &&
+                        acc.ValueKind == JsonValueKind.Object)
+                    {
+                        if (acc.TryGetProperty("email", out var emailEl) &&
+                            emailEl.ValueKind == JsonValueKind.String)
+                        {
+                            accountEmail = emailEl.GetString();
+                        }
                     }
                 }
             }
             catch
             {
-                // in caso di JSON in formato diverso, non esplodiamo
+                // se cambiano formato, non esplodiamo
             }
 
             return Json(new
@@ -195,8 +198,9 @@ namespace NextStakeWebApp.Areas.Admin.Controllers
                 requestsCurrent = requestsCurrent ?? 0,
                 requestsLimitDay = requestsLimitDay ?? 0,
                 plan,
-                account = accountEmail
+                account = accountEmail   // se non vuoi la mail in UI puoi ometterlo qui
             });
         }
+
     }
 }

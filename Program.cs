@@ -1137,6 +1137,112 @@ app.MapGet("/admin/api/consumi", async (
 })
 .RequireAuthorization(); // stessa protezione della pagina Admin
 
+
+// === Status reale del provider (API-FOOTBALL /status) ===
+app.MapGet("/admin/api/consumi/provider-status", async (
+    IHttpClientFactory httpFactory,
+    IConfiguration cfg
+) =>
+{
+    var apiKey =
+        cfg["ApiSports:Key"] ??
+        Environment.GetEnvironmentVariable("ApiSports__Key");
+
+    if (string.IsNullOrWhiteSpace(apiKey))
+    {
+        return Results.Json(new
+        {
+            success = false,
+            message = "API key non configurata"
+        });
+    }
+
+    var client = httpFactory.CreateClient("ApiSports");
+
+    // BaseAddress = https://v3.football.api-sports.io/
+    var req = new HttpRequestMessage(HttpMethod.Get, "status");
+    req.Headers.Add("x-apisports-key", apiKey);
+
+    using var resp = await client.SendAsync(req);
+    if (!resp.IsSuccessStatusCode)
+    {
+        return Results.Json(new
+        {
+            success = false,
+            message = $"Status provider non disponibile (HTTP {(int)resp.StatusCode})"
+        });
+    }
+
+    var json = await resp.Content.ReadAsStringAsync();
+    Console.WriteLine("[STATUS][RAW] " + json); // 👈 utile la prima volta, poi puoi toglierlo
+
+    int? requestsCurrent = null;
+    int? requestsLimitDay = null;
+    string? plan = null;
+    string? accountEmail = null;
+
+    try
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        // ⚠️ nel tuo JSON response è UN OGGETTO, non un array
+        if (root.TryGetProperty("response", out var respObj) &&
+            respObj.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            // response.requests.current / limit_day
+            if (respObj.TryGetProperty("requests", out var reqObj) &&
+                reqObj.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (reqObj.TryGetProperty("current", out var curEl) &&
+                    curEl.TryGetInt32(out var cur))
+                {
+                    requestsCurrent = cur;
+                }
+
+                if (reqObj.TryGetProperty("limit_day", out var limEl) &&
+                    limEl.TryGetInt32(out var lim))
+                {
+                    requestsLimitDay = lim;
+                }
+            }
+
+            // response.subscription.plan
+            if (respObj.TryGetProperty("subscription", out var subObj) &&
+                subObj.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                subObj.TryGetProperty("plan", out var planEl) &&
+                planEl.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                plan = planEl.GetString();
+            }
+
+            // response.account.email
+            if (respObj.TryGetProperty("account", out var accObj) &&
+                accObj.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                accObj.TryGetProperty("email", out var emailEl) &&
+                emailEl.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                accountEmail = emailEl.GetString();
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[STATUS][PARSE ERROR] {ex.Message}");
+    }
+
+    return Results.Json(new
+    {
+        success = true,
+        requestsCurrent = requestsCurrent ?? 0,
+        requestsLimitDay = requestsLimitDay ?? 0,
+        plan,
+        account = accountEmail
+    });
+})
+.RequireAuthorization();
+
+
 app.Run();
 
 // --- Records per deserializzazione API-FOOTBALL ---

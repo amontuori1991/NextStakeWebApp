@@ -21,52 +21,9 @@
         </div>
     </div>
 
-    <p class="text-muted mb-3">Storico chiamate API</p>
+    <p class="text-muted mb-3">Monitoraggio consumi API</p>
 
-    <div class="row g-4 flex-column-reverse flex-lg-row">
-
-        <!-- Tabella -->
-        <div class="col-lg-6 d-flex align-items-center justify-content-center">
-            <div class="card h-100 w-100">
-                <div class="card-header">
-                    Storico chiamate API
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Data</th>
-                                    <th>Contatore</th>
-                                    <th>Origine</th>
-                                </tr>
-                            </thead>
-                            <tbody id="consumi-tbody">
-                                @if (!Model.Records.Any())
-                                {
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-4">
-                                            Nessun dato disponibile
-                                        </td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var r in Model.Records.OrderByDescending(x => x.Date))
-                                    {
-                                        <tr>
-                                            <td>@r.Date.ToString("dd/MM/yyyy")</td>
-                                            <td>@r.Counter</td>
-                                            <td>@r.Origin</td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="row g-4 mt-1">
 
         <!-- Grafico a torta -->
         <div class="col-lg-6">
@@ -115,10 +72,8 @@
             </div>
         </div>
 
-    </div> <!-- fine .row -->
-    <!-- Seconda sezione: status provider -->
-    <div class="row mt-4">
-        <div class="col-12">
+        <!-- Status API provider (dati reali) -->
+        <div class="col-lg-6">
             <div class="card h-100 w-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Status API provider (dati reali)</span>
@@ -157,9 +112,53 @@
                 </div>
             </div>
         </div>
-    </div>
 
-</div> <!-- fine .container -->
+        <!-- Tabella Storico chiamate API -->
+        <div class="col-12">
+            <div class="card h-100 w-100">
+                <div class="card-header">
+                    Storico chiamate API
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Contatore</th>
+                                    <th>Origine</th>
+                                </tr>
+                            </thead>
+                            <tbody id="consumi-tbody">
+                                @if (!Model.Records.Any())
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-4">
+                                            Nessun dato disponibile
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var r in Model.Records.OrderByDescending(x => x.Date))
+                                    {
+                                        <tr>
+                                            <td>@r.Date.ToString("dd/MM/yyyy")</td>
+                                            <td>@r.Counter</td>
+                                            <td>@r.Origin</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div> <!-- fine .row -->
+
+</div> <!-- fine .row -->
 
 
 <style>
