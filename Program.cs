@@ -290,31 +290,26 @@ app.MapGet("/api/livescores", async (
     IHttpClientFactory httpFactory,
     IConfiguration cfg,
     IMemoryCache cache,
-    ApplicationDbContext writeDb,           // 👈 AGGIUNTO
-    [FromQuery] string? ids // "123,456,789" (opzionale, usato solo per caching)
+    ApplicationDbContext writeDb,
+    [FromQuery] string? ids
 ) =>
-
 {
     var key = cfg["ApiSports:Key"];
     if (string.IsNullOrWhiteSpace(key))
         return Results.Problem("Missing ApiSports:Key");
 
-    // chiave di cache (anche se ids è null va bene uguale)
-    // chiave di cache (anche se ids è null va bene uguale)
     var cacheKey = $"livescores:{ids ?? "live-all"}";
     if (cache.TryGetValue(cacheKey, out object? cached) && cached is not null)
         return Results.Json(cached);
 
     var http = httpFactory.CreateClient("ApiSports");
-
-    // Per i live usiamo l'endpoint ufficiale "live=all"
     var url = "fixtures?live=all&timezone=Europe/Rome";
 
     var req = new HttpRequestMessage(HttpMethod.Get, url);
     req.Headers.Add("x-apisports-key", key);
 
     using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-    // 👇 LOG CALLCOUNTER per Origin = 'WidgetWebApp'
+
     const string origin = "WidgetWebApp";
     try
     {
@@ -327,36 +322,81 @@ app.MapGet("/api/livescores", async (
     }
     catch (Exception ex)
     {
-        // Non blocchiamo l'API se il log fallisce
         Console.WriteLine($"[CALLCOUNTER][WidgetWebApp] ERROR: {ex.Message}");
     }
 
     if (!resp.IsSuccessStatusCode)
         return Results.StatusCode((int)resp.StatusCode);
 
-    // NIENTE Console.WriteLine qui, solo deserializzazione
     var raw = await resp.Content.ReadAsStringAsync();
     var json = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
+
+    // 🔹 AGGIUNTA: aggiorna LiveMatchStates
+    if (json?.Response != null && json.Response.Count > 0)
+    {
+        var nowUtc = DateTime.UtcNow;
+
+        var liveIds = json.Response
+            .Select(f => f.Fixture.Id)
+            .Distinct()
+            .ToList();
+
+        if (liveIds.Count > 0)
+        {
+            var existingStates = await writeDb.LiveMatchStates
+                .Where(s => liveIds.Contains(s.MatchId))
+                .ToListAsync();
+
+            var stateById = existingStates.ToDictionary(s => s.MatchId, s => s);
+
+            foreach (var item in json.Response)
+            {
+                var id = item.Fixture.Id;
+                var status = (item.Fixture.Status.Short ?? "").Trim().ToUpperInvariant();
+                var home = item.Goals.Home;
+                var away = item.Goals.Away;
+                var elapsed = item.Fixture.Status.Elapsed;
+
+                if (!stateById.TryGetValue(id, out var st))
+                {
+                    st = new LiveMatchState
+                    {
+                        MatchId = id
+                    };
+                    writeDb.LiveMatchStates.Add(st);
+                    stateById[id] = st;
+                }
+
+                st.LastStatus = status;
+                st.LastHome = home;
+                st.LastAway = away;
+                st.LastElapsed = elapsed;
+                st.LastUpdatedUtc = nowUtc;
+
+            }
+
+            await writeDb.SaveChangesAsync();
+        }
+    }
 
     var payload = json?.Response?
         .Select(x => (object)new
         {
             id = x.Fixture.Id,
-            status = x.Fixture.Status.Short,    // es. "NS", "1H", "HT", "FT"
-            elapsed = x.Fixture.Status.Elapsed,  // minutaggio
+            status = x.Fixture.Status.Short,
+            elapsed = x.Fixture.Status.Elapsed,
             home = x.Goals.Home,
             away = x.Goals.Away
         })
         .ToList()
         ?? new List<object>();
 
-    // cache molto corta: 1 secondo
     cache.Set(cacheKey, payload, TimeSpan.FromSeconds(1));
 
     return Results.Json(payload);
-
 })
 .WithName("LiveScores");
+
 
 // === Push Notifications: salva / disattiva subscription ===
 app.MapPost("/api/push/subscribe", async (

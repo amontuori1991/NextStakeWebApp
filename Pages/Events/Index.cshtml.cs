@@ -214,22 +214,35 @@ namespace NextStakeWebApp.Pages.Events
 
             if (matchIdsInPage.Count > 0)
             {
-                var finalStates = await _write.LiveMatchStates
-                    .Where(s =>
-                        matchIdsInPage.Contains(s.MatchId) &&
-                        (s.LastStatus == "FT" || s.LastStatus == "AET" || s.LastStatus == "PEN"))
+                // 1) Prendo TUTTI gli stati per i match che sto mostrando
+                var allStates = await _write.LiveMatchStates
+                    .Where(s => matchIdsInPage.Contains(s.MatchId))
                     .ToListAsync();
 
-                var finalById = finalStates.ToDictionary(s => s.MatchId, s => s);
+                // 2) Normalizzo LastStatus (Trim + ToUpper) e tengo solo FT / AET / PEN
+                var finalStates = allStates
+                    .Where(s =>
+                        !string.IsNullOrWhiteSpace(s.LastStatus) &&
+                        new[]
+                        {
+                "FT",
+                "AET",
+                "PEN"
+                        }.Contains(s.LastStatus.Trim().ToUpperInvariant())
+                    )
+                    // se per assurdo ci fossero più righe per lo stesso MatchId, ne prendo una (la prima)
+                    .GroupBy(s => s.MatchId)
+                    .ToDictionary(g => g.Key, g => g.First());
 
+                // 3) Applico i valori finali alla lista Rows che va in pagina
                 foreach (var row in Rows)
                 {
                     var key = (int)row.MatchId;
-                    if (!finalById.TryGetValue(key, out var st))
+                    if (!finalStates.TryGetValue(key, out var st))
                         continue;
 
-                    // Stato finale (non live → niente rosso lampeggiante)
-                    row.StatusShort = st.LastStatus;
+                    // Stato finale (verrà usato anche da FormatScore e dalla logica live/non-live)
+                    row.StatusShort = st.LastStatus?.Trim().ToUpperInvariant() ?? row.StatusShort;
 
                     // Gol finali
                     if (st.LastHome.HasValue)
@@ -239,6 +252,7 @@ namespace NextStakeWebApp.Pages.Events
                         row.AwayGoal = st.LastAway;
                 }
             }
+
 
             // Nazioni disponibili per il giorno (stessa finestra locale)
             var countriesQuery =
