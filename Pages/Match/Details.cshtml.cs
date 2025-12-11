@@ -123,6 +123,46 @@ namespace NextStakeWebApp.Pages.Match
             public int GA { get; set; }
             public int Diff { get; set; }
         }
+        public class PlayerStatsSlice
+        {
+            public int Minutes { get; set; }
+            public string? Rating { get; set; }
+
+            public int ShotsTotal { get; set; }
+            public int ShotsOn { get; set; }
+
+            public int GoalsTotal { get; set; }
+            public int GoalsConceded { get; set; }
+            public int Assists { get; set; }
+            public int GoalsSaves { get; set; }
+
+            public int PassesTotal { get; set; }
+            public int PassesKey { get; set; }
+            public int PassesAccuracy { get; set; }
+
+            public int TacklesTotal { get; set; }
+            public int TacklesBlocks { get; set; }
+            public int Interceptions { get; set; }
+
+            public int DuelsTotal { get; set; }
+            public int DuelsWon { get; set; }
+
+            public int DribblesAttempts { get; set; }
+            public int DribblesSuccess { get; set; }
+            public int DribblesPast { get; set; }
+
+            public int FoulsDrawn { get; set; }
+            public int FoulsCommitted { get; set; }
+
+            public int CardsYellow { get; set; }
+            public int CardsRed { get; set; }
+
+            public int PenaltyWon { get; set; }
+            public int PenaltyCommitted { get; set; }
+            public int PenaltyScored { get; set; }
+            public int PenaltyMissed { get; set; }
+            public int PenaltySaved { get; set; }
+        }
 
         // 🔹 Rappresenta un giocatore (anagrafica + principali statistiche)
         //  Mappato da players + players_statistics su Neon
@@ -178,6 +218,15 @@ namespace NextStakeWebApp.Pages.Match
             public int PenaltyScored { get; set; }
             public int PenaltyMissed { get; set; }
             public int PenaltySaved { get; set; }
+
+            // 🔹 Slices aggiuntivi (calcolati da players_statistics + matches)
+            public PlayerStatsSlice Last5 { get; set; } = new();
+            public PlayerStatsSlice Last5Wins { get; set; } = new();
+            public PlayerStatsSlice Last5Losses { get; set; } = new();
+            public PlayerStatsSlice Last5Draws { get; set; } = new();
+            public PlayerStatsSlice HomeStats { get; set; } = new();
+            public PlayerStatsSlice AwayStats { get; set; } = new();
+
         }
 
         public class OddsRow
@@ -1731,6 +1780,15 @@ TESTO DA RISCRIVERE:
                 Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId,Data.Season, Data.LeagueId);
             }
 
+            //if (Data.HomePlayers != null && Data.HomePlayers.Count > 0)
+            //{
+            //    await EnrichPlayersSlicesAsync(Data.HomePlayers, Data.Season, Data.LeagueId);
+            //}
+
+            //if (Data.AwayPlayers != null && Data.AwayPlayers.Count > 0)
+            //{
+            //    await EnrichPlayersSlicesAsync(Data.AwayPlayers, Data.Season, Data.LeagueId);
+            //}
 
 
             // 🔹 Se è stato passato un playerId, selezioniamo il giocatore
@@ -1747,6 +1805,31 @@ TESTO DA RISCRIVERE:
             return Page();
         }
 
+        public async Task<IActionResult> OnGetPlayerStatsAsync(int playerId, int teamId, int season, int leagueId)
+        {
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            var last5 = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "last5");
+            var last5Wins = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "last5wins");
+            var last5Losses = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "last5losses");
+            var last5Draws = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "last5draws");
+            var homeStats = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "home");
+            var awayStats = await LoadPlayerStatsSliceAsync(conn, playerId, teamId, season, leagueId, "away");
+
+            var result = new
+            {
+                last5,
+                last5Wins,
+                last5Losses,
+                last5Draws,
+                homeStats,
+                awayStats
+            };
+
+            return new JsonResult(result);
+        }
 
         // =======================
         // ⭐ Toggle preferito
@@ -2343,6 +2426,221 @@ ORDER BY ""Name"";
             return result;
         }
 
+        private async Task<PlayerStatsSlice> LoadPlayerStatsSliceAsync(
+            NpgsqlConnection conn,
+            int playerId,
+            int teamId,
+            int season,
+            int leagueId,
+            string sliceKind)
+        {
+            var slice = new PlayerStatsSlice();
+
+            // Base SELECT: sempre ft (FT), stessa season/league e giocatore/squadra
+            var sql = @"
+SELECT
+    COALESCE(ROUND(AVG(ps.minutes::numeric), 2), 0)             AS ""Minutes"",
+    COALESCE(ROUND(AVG(ps.rating::numeric), 2), 0)              AS ""Rating"",
+    COALESCE(ROUND(AVG(ps.shotstotal::numeric), 2), 0)          AS ""ShotsTotal"",
+    COALESCE(ROUND(AVG(ps.shotson::numeric), 2), 0)             AS ""ShotsOn"",
+    COALESCE(ROUND(AVG(ps.goalstotal::numeric), 2), 0)          AS ""GoalsTotal"",
+    COALESCE(ROUND(AVG(ps.goalsconceded::numeric), 2), 0)       AS ""GoalsConceded"",
+    COALESCE(ROUND(AVG(ps.assists::numeric), 2), 0)             AS ""Assists"",
+    COALESCE(ROUND(AVG(ps.goalssaves::numeric), 2), 0)          AS ""GoalsSaves"",
+    COALESCE(ROUND(AVG(ps.passestotal::numeric), 2), 0)         AS ""PassesTotal"",
+    COALESCE(ROUND(AVG(ps.passeskey::numeric), 2), 0)           AS ""PassesKey"",
+    COALESCE(ROUND(AVG(ps.passesaccuracy::numeric), 2), 0)      AS ""PassesAccuracy"",
+    COALESCE(ROUND(AVG(ps.tacklestotal::numeric), 2), 0)        AS ""TacklesTotal"",
+    COALESCE(ROUND(AVG(ps.tacklesblocks::numeric), 2), 0)       AS ""TacklesBlocks"",
+    COALESCE(ROUND(AVG(ps.interceptions::numeric), 2), 0)       AS ""Interceptions"",
+    COALESCE(ROUND(AVG(ps.duelstotal::numeric), 2), 0)          AS ""DuelsTotal"",
+    COALESCE(ROUND(AVG(ps.duelswon::numeric), 2), 0)            AS ""DuelsWon"",
+    COALESCE(ROUND(AVG(ps.dribblesattempts::numeric), 2), 0)    AS ""DribblesAttempts"",
+    COALESCE(ROUND(AVG(ps.dribblessuccess::numeric), 2), 0)     AS ""DribblesSuccess"",
+    COALESCE(ROUND(AVG(ps.dribblespast::numeric), 2), 0)        AS ""DribblesPast"",
+    COALESCE(ROUND(AVG(ps.foulsdrawn::numeric), 2), 0)          AS ""FoulsDrawn"",
+    COALESCE(ROUND(AVG(ps.foulscommitted::numeric), 2), 0)      AS ""FoulsCommitted"",
+    COALESCE(ROUND(AVG(ps.cardsyellow::numeric), 2), 0)         AS ""CardsYellow"",
+    COALESCE(ROUND(AVG(ps.cardsred::numeric), 2), 0)            AS ""CardsRed"",
+    COALESCE(ROUND(AVG(ps.penaltywon::numeric), 2), 0)          AS ""PenaltyWon"",
+    COALESCE(ROUND(AVG(ps.penaltycommitted::numeric), 2), 0)    AS ""PenaltyCommitted"",
+    COALESCE(ROUND(AVG(ps.penaltyscored::numeric), 2), 0)       AS ""PenaltyScored"",
+    COALESCE(ROUND(AVG(ps.penaltymissed::numeric), 2), 0)       AS ""PenaltyMissed"",
+    COALESCE(ROUND(AVG(ps.penaltysaved::numeric), 2), 0)        AS ""PenaltySaved""
+FROM players_statistics ps
+JOIN matches m ON m.id = ps.id
+WHERE
+    ps.playerid = @PlayerId
+    AND ps.teamid = @TeamId
+    AND m.leagueid = @LeagueId
+    AND m.season = @Season
+    AND m.statusshort = 'FT'
+";
+
+            // Aggiungiamo i filtri specifici per la slice
+            string extraFilter = sliceKind switch
+            {
+                // Ultime 5 partite giocate dal giocatore (FT)
+                "last5" => @"
+    AND ps.id IN (
+        SELECT m2.id
+        FROM matches m2
+        JOIN players_statistics ps2 ON ps2.id = m2.id
+        WHERE m2.leagueid = @LeagueId
+          AND m2.season = @Season
+          AND m2.statusshort = 'FT'
+          AND ps2.playerid = @PlayerId
+          AND ps2.teamid = @TeamId
+        ORDER BY m2.date DESC
+        LIMIT 5
+    )",
+
+                // Ultime 5 VITTORIE del team del giocatore
+                "last5wins" => @"
+    AND ps.id IN (
+        SELECT m2.id
+        FROM matches m2
+        JOIN players_statistics ps2 ON ps2.id = m2.id
+        WHERE m2.leagueid = @LeagueId
+          AND m2.season = @Season
+          AND m2.statusshort = 'FT'
+          AND ps2.playerid = @PlayerId
+          AND ps2.teamid = @TeamId
+          AND (
+                (m2.homeid = ps2.teamid AND m2.homegoal > m2.awaygoal)
+             OR (m2.awayid = ps2.teamid AND m2.awaygoal > m2.homegoal)
+          )
+        ORDER BY m2.date DESC
+        LIMIT 5
+    )",
+
+                // Ultime 5 SCONFITTE
+                "last5losses" => @"
+    AND ps.id IN (
+        SELECT m2.id
+        FROM matches m2
+        JOIN players_statistics ps2 ON ps2.id = m2.id
+        WHERE m2.leagueid = @LeagueId
+          AND m2.season = @Season
+          AND m2.statusshort = 'FT'
+          AND ps2.playerid = @PlayerId
+          AND ps2.teamid = @TeamId
+          AND (
+                (m2.homeid = ps2.teamid AND m2.homegoal < m2.awaygoal)
+             OR (m2.awayid = ps2.teamid AND m2.awaygoal < m2.homegoal)
+          )
+        ORDER BY m2.date DESC
+        LIMIT 5
+    )",
+
+                // Ultime 5 PAREGGIATE (homegoal = awaygoal)
+                "last5draws" => @"
+    AND ps.id IN (
+        SELECT m2.id
+        FROM matches m2
+        JOIN players_statistics ps2 ON ps2.id = m2.id
+        WHERE m2.leagueid = @LeagueId
+          AND m2.season = @Season
+          AND m2.statusshort = 'FT'
+          AND ps2.playerid = @PlayerId
+          AND ps2.teamid = @TeamId
+          AND m2.homegoal = m2.awaygoal
+        ORDER BY m2.date DESC
+        LIMIT 5
+    )",
+
+                // Tutte le partite giocate IN CASA
+                "home" => @"
+    AND m.homeid = ps.teamid",
+
+                // Tutte le partite giocate IN TRASFERTA
+                "away" => @"
+    AND m.awayid = ps.teamid",
+
+                _ => ""
+            };
+
+            sql += extraFilter;
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            cmd.Parameters.AddWithValue("PlayerId", playerId);
+            cmd.Parameters.AddWithValue("TeamId", teamId);
+            cmd.Parameters.AddWithValue("Season", season);
+            cmd.Parameters.AddWithValue("LeagueId", leagueId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                slice.Minutes = GetField<int?>(reader, "Minutes") ?? 0;
+                slice.Rating = GetField<string>(reader, "Rating");
+
+                slice.ShotsTotal = GetField<int?>(reader, "ShotsTotal") ?? 0;
+                slice.ShotsOn = GetField<int?>(reader, "ShotsOn") ?? 0;
+
+                slice.GoalsTotal = GetField<int?>(reader, "GoalsTotal") ?? 0;
+                slice.GoalsConceded = GetField<int?>(reader, "GoalsConceded") ?? 0;
+                slice.Assists = GetField<int?>(reader, "Assists") ?? 0;
+                slice.GoalsSaves = GetField<int?>(reader, "GoalsSaves") ?? 0;
+
+                slice.PassesTotal = GetField<int?>(reader, "PassesTotal") ?? 0;
+                slice.PassesKey = GetField<int?>(reader, "PassesKey") ?? 0;
+                slice.PassesAccuracy = GetField<int?>(reader, "PassesAccuracy") ?? 0;
+
+                slice.TacklesTotal = GetField<int?>(reader, "TacklesTotal") ?? 0;
+                slice.TacklesBlocks = GetField<int?>(reader, "TacklesBlocks") ?? 0;
+                slice.Interceptions = GetField<int?>(reader, "Interceptions") ?? 0;
+
+                slice.DuelsTotal = GetField<int?>(reader, "DuelsTotal") ?? 0;
+                slice.DuelsWon = GetField<int?>(reader, "DuelsWon") ?? 0;
+
+                slice.DribblesAttempts = GetField<int?>(reader, "DribblesAttempts") ?? 0;
+                slice.DribblesSuccess = GetField<int?>(reader, "DribblesSuccess") ?? 0;
+                slice.DribblesPast = GetField<int?>(reader, "DribblesPast") ?? 0;
+
+                slice.FoulsDrawn = GetField<int?>(reader, "FoulsDrawn") ?? 0;
+                slice.FoulsCommitted = GetField<int?>(reader, "FoulsCommitted") ?? 0;
+
+                slice.CardsYellow = GetField<int?>(reader, "CardsYellow") ?? 0;
+                slice.CardsRed = GetField<int?>(reader, "CardsRed") ?? 0;
+
+                slice.PenaltyWon = GetField<int?>(reader, "PenaltyWon") ?? 0;
+                slice.PenaltyCommitted = GetField<int?>(reader, "PenaltyCommitted") ?? 0;
+                slice.PenaltyScored = GetField<int?>(reader, "PenaltyScored") ?? 0;
+                slice.PenaltyMissed = GetField<int?>(reader, "PenaltyMissed") ?? 0;
+                slice.PenaltySaved = GetField<int?>(reader, "PenaltySaved") ?? 0;
+            }
+
+            return slice;
+        }
+        private async Task EnrichPlayersSlicesAsync(
+            List<PlayerListItem> players,
+            int season,
+            int leagueId)
+        {
+            if (players == null || players.Count == 0)
+                return;
+
+            var cs = _read.Database.GetConnectionString();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            foreach (var pl in players)
+            {
+                // Ultime 5 partite
+                pl.Last5 = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "last5");
+
+                // Ultime 5 vinte / perse / pareggiate
+                pl.Last5Wins = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "last5wins");
+                pl.Last5Losses = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "last5losses");
+                pl.Last5Draws = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "last5draws");
+
+                // Casa / Trasferta (tutte le partite FT)
+                pl.HomeStats = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "home");
+                pl.AwayStats = await LoadPlayerStatsSliceAsync(conn, pl.PlayerId, pl.TeamId, season, leagueId, "away");
+            }
+        }
 
         private static decimal? ComputePronosticoCartelliniTotali(
     string? esitoCards,

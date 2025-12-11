@@ -3282,7 +3282,7 @@ switch (esitoCards)
         </div>
     </div>
 
-    @* MODAL GIOCATORI (Home + Away, una modale per ogni giocatore, ottimizzata mobile) *@
+@* MODAL GIOCATORI (Home + Away, una modale per ogni giocatore, ottimizzata mobile) *@
 @if ((homePlayers != null && homePlayers.Any()) ||
      (awayPlayers != null && awayPlayers.Any()))
 {
@@ -3299,117 +3299,370 @@ switch (esitoCards)
 
     foreach (var pl in distinctPlayers)
     {
-        <div class="modal fade" id="playerModal-@pl.PlayerId" tabindex="-1"
-             aria-labelledby="playerModalLabel-@pl.PlayerId" aria-hidden="true">
+<div class="modal fade"
+     id="playerModal-@pl.PlayerId"
+     tabindex="-1"
+     aria-labelledby="playerModalLabel-@pl.PlayerId"
+     aria-hidden="true"
+     data-player-id="@pl.PlayerId"
+     data-team-id="@pl.TeamId"
+     data-season="@Model.Data.Season"
+     data-league-id="@Model.Data.LeagueId">
+
             <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
                 <div class="modal-content bg-dark text-light">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="playerModalLabel-@pl.PlayerId">@pl.Name</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="row g-3">
-                                <div class="col-12 text-center">
-                                    @if (!string.IsNullOrWhiteSpace(pl.Photo))
-                                    {
-                                        <img src="@pl.Photo"
-                                             alt="@pl.Name"
-                                             class="img-fluid rounded mb-3"
-                                             style="max-height: 260px; object-fit: cover;" />
-                                    }
-                                </div>
-
-                                <div class="col-12">
-                                    <div class="card mb-3">
-                                        <div class="card-body p-2">
-                                            <p class="mb-1">
-                                                <strong>Nazionalità:</strong>
-                                                @if (!string.IsNullOrWhiteSpace(pl.Nationality))
-                                                {
-                                                    @pl.Nationality
-                                                }
-                                                else
-                                                {
-                                                    @:n/d
-                                                }
-                                            </p>
-                                            <p class="mb-1">
-                                                <strong>Età:</strong> @(pl.Age?.ToString() ?? "n/d")
-                                            </p>
-                                            <p class="mb-1">
-                                                <strong>Altezza:</strong> @(string.IsNullOrWhiteSpace(pl.Height) ? "n/d" : pl.Height)
-                                            </p>
-                                            <p class="mb-1">
-                                                <strong>Peso:</strong> @(string.IsNullOrWhiteSpace(pl.Weight) ? "n/d" : pl.Weight)
-                                            </p>
-                                            <p class="mb-0">
-                                                <strong>Infortunato:</strong> @(pl.Injured ? "Sì" : "No")
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="col-12">
-                                    <div class="card">
-                                        <div class="card-header">
-                                            Statistiche giocatore
-                                        </div>
-                                        <div class="card-body p-0">
-                                            <div class="table-responsive">
-                                                <table class="table table-sm table-striped mb-0">
-                                                    <tbody>
-                                                        <tr><th>Minuti</th><td class="text-end">@pl.Minutes</td></tr>
-                                                        <tr><th>Rating</th><td class="text-end">@((string.IsNullOrWhiteSpace(pl.Rating) ? "n/d" : pl.Rating))</td></tr>
-
-                                                        <tr><th>Tiri totali</th><td class="text-end">@pl.ShotsTotal</td></tr>
-                                                        <tr><th>Tiri in porta</th><td class="text-end">@pl.ShotsOn</td></tr>
-
-                                                        <tr><th>Goal</th><td class="text-end">@pl.GoalsTotal</td></tr>
-                                                        <tr><th>Assist</th><td class="text-end">@pl.Assists</td></tr>
-                                                        <tr><th>Goal subiti</th><td class="text-end">@pl.GoalsConceded</td></tr>
-                                                        <tr><th>Parate</th><td class="text-end">@pl.GoalsSaves</td></tr>
-
-                                                        <tr><th>Passaggi totali</th><td class="text-end">@pl.PassesTotal</td></tr>
-                                                        <tr><th>Passaggi chiave</th><td class="text-end">@pl.PassesKey</td></tr>
-                                                        <tr><th>Precisione passaggi</th><td class="text-end">@pl.PassesAccuracy%</td></tr>
-
-                                                        <tr><th>Contrasti</th><td class="text-end">@pl.TacklesTotal</td></tr>
-                                                        <tr><th>Blocchi</th><td class="text-end">@pl.TacklesBlocks</td></tr>
-                                                        <tr><th>Intercetti</th><td class="text-end">@pl.Interceptions</td></tr>
-
-                                                        <tr><th>Duelli totali</th><td class="text-end">@pl.DuelsTotal</td></tr>
-                                                        <tr><th>Duelli vinti</th><td class="text-end">@pl.DuelsWon</td></tr>
-
-                                                        <tr><th>Dribbling tentati</th><td class="text-end">@pl.DribblesAttempts</td></tr>
-                                                        <tr><th>Dribbling riusciti</th><td class="text-end">@pl.DribblesSuccess</td></tr>
-                                                        <tr><th>Volte superato</th><td class="text-end">@pl.DribblesPast</td></tr>
-
-                                                        <tr><th>Falli subiti</th><td class="text-end">@pl.FoulsDrawn</td></tr>
-                                                        <tr><th>Falli commessi</th><td class="text-end">@pl.FoulsCommitted</td></tr>
-
-                                                        <tr><th>Gialli</th><td class="text-end">@pl.CardsYellow</td></tr>
-                                                        <tr><th>Rossi</th><td class="text-end">@pl.CardsRed</td></tr>
-
-                                                        <tr><th>Rigori vinti</th><td class="text-end">@pl.PenaltyWon</td></tr>
-                                                        <tr><th>Rigori commessi</th><td class="text-end">@pl.PenaltyCommitted</td></tr>
-                                                        <tr><th>Rigori segnati</th><td class="text-end">@pl.PenaltyScored</td></tr>
-                                                        <tr><th>Rigori sbagliati</th><td class="text-end">@pl.PenaltyMissed</td></tr>
-                                                        <tr><th>Rigori parati</th><td class="text-end">@pl.PenaltySaved</td></tr>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div> <!-- row -->
-                        </div> <!-- modal-body -->
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="playerModalLabel-@pl.PlayerId">@pl.Name</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
                     </div>
-                </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-12 text-center">
+                                @if (!string.IsNullOrWhiteSpace(pl.Photo))
+                                {
+                                    <img src="@pl.Photo"
+                                         alt="@pl.Name"
+                                         class="img-fluid rounded mb-3"
+                                         style="max-height: 260px; object-fit: cover;" />
+                                }
+                            </div>
+
+                            <div class="col-12">
+                                <div class="card mb-3">
+                                    <div class="card-body p-2">
+                                        <p class="mb-1">
+                                            <strong>Nazionalità:</strong>
+                                            @if (!string.IsNullOrWhiteSpace(pl.Nationality))
+                                            {
+                                                @pl.Nationality
+                                            }
+                                            else
+                                            {
+                                                @:n/d
+                                            }
+                                        </p>
+                                        <p class="mb-1">
+                                            <strong>Età:</strong> @(pl.Age?.ToString() ?? "n/d")
+                                        </p>
+                                        <p class="mb-1">
+                                            <strong>Altezza:</strong> @(string.IsNullOrWhiteSpace(pl.Height) ? "n/d" : pl.Height)
+                                        </p>
+                                        <p class="mb-1">
+                                            <strong>Peso:</strong> @(string.IsNullOrWhiteSpace(pl.Weight) ? "n/d" : pl.Weight)
+                                        </p>
+                                        <p class="mb-0">
+                                            <strong>Infortunato:</strong> @(pl.Injured ? "Sì" : "No")
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header pb-0">
+                                        <ul class="nav nav-tabs card-header-tabs" id="playerStatsTabs-@pl.PlayerId" role="tablist">
+                                            <li class="nav-item">
+                                                <button class="nav-link active"
+                                                        id="tab-@pl.PlayerId-totali-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-totali"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-totali"
+                                                        aria-selected="true">
+                                                    Totali (stagione)
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-last5-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-last5"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-last5"
+                                                        aria-selected="false">
+                                                    Ultime 5
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-last5win-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-last5win"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-last5win"
+                                                        aria-selected="false">
+                                                    Ultime 5 vinte
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-last5lose-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-last5lose"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-last5lose"
+                                                        aria-selected="false">
+                                                    Ultime 5 perse
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-last5draw-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-last5draw"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-last5draw"
+                                                        aria-selected="false">
+                                                    Ultime 5 pareggiate
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-home-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-home"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-home"
+                                                        aria-selected="false">
+                                                    Solo casa
+                                                </button>
+                                            </li>
+                                            <li class="nav-item">
+                                                <button class="nav-link"
+                                                        id="tab-@pl.PlayerId-away-tab"
+                                                        data-bs-toggle="tab"
+                                                        data-bs-target="#tab-@pl.PlayerId-away"
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-controls="tab-@pl.PlayerId-away"
+                                                        aria-selected="false">
+                                                    Solo trasferta
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
+
+ <div class="card-body p-0">
+    <div class="tab-content" id="playerStatsTabsContent-@pl.PlayerId">
+        @* TAB: Totali (rimane server-side come prima) *@
+        <div class="tab-pane fade show active"
+             id="tab-@pl.PlayerId-totali"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-totali-tab">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end">@pl.Minutes</td></tr>
+                        <tr>
+                            <th>Rating</th>
+                            <td class="text-end">
+                                @((string.IsNullOrWhiteSpace(pl.Rating) ? "n/d" : pl.Rating))
+                            </td>
+                        </tr>
+
+                        <tr><th>Tiri totali</th><td class="text-end">@pl.ShotsTotal</td></tr>
+                        <tr><th>Tiri in porta</th><td class="text-end">@pl.ShotsOn</td></tr>
+
+                        <tr><th>Goal</th><td class="text-end">@pl.GoalsTotal</td></tr>
+                        <tr><th>Assist</th><td class="text-end">@pl.Assists</td></tr>
+                        <tr><th>Goal subiti</th><td class="text-end">@pl.GoalsConceded</td></tr>
+                        <tr><th>Parate</th><td class="text-end">@pl.GoalsSaves</td></tr>
+
+                        <tr><th>Passaggi totali</th><td class="text-end">@pl.PassesTotal</td></tr>
+                        <tr><th>Passaggi chiave</th><td class="text-end">@pl.PassesKey</td></tr>
+                        <tr>
+                            <th>% passaggi</th>
+                            <td class="text-end">
+                                @($"{pl.PassesAccuracy}%")
+                            </td>
+                        </tr>
+
+                        <tr><th>Contrasti</th><td class="text-end">@pl.TacklesTotal</td></tr>
+                        <tr><th>Blocchi</th><td class="text-end">@pl.TacklesBlocks</td></tr>
+                        <tr><th>Intercetti</th><td class="text-end">@pl.Interceptions</td></tr>
+
+                        <tr><th>Duelli totali</th><td class="text-end">@pl.DuelsTotal</td></tr>
+                        <tr><th>Duelli vinti</th><td class="text-end">@pl.DuelsWon</td></tr>
+
+                        <tr><th>Dribbling tentati</th><td class="text-end">@pl.DribblesAttempts</td></tr>
+                        <tr><th>Dribbling riusciti</th><td class="text-end">@pl.DribblesSuccess</td></tr>
+                        <tr><th>Volte superato</th><td class="text-end">@pl.DribblesPast</td></tr>
+
+                        <tr><th>Falli subiti</th><td class="text-end">@pl.FoulsDrawn</td></tr>
+                        <tr><th>Falli commessi</th><td class="text-end">@pl.FoulsCommitted</td></tr>
+
+                        <tr><th>Gialli</th><td class="text-end">@pl.CardsYellow</td></tr>
+                        <tr><th>Rossi</th><td class="text-end">@pl.CardsRed</td></tr>
+
+                        <tr><th>Rigori vinti</th><td class="text-end">@pl.PenaltyWon</td></tr>
+                        <tr><th>Rigori commessi</th><td class="text-end">@pl.PenaltyCommitted</td></tr>
+                        <tr><th>Rigori segnati</th><td class="text-end">@pl.PenaltyScored</td></tr>
+                        <tr><th>Rigori sbagliati</th><td class="text-end">@pl.PenaltyMissed</td></tr>
+                        <tr><th>Rigori parati</th><td class="text-end">@pl.PenaltySaved</td></tr>
+                    </tbody>
+                </table>
             </div>
-        }
+        </div>
+
+        @* TAB: Ultime 5 (placeholder, riempito via JS) *@
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-last5"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-last5-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie sulle ultime 5 partite giocate (FT) dal giocatore.
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="last5-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="last5-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri totali</th><td class="text-end"><span id="last5-shotsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri in porta</th><td class="text-end"><span id="last5-shotsOn-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="last5-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="last5-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi totali</th><td class="text-end"><span id="last5-passesTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi chiave</th><td class="text-end"><span id="last5-passesKey-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>% passaggi</th><td class="text-end"><span id="last5-passesAccuracy-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* TAB: Ultime 5 vinte *@
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-last5win"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-last5win-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie sulle ultime 5 partite VINTA dalla squadra del giocatore.
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="last5wins-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="last5wins-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="last5wins-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="last5wins-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri totali</th><td class="text-end"><span id="last5wins-shotsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri in porta</th><td class="text-end"><span id="last5wins-shotsOn-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* TAB: Ultime 5 perse *@>
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-last5lose"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-last5lose-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie sulle ultime 5 partite PERSE dalla squadra del giocatore.
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="last5losses-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="last5losses-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="last5losses-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="last5losses-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal subiti</th><td class="text-end"><span id="last5losses-goalsConceded-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Parate</th><td class="text-end"><span id="last5losses-goalsSaves-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* TAB: Ultime 5 pareggiate *@
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-last5draw"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-last5draw-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie sulle ultime 5 partite PAREGGIATE dalla squadra del giocatore.
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="last5draws-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="last5draws-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="last5draws-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="last5draws-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal subiti</th><td class="text-end"><span id="last5draws-goalsConceded-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* TAB: Solo casa *@
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-home"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-home-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie su tutte le partite giocate IN CASA (FT).
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="home-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="home-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="home-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="home-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri totali</th><td class="text-end"><span id="home-shotsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri in porta</th><td class="text-end"><span id="home-shotsOn-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi totali</th><td class="text-end"><span id="home-passesTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi chiave</th><td class="text-end"><span id="home-passesKey-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>% passaggi</th><td class="text-end"><span id="home-passesAccuracy-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* TAB: Solo trasferta *@
+        <div class="tab-pane fade"
+             id="tab-@pl.PlayerId-away"
+             role="tabpanel"
+             aria-labelledby="tab-@pl.PlayerId-away-tab">
+            <div class="small text-muted px-3 pt-3">
+                Medie su tutte le partite giocate IN TRASFERTA (FT).
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <tbody>
+                        <tr><th>Minuti</th><td class="text-end"><span id="away-minutes-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Rating</th><td class="text-end"><span id="away-rating-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Goal</th><td class="text-end"><span id="away-goalsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Assist</th><td class="text-end"><span id="away-assists-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri totali</th><td class="text-end"><span id="away-shotsTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Tiri in porta</th><td class="text-end"><span id="away-shotsOn-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi totali</th><td class="text-end"><span id="away-passesTotal-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>Passaggi chiave</th><td class="text-end"><span id="away-passesKey-@pl.PlayerId">-</span></td></tr>
+                        <tr><th>% passaggi</th><td class="text-end"><span id="away-passesAccuracy-@pl.PlayerId">-</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div> @* tab-content *@
+</div> @* card-body *@
+
+                                </div> 
+                            </div> 
+
+                        </div> 
+                    </div> 
+                </div> 
+            </div> 
+        </div> 
     }
-</div>
+}
+
 
      <!-- Script per gruppi -->
     <script>
@@ -3799,6 +4052,111 @@ switch (esitoCards)
             if (active) active.classList.add('active');
         })();
     </script>
+<script>
+    (function () {
+        // URL dell'handler PlayerStats sulla stessa pagina (Details)
+        const playerStatsBaseUrl = '@Url.Page("./Details", null, new { handler = "PlayerStats", id = Model.Data.MatchId })';
+
+        function setText(id, value, isPercent) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (value === null || value === undefined) {
+                el.textContent = "-";
+                return;
+            }
+            el.textContent = isPercent ? (value + "%") : value;
+        }
+
+        function fillSlice(prefix, playerId, slice) {
+            if (!slice) return;
+
+            setText(`${prefix}-minutes-${playerId}`,        slice.minutes);
+            setText(`${prefix}-rating-${playerId}`,         slice.rating);
+
+            setText(`${prefix}-shotsTotal-${playerId}`,     slice.shotsTotal);
+            setText(`${prefix}-shotsOn-${playerId}`,        slice.shotsOn);
+
+            setText(`${prefix}-goalsTotal-${playerId}`,     slice.goalsTotal);
+            setText(`${prefix}-assists-${playerId}`,        slice.assists);
+            setText(`${prefix}-goalsConceded-${playerId}`,  slice.goalsConceded);
+            setText(`${prefix}-goalsSaves-${playerId}`,     slice.goalsSaves);
+
+            setText(`${prefix}-passesTotal-${playerId}`,    slice.passesTotal);
+            setText(`${prefix}-passesKey-${playerId}`,      slice.passesKey);
+            setText(`${prefix}-passesAccuracy-${playerId}`, slice.passesAccuracy, true);
+        }
+
+        document.addEventListener('shown.bs.modal', function (event) {
+            const modal = event.target;
+            if (!modal.id || !modal.id.startsWith("playerModal-")) return;
+
+            // Evita di ricaricare se già fatto
+            if (modal.dataset.statsLoaded === "true") {
+                return;
+            }
+
+            const playerId = modal.dataset.playerId;
+            const teamId   = modal.dataset.teamId;
+            const season   = modal.dataset.season;
+            const leagueId = modal.dataset.leagueId;
+
+            if (!playerId || !teamId || !season || !leagueId) {
+                console.warn("Dati mancanti per il caricamento stats giocatore.", {
+                    playerId, teamId, season, leagueId
+                });
+                return;
+            }
+
+            // Se l'URL base ha già una query (es. ?handler=PlayerStats&id=123) usa "&" invece di "?"
+            const sep = playerStatsBaseUrl.includes('?') ? '&' : '?';
+            const url = `${playerStatsBaseUrl}${sep}playerId=${encodeURIComponent(playerId)}&teamId=${encodeURIComponent(teamId)}&season=${encodeURIComponent(season)}&leagueId=${encodeURIComponent(leagueId)}`;
+
+            console.debug("Carico stats giocatore da:", url);
+
+            fetch(url)
+                .then(r => {
+                    if (!r.ok) throw new Error("Errore HTTP " + r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    // last5
+                    if (data.last5) {
+                        fillSlice("last5", playerId, data.last5);
+                    }
+
+                    // last5Wins
+                    if (data.last5Wins) {
+                        fillSlice("last5wins", playerId, data.last5Wins);
+                    }
+
+                    // last5Losses
+                    if (data.last5Losses) {
+                        fillSlice("last5losses", playerId, data.last5Losses);
+                    }
+
+                    // last5Draws
+                    if (data.last5Draws) {
+                        fillSlice("last5draws", playerId, data.last5Draws);
+                    }
+
+                    // homeStats
+                    if (data.homeStats) {
+                        fillSlice("home", playerId, data.homeStats);
+                    }
+
+                    // awayStats
+                    if (data.awayStats) {
+                        fillSlice("away", playerId, data.awayStats);
+                    }
+
+                    modal.dataset.statsLoaded = "true";
+                })
+                .catch(err => {
+                    console.error("Errore nel caricamento stats giocatore:", err);
+                });
+        });
+    })();
+</script>
 
 }
 
