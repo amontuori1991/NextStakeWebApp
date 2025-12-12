@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
+using System.Globalization;
 
 
 namespace NextStakeWebApp.Pages.Events
@@ -277,6 +278,101 @@ namespace NextStakeWebApp.Pages.Events
             ViewData["Title"] = "Eventi";
         }
         public class ThemePayload { public string? Theme { get; set; } }
+        public async Task<IActionResult> OnGetMatchesOfDayAsync(
+            string? d,
+            int? fav = null,
+            string? country = null,
+            string? q = null,
+            int? best = null)
+        {
+            // Richiamo la stessa logica della pagina Eventi,
+            // usando ESATTAMENTE gli stessi parametri di filtro
+            await OnGetAsync(d: d, fav: fav, country: country, q: q, best: best);
+
+            List<long> orderedIds;
+
+            if (ShowBest && BestPicks.Any())
+            {
+                // 🟢 MODALITÀ "PARTITE IN PRONOSTICO" (Best picks)
+
+                // Id dei match in pronostico
+                var ids = BestPicks
+                    .Select(b => (long)b.Id)
+                    .Distinct()
+                    .ToList();
+
+                // Finestra del giorno corrente (Italia), come fai per Rows
+                var dayStartLocal = SelectedDate.ToDateTime(TimeOnly.MinValue);
+                var dayEndLocal = dayStartLocal.AddDays(1);
+
+                // Recupero meta-informazioni dal DB lettura
+                var meta = await (
+                    from m in _read.Matches
+                    join lg in _read.Leagues on m.LeagueId equals lg.Id
+                    where ids.Contains(m.Id)
+                       && m.Date >= dayStartLocal
+                       && m.Date < dayEndLocal
+                    select new
+                    {
+                        m.Id,
+                        m.Date,
+                        CountryName = lg.CountryName,
+                        LeagueName = lg.Name
+                    }
+                )
+                .AsNoTracking()
+                .ToListAsync();
+
+                // Raggruppo per Nazione + Lega, poi ordino dentro per orario
+                var groupedMeta = meta
+                    .GroupBy(x => new { x.CountryName, x.LeagueName })
+                    .OrderBy(g => g.Key.CountryName ?? string.Empty)
+                    .ThenBy(g => g.Key.LeagueName ?? string.Empty);
+
+                orderedIds = new List<long>();
+
+                foreach (var g in groupedMeta)
+                {
+                    orderedIds.AddRange(
+                        g.OrderBy(x => x.Date)
+                         .ThenBy(x => x.Id)
+                         .Select(x => (long)x.Id)
+                    );
+                }
+            }
+            else
+            {
+                // 🟡 MODALITÀ "TUTTI GLI EVENTI" -> usiamo Rows come prima
+
+                var groupedRows = Rows
+                    .GroupBy(r => new
+                    {
+                        r.CountryName,
+                        r.CountryCode,
+                        r.LeagueName,
+                        r.LeagueId
+                    })
+                    .ToList(); // IMPORTANTISSIMO: niente OrderBy sui gruppi
+
+                orderedIds = new List<long>();
+
+                foreach (var g in groupedRows)
+                {
+                    orderedIds.AddRange(
+                        g.OrderBy(r => r.KickoffLocal)
+                         .ThenBy(r => r.MatchId)
+                         .Select(r => r.MatchId)
+                    );
+                }
+            }
+
+            return new JsonResult(new
+            {
+                ok = true,
+                matches = orderedIds
+            });
+        }
+
 
         public async Task<IActionResult> OnPostSetThemeAsync()
         {

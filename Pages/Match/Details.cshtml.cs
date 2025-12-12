@@ -65,6 +65,8 @@ namespace NextStakeWebApp.Pages.Match
         public class VM
         {
             public long MatchId { get; set; }
+
+
             public int LeagueId { get; set; }
             public int Season { get; set; }
 
@@ -242,6 +244,42 @@ namespace NextStakeWebApp.Pages.Match
         // Handler: genera con AI e invia su 'Idee'
         // Handler: genera con AI e invia su 'Idee' (con integrazione dati Prediction)
 
+        public async Task<IActionResult> OnGetNavAsync(long id, string direction)
+        {
+            // Recuperiamo il match corrente
+            var currentMatch = await _read.Matches
+                .AsNoTracking()
+                .Where(m => m.Id == id)
+                .FirstOrDefaultAsync();
+
+            if (currentMatch == null)
+                return RedirectToPage("./Events");
+
+            long? newId = null;
+
+            if (direction == "prev")
+            {
+                newId = await _read.Matches
+                    .Where(m => m.Date < currentMatch.Date)
+                    .OrderByDescending(m => m.Date)
+                    .Select(m => (long?)m.Id)
+                    .FirstOrDefaultAsync();
+            }
+            else if (direction == "next")
+            {
+                newId = await _read.Matches
+                    .Where(m => m.Date > currentMatch.Date)
+                    .OrderBy(m => m.Date)
+                    .Select(m => (long?)m.Id)
+                    .FirstOrDefaultAsync();
+            }
+
+            // Se non ci sono precedenti / successivi → rimani sullo stesso
+            if (newId == null)
+                newId = id;
+
+            return RedirectToPage("./Details", new { id = newId });
+        }
 
         public async Task<IActionResult> OnPostPreviewAiPickAsync(int id, string? analysisPayload)
         {

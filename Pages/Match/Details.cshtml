@@ -212,7 +212,18 @@
             <button type="submit" class="btn @(Model.Data.IsFavorite ? "btn-warning" : "btn-outline-secondary")">⭐ Preferito</button>
         </form>
 
-        <a class="btn btn-outline-secondary" href="@backUrl">← Torna agli eventi</a>
+<div class="d-flex gap-2 mb-3">
+    <a href="/Events?d=public DateTime KickoffUtc.ToString("yyyy-MM-dd")"
+       id="btnBack"
+       class="btn btn-secondary">
+       ⬅ Ritorna agli eventi
+    </a>
+
+    <button class="btn btn-outline-primary" id="btnPrev">⬅ Precedente</button>
+    <button class="btn btn-outline-primary" id="btnNext">Successivo ➡</button>
+</div>
+
+
 
 
             @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
@@ -3714,7 +3725,7 @@ switch (esitoCards)
                     rows.forEach(row => {
                         row.style.display = 'none';
                     });
-                    return;
+                    return;OnGetMatchesOfDayAsync
                 }
 
                 wrapper.classList.remove('d-none');
@@ -3728,7 +3739,80 @@ switch (esitoCards)
             updateShotsOdds();
         })();
 
-    </script>
+document.addEventListener("DOMContentLoaded", () => {
+
+    const currentId = parseInt("@Model.Data.MatchId");
+
+    // Riusa TUTTA la query string (d, best, fav, country, q, …)
+    const qs = window.location.search ? window.location.search.replace('?', '&') : '';
+    const url = `/Events/Index?handler=MatchesOfDay${qs}`;
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) return;
+
+            const matches = data.matches;
+            const idx = matches.indexOf(currentId);
+            if (idx === -1) return;
+
+            const btnPrev = document.getElementById("btnPrev");
+            if (btnPrev) {
+                if (idx > 0) {
+                    btnPrev.onclick = () => goToMatch(matches[idx - 1]);
+                } else {
+                    btnPrev.disabled = true;
+                }
+            }
+
+            const btnNext = document.getElementById("btnNext");
+            if (btnNext) {
+                if (idx < matches.length - 1) {
+                    btnNext.onclick = () => goToMatch(matches[idx + 1]);
+                } else {
+                    btnNext.disabled = true;
+                }
+            }
+        });
+
+    function goToMatch(matchId) {
+        showLoading();
+        // riusa tutta la query string ma cambia solo id
+        const newSearch = window.location.search.replace(/id=\d+/, 'id=' + matchId);
+        window.location.href = `/Match/Details${newSearch}`;
+    }
+
+    function showLoading() {
+        const overlay = document.getElementById("aiLoadingOverlay");
+        if (!overlay) return;
+
+        overlay.innerHTML = "";
+
+        const video = document.createElement("video");
+        video.src = "/videos/loading.mp4";
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = true;
+        video.className = "loading-video";
+
+        const panel = document.createElement("div");
+        panel.className = "loading-panel video-only";
+        panel.appendChild(video);
+
+        overlay.appendChild(panel);
+        overlay.classList.remove("d-none");
+    }
+
+    const btnBack = document.getElementById("btnBack");
+    if (btnBack) {
+        btnBack.onclick = function () {
+            showLoading();
+        };
+    }
+});
+
+</script>
+
 
     </div> <!-- chiude .container -->
 </div> <!-- chiude .details-page -->
@@ -4157,6 +4241,28 @@ switch (esitoCards)
         });
     })();
 </script>
+<script>
+    function navigateMatch(direction) {
+
+        const currentId = @Model.Data.MatchId;
+
+        // overlay stile events
+        const overlay = document.getElementById("aiLoadingOverlay");
+        const msg     = document.getElementById("aiLoadingMessage");
+
+        if (overlay) {
+            msg.textContent = "Caricamento evento...";
+            overlay.classList.remove("d-none");
+        }
+
+        // Riproduci video loading (se presente)
+        const video = document.getElementById("loadingVideo");
+        if (video) video.play();
+
+        // Chiama l'handler server-side che calcola next/prev
+        window.location.href = `?handler=Nav&id=${currentId}&direction=${direction}`;
+    }
+</script>
 
 }
 
@@ -4508,6 +4614,69 @@ body {
     user-select: none;
     animation: fall linear infinite;
     opacity: 0.9;
+}
+#aiLoadingOverlay video {
+    width: 100%;
+    max-width: 340px; /* identico alla pagina Eventi */
+    display: block;
+    margin: 0 auto;
+    border-radius: 12px;
+}
+/* Overlay loading (riuso) */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,14,20,0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+    backdrop-filter: blur(2px);
+}
+
+.loading-panel {
+    background: rgba(20,26,36,0.92);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: .75rem;
+    box-shadow: 0 12px 36px rgba(0,0,0,.35);
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    max-width: 90vw;
+}
+
+.loading-panel.video-only {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+/* Desktop */
+.loading-video {
+    width: 480px;
+    max-width: 70vw;
+    height: auto;
+    display: block;
+    border-radius: 1rem;
+}
+
+/* Tablet */
+@@media (max-width: 1024px) {
+    .loading-video {
+        width: 360px;
+        max-width: 80vw;
+    }
+}
+
+/* Smartphone */
+@@media (max-width: 576px) {
+    .loading-video {
+        width: 240px;
+        max-width: 90vw;
+    }
 }
 
 /* Su schermi piccoli: togli il drop-shadow e riduci dimensione */
