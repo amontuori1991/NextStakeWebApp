@@ -205,51 +205,64 @@
 }
 
 
-    <!-- Azioni -->
-    <div class="mb-3 d-flex gap-2">
-        <form method="post" action="/Match/Details?handler=ToggleFavorite&id=@Model.Data.MatchId">
+<!-- Azioni -->
+<div class="actions-bar mb-3">
+
+    <!-- Riga 1 -->
+    <div class="actions-row">
+
+        <form method="post"
+              action="/Match/Details?handler=ToggleFavorite&id=@Model.Data.MatchId"
+              class="m-0">
             @Html.AntiForgeryToken()
-            <button type="submit" class="btn @(Model.Data.IsFavorite ? "btn-warning" : "btn-outline-secondary")">⭐ Preferito</button>
+            <button type="submit"
+                    class="btn @(Model.Data.IsFavorite ? "btn-warning" : "btn-outline-secondary")">
+                ⭐ Preferito
+            </button>
         </form>
 
-<div class="d-flex gap-2 mb-3">
-    <a href="/Events?d=public DateTime KickoffUtc.ToString("yyyy-MM-dd")"
-       id="btnBack"
-       class="btn btn-secondary">
-       ⬅ Ritorna agli eventi
-    </a>
+        <a href="/Events?d=@Model.Data.KickoffUtc.ToString("yyyy-MM-dd")"
+           id="btnBack"
+           class="btn btn-secondary">
+            ⬅ Ritorna agli eventi
+        </a>
 
-    <button class="btn btn-outline-primary" id="btnPrev">⬅ Precedente</button>
-    <button class="btn btn-outline-primary" id="btnNext">Successivo ➡</button>
+        @* Bottone AI affiancato *@
+        @{
+            bool canUseAi = User.HasClaim(c =>
+                (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
+        }
+
+        @if (canUseAi)
+        {
+            <form method="post"
+                  asp-page-handler="PreviewAiPick"
+                  id="aiPreviewForm"
+                  data-loading="preview-ai"
+                  class="m-0">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                <textarea name="analysisPayload" hidden>@aiPayloadJson</textarea>
+
+                <button type="submit" class="btn btn-primary">
+                    🤖 Genera anteprima (AI)
+                </button>
+            </form>
+        }
+
+    </div>
+
+    <!-- Riga 2 -->
+    <div class="actions-row">
+        <button class="btn btn-outline-primary" id="btnPrev">⬅ Prec.</button>
+        <button class="btn btn-outline-primary" id="btnNext">Succ. ➡</button>
+    </div>
+
 </div>
 
 
-
-
-            @* === NUOVO: bottone AI pronostico (solo Admin/SuperAdmin) *@
-            @{
-                bool canUseAi = User.HasClaim(c =>
-                (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
-                string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
-            }
-            @if (canUseAi)
-
-            {
-                <form method="post" asp-page-handler="PreviewAiPick" class="ms-auto" id="aiPreviewForm" data-loading="preview-ai">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                    <textarea name="analysisPayload" hidden>@aiPayloadJson</textarea>
-                    <button type="submit" class="btn btn-primary">
-                        🤖 Genera anteprima (AI)
-                    </button>
-                </form>
-
-            }
-
-        
-
-    </div>
 @* ANTEPRIMA AI (se presente) *@
 @if (!string.IsNullOrWhiteSpace(Model.Preview))
 {
@@ -4698,6 +4711,36 @@ body {
             transform: translateY(110vh);
         }
     }
+
+    /* === Actions bar (3 righe centrali, eleganti) === */
+.details-page .actions-bar{
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    align-items: center;  /* centra tutte le righe */
+    width: 100%;
+}
+
+.details-page .actions-row{
+    display: flex;
+    justify-content: center; /* centra i bottoni dentro la riga */
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;         /* su mobile va a capo senza disastri */
+    width: 100%;
+}
+
+/* Bottoni un filo più “premium” e coerenti */
+.details-page .actions-row .btn{
+    border-radius: .75rem;
+    padding: .55rem .9rem;
+}
+
+/* Riga 3: bottone AI un po’ più “importante” ma non enorme */
+.details-page #btnAiPreview{
+    min-width: 240px;
+}
+
         </style>
 
 
