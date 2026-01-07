@@ -2088,12 +2088,13 @@ TESTO DA RISCRIVERE:
 
             cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
 
-            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+            // IMPORTANTISSIMO: SingleRow + SequentialAccess riduce molto il rischio
+            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleRow);
 
             if (!await rd.ReadAsync())
                 return null;
 
-            return new PredictionRow
+            var row = new PredictionRow
             {
                 Id = GetField<int>(rd, "Id"),
                 GoalSimulatoCasa = GetField<int>(rd, "Goal Simulati Casa"),
@@ -2109,6 +2110,20 @@ TESTO DA RISCRIVERE:
                 MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
                 ComboFinale = GetField<string>(rd, "ComboFinale")
             };
+
+            // IMPORTANTISSIMO: consumare eventuali resultset rimanenti in modo safe.
+            // Se lo script genera più SELECT, questo evita che il dispose faccia casino su NextResult.
+            try
+            {
+                while (await rd.NextResultAsync()) { /* discard */ }
+            }
+            catch
+            {
+                // Se la connessione è già caduta, non vogliamo mascherare il risultato principale.
+                // Render può troncare lo stream durante NextResult: ignoriamo e ritorniamo comunque.
+            }
+
+            return row;
         }
 
         // =======================
