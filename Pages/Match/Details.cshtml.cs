@@ -2089,7 +2089,7 @@ TESTO DA RISCRIVERE:
             cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
 
             // IMPORTANTISSIMO: SingleRow + SequentialAccess riduce molto il rischio
-            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleRow);
+            await using var rd = await cmd.ExecuteReaderAsync();
 
             if (!await rd.ReadAsync())
                 return null;
