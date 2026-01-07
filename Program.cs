@@ -180,7 +180,7 @@ builder.Services.AddRazorPages(o =>
 
 
 builder.Services.AddControllersWithViews();
-builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>();
+// builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>();
 
 
 var app = builder.Build();
@@ -284,7 +284,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
 
-// --- Proxy minimal per Live Scores (API-FOOTBALL) ---
+
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
 app.MapGet("/api/livescores", async (
     IHttpClientFactory httpFactory,
@@ -310,6 +310,9 @@ app.MapGet("/api/livescores", async (
 
     using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
 
+    // 🛑 DISATTIVATO: Inserimento nel CallCounter (Risparmio Neon)
+    // Questo blocco scriveva nel DB ad ogni singolo refresh della pagina.
+    /*
     const string origin = "WidgetWebApp";
     try
     {
@@ -324,6 +327,7 @@ app.MapGet("/api/livescores", async (
     {
         Console.WriteLine($"[CALLCOUNTER][WidgetWebApp] ERROR: {ex.Message}");
     }
+    */
 
     if (!resp.IsSuccessStatusCode)
         return Results.StatusCode((int)resp.StatusCode);
@@ -331,7 +335,10 @@ app.MapGet("/api/livescores", async (
     var raw = await resp.Content.ReadAsStringAsync();
     var json = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
 
-    // 🔹 AGGIUNTA: aggiorna LiveMatchStates
+    // 🛑 DISATTIVATO: Aggiornamento LiveMatchStates (Risparmio Neon)
+    // Questa era la parte più costosa: centinaia di UPDATE continui per ogni match live.
+    // Disattivandola, risparmi CPU e scritture su Neon.
+    /*
     if (json?.Response != null && json.Response.Count > 0)
     {
         var nowUtc = DateTime.UtcNow;
@@ -378,6 +385,7 @@ app.MapGet("/api/livescores", async (
             await writeDb.SaveChangesAsync();
         }
     }
+    */
 
     var payload = json?.Response?
         .Select(x => (object)new
@@ -391,7 +399,9 @@ app.MapGet("/api/livescores", async (
         .ToList()
         ?? new List<object>();
 
-    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(1));
+    // ✅ OTTIMIZZAZIONE: Cache aumentata a 30 secondi (era 1s)
+    // Riduce drasticamente il numero di chiamate all'API esterna e l'elaborazione del server.
+    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(30));
 
     return Results.Json(payload);
 })
@@ -399,6 +409,7 @@ app.MapGet("/api/livescores", async (
 
 
 // === Push Notifications: salva / disattiva subscription ===
+// Nota: Questo endpoint può restare attivo, poiché viene chiamato solo una volta per utente.
 app.MapPost("/api/push/subscribe", async (
     [FromBody] PushSubscribeDto body,
     ApplicationDbContext db,
@@ -406,7 +417,6 @@ app.MapPost("/api/push/subscribe", async (
     HttpContext httpContext
 ) =>
 {
-    // Deve essere loggato
     if (httpContext.User?.Identity?.IsAuthenticated != true)
         return Results.Unauthorized();
 
@@ -421,7 +431,6 @@ app.MapPost("/api/push/subscribe", async (
         return Results.BadRequest(new { error = "Dati subscription non validi" });
     }
 
-    // Cerca subscription per endpoint (univoco)
     var existing = await db.PushSubscriptions
         .FirstOrDefaultAsync(x => x.Endpoint == body.Endpoint);
 
@@ -435,237 +444,57 @@ app.MapPost("/api/push/subscribe", async (
             Auth = body.Auth,
             CreatedAtUtc = DateTime.UtcNow,
             IsActive = true,
-            MatchNotificationsEnabled = true  // di default ON
+            MatchNotificationsEnabled = true
         };
         db.PushSubscriptions.Add(existing);
     }
-
     else
     {
-        // Aggiorna dati e ri-attiva
         existing.UserId = userId;
         existing.P256Dh = body.P256Dh;
         existing.Auth = body.Auth;
         existing.IsActive = true;
-        // NON tocchiamo MatchNotificationsEnabled: magari l’utente l’ha messa su OFF di proposito
     }
 
     await db.SaveChangesAsync();
 
     return Results.Ok(new { ok = true });
 })
-.RequireAuthorization(); // richiede login
+.RequireAuthorization();
+
 // --- Test invio push ---
-// Manda una notifica di test a tutte le subscription dell'utente loggato
 app.MapPost("/api/push/test", async (
     HttpContext httpContext,
     ApplicationDbContext db,
     UserManager<ApplicationUser> userManager,
     IConfiguration cfg) =>
 {
-    // Utente loggato
     var user = await userManager.GetUserAsync(httpContext.User);
-    if (user == null)
-    {
-        return Results.Unauthorized();
-    }
+    if (user == null) return Results.Unauthorized();
 
-    // Recupera tutte le subscription attive per questo utente
     var subs = await db.PushSubscriptions
         .Where(s => s.UserId == user.Id && s.IsActive && s.MatchNotificationsEnabled)
         .ToListAsync();
 
-    if (subs.Count == 0)
-    {
-        return Results.NotFound(new { message = "Nessuna subscription attiva per questo utente." });
-    }
+    if (subs.Count == 0) return Results.NotFound(new { message = "Nessuna subscription attiva." });
 
-    // Legge le chiavi VAPID da config / env
-    var publicKey =
-        cfg["VAPID:PublicKey"] ??
-        cfg["VAPID_PUBLIC_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
-
-    var privateKey =
-        cfg["VAPID:PrivateKey"] ??
-        cfg["VAPID_PRIVATE_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
-
-    var subject =
-        cfg["VAPID:Subject"] ??
-        cfg["VAPID_SUBJECT"] ??
-        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:nextstakeai@gmail.com";
-
-    Console.WriteLine($"[PUSH][VAPID] pub len={publicKey?.Length ?? 0}, priv len={privateKey?.Length ?? 0}");
+    var publicKey = cfg["VAPID:PublicKey"] ?? Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+    var privateKey = cfg["VAPID:PrivateKey"] ?? Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+    var subject = cfg["VAPID:Subject"] ?? Environment.GetEnvironmentVariable("VAPID_SUBJECT") ?? "mailto:nextstakeai@gmail.com";
 
     if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
-    {
-        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
-    }
+        return Results.Problem("VAPID Keys mancanti.");
 
     var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
     var client = new WebPushClient();
 
-    // Payload della notifica
-    var payloadObj = new
-    {
-        title = "Test notifica NextStake",
-        body = "Le notifiche push sono attive 👍",
-        url = "/Events" // dove portarti al click
-    };
-    var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
-
-    int success = 0;
-    int failed = 0;
-
-    foreach (var s in subs)
-    {
-        var pushSub = new WebPushSubscription(s.Endpoint, s.P256Dh, s.Auth);
-
-
-        try
-        {
-            await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
-            success++;
-        }
-        catch (WebPushException wex)
-        {
-            // Se l'endpoint è scaduto o non valido, segna la subscription come inattiva
-            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
-                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                s.IsActive = false;
-            }
-
-            failed++;
-            Console.WriteLine($"[PUSH][ERROR] {wex.StatusCode} {wex.Message}");
-        }
-        catch (Exception ex)
-        {
-            failed++;
-            Console.WriteLine($"[PUSH][ERROR] {ex.Message}");
-        }
-    }
-
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new { success, failed });
-})
-.RequireAuthorization(); // richiede utente loggato
-
-app.MapPost("/api/push/match-event", async (
-    [FromBody] MatchEventPushDto body,
-    ApplicationDbContext writeDb,
-    ReadDbContext readDb,
-    IConfiguration cfg
-) =>
-{
-    if (body.MatchId <= 0 || string.IsNullOrWhiteSpace(body.Kind))
-        return Results.BadRequest(new { error = "Dati evento non validi" });
-
-    // Match + nomi squadre dal DB READ
-    var match = await readDb.Matches.FirstOrDefaultAsync(m => m.Id == body.MatchId);
-    if (match == null)
-        return Results.NotFound(new { error = "Match non trovato" });
-
-    var homeName = await readDb.Teams
-        .Where(t => t.Id == match.HomeId)
-        .Select(t => t.Name)
-        .FirstOrDefaultAsync() ?? "Home";
-
-    var awayName = await readDb.Teams
-        .Where(t => t.Id == match.AwayId)
-        .Select(t => t.Name)
-        .FirstOrDefaultAsync() ?? "Away";
-
-    // Utenti che hanno questo match tra i preferiti
-    var userIds = await writeDb.FavoriteMatches
-        .Where(f => f.MatchId == body.MatchId)
-        .Select(f => f.UserId)
-        .Distinct()
-        .ToListAsync();
-
-    if (userIds.Count == 0)
-        return Results.Ok(new { success = 0, failed = 0, message = "Nessun utente con questo match tra i preferiti." });
-
-    // Subscription push per quegli utenti
-    var subs = await writeDb.PushSubscriptions
-        .Where(s => userIds.Contains(s.UserId) && s.IsActive && s.MatchNotificationsEnabled)
-        .ToListAsync();
-
-    if (subs.Count == 0)
-        return Results.Ok(new { success = 0, failed = 0, message = "Nessuna subscription attiva per questo match." });
-
-    // Chiavi VAPID da config/env (stesso schema di /api/push/test)
-    var publicKey =
-        cfg["VAPID_PUBLIC_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
-    var privateKey =
-        cfg["VAPID_PRIVATE_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
-    var subject =
-        cfg["VAPID_SUBJECT"] ??
-        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:nextstakeai@gmail.com";
-
-    if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
-        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
-
-    var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
-    var client = new WebPushClient();
-
-    // Costruisci testo notifica in base al "kind"
-    var scoreStr = (body.Home.HasValue && body.Away.HasValue)
-        ? $"{body.Home}-{body.Away}"
-        : "";
-
-    string title;
-    string bodyText;
-
-    switch (body.Kind)
-    {
-        case "start":
-            title = "Inizio partita";
-            bodyText = $"{homeName} - {awayName} è iniziata.";
-            break;
-        case "halftime":
-            title = "Fine primo tempo";
-            bodyText = $"{homeName} - {awayName} | HT {scoreStr}";
-            break;
-        case "second":
-            title = "Inizio secondo tempo";
-            bodyText = $"{homeName} - {awayName} | Ripresa in corso.";
-            break;
-        case "end":
-            title = "Partita terminata";
-            bodyText = $"{homeName} - {awayName} | Finale {scoreStr}";
-            break;
-        case "goal":
-            title = "GOAL!";
-            var minutePart = body.Minute.HasValue ? $" al {body.Minute}'" : "";
-            bodyText = $"{homeName} - {awayName} | {scoreStr}{minutePart}";
-            break;
-        default:
-            title = "Aggiornamento match";
-            bodyText = $"{homeName} - {awayName}";
-            break;
-    }
-
-    var payloadObj = new
-    {
-        title = title,
-        body = bodyText,
-        url = $"/Match/Details?id={body.MatchId}"
-    };
+    var payloadObj = new { title = "Test notifica NextStake", body = "Le notifiche push sono attive 👍", url = "/Events" };
     var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
 
     int success = 0, failed = 0;
-
     foreach (var s in subs)
     {
         var pushSub = new WebPushSubscription(s.Endpoint, s.P256Dh, s.Auth);
-
         try
         {
             await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
@@ -673,409 +502,29 @@ app.MapPost("/api/push/match-event", async (
         }
         catch (WebPushException wex)
         {
-            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
-                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
+            if (wex.StatusCode == System.Net.HttpStatusCode.Gone || wex.StatusCode == System.Net.HttpStatusCode.NotFound)
                 s.IsActive = false;
-            }
             failed++;
-            Console.WriteLine($"[PUSH MATCH][ERROR] {wex.StatusCode} {wex.Message}");
         }
-        catch (Exception ex)
-        {
-            failed++;
-            Console.WriteLine($"[PUSH MATCH][ERROR] {ex.Message}");
-        }
+        catch (Exception) { failed++; }
     }
 
-    await writeDb.SaveChangesAsync();
-
+    await db.SaveChangesAsync();
     return Results.Ok(new { success, failed });
 })
 .RequireAuthorization();
-// === Job live notify: rileva eventi sui match e invia Web Push agli utenti che li hanno nei preferiti ===
-// === Job live notify: rileva eventi sui match e invia Web Push agli utenti che li hanno nei preferiti ===
-app.MapPost("/internal/jobs/live-notify", async (
-    [FromQuery] string key,
-    IHttpClientFactory httpFactory,
-    IConfiguration cfg,
-    ReadDbContext readDb,
-    ApplicationDbContext writeDb
-) =>
-{
-    // --- 1) Sicurezza job ----------------------------------------------------
-    var expectedKey =
-        cfg["JOBS_LIVE_NOTIFY_KEY"] ??
-        Environment.GetEnvironmentVariable("JOBS_LIVE_NOTIFY_KEY");
 
-    if (string.IsNullOrWhiteSpace(expectedKey) || key != expectedKey)
-    {
-        return Results.Unauthorized();
-    }
+// 🛑 DISATTIVAZIONE CONSIGLIATA: match-event
+// Anche questo endpoint genera query e può essere disattivato se vuoi spegnere le notifiche live.
+/*
+app.MapPost("/api/push/match-event", async (...) => { ... });
+*/
 
-    // --- 2) Chiavi API-FOOTBALL ---------------------------------------------
-    var apiKey =
-        cfg["ApiSports:Key"] ??
-        Environment.GetEnvironmentVariable("ApiSports__Key");
-
-    if (string.IsNullOrWhiteSpace(apiKey))
-    {
-        return Results.Problem("ApiSports:Key non impostata.");
-    }
-
-    // --- 3) Chiavi VAPID -----------------------------------------------------
-    var publicKey =
-        cfg["VAPID_PUBLIC_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
-    var privateKey =
-        cfg["VAPID_PRIVATE_KEY"] ??
-        Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
-    var subject =
-        cfg["VAPID_SUBJECT"] ??
-        Environment.GetEnvironmentVariable("VAPID_SUBJECT") ??
-        "mailto:nextstakeai@gmail.com";
-
-    if (string.IsNullOrWhiteSpace(publicKey) || string.IsNullOrWhiteSpace(privateKey))
-    {
-        return Results.Problem("VAPID_PUBLIC_KEY o VAPID_PRIVATE_KEY non impostate.");
-    }
-
-    var vapidDetails = new VapidDetails(subject, publicKey, privateKey);
-    var client = new WebPushClient();
-
-    // --- 4) Chiamata API-FOOTBALL per i live ---------------------------------
-    var http = httpFactory.CreateClient("ApiSports");
-
-    var req = new HttpRequestMessage(
-        HttpMethod.Get,
-        "fixtures?live=all&timezone=Europe/Rome"
-    );
-    req.Headers.Add("x-apisports-key", apiKey);
-
-    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-    if (!resp.IsSuccessStatusCode)
-    {
-        return Results.StatusCode((int)resp.StatusCode);
-    }
-
-    var raw = await resp.Content.ReadAsStringAsync();
-    var fixtures = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
-
-    var liveList = fixtures?.Response ?? new List<ApiFixtureItem>();
-    if (liveList.Count == 0)
-    {
-        // Nessuna partita live = niente da fare
-        return Results.Ok(new { message = "Nessuna partita live al momento." });
-    }
-
-    var liveIds = liveList
-        .Select(f => f.Fixture.Id)   // ✅ int
-        .Distinct()
-        .ToList();
-
-    // --- 5) Dati aggiuntivi dal DB (nomi squadre, logo, lega) ----------------
-    var meta = await (
-        from m in readDb.Matches
-        join lg in readDb.Leagues on m.LeagueId equals lg.Id
-        join th in readDb.Teams on m.HomeId equals th.Id
-        join ta in readDb.Teams on m.AwayId equals ta.Id
-        where liveIds.Contains(m.Id)
-        select new
-        {
-            MatchId = m.Id,
-            LeagueName = lg.Name,
-            LeagueLogo = lg.Logo,
-            HomeName = th.Name,
-            HomeLogo = th.Logo,
-            AwayName = ta.Name,
-            AwayLogo = ta.Logo
-        }
-    ).ToListAsync();
-
-    var metaById = meta.ToDictionary(x => x.MatchId, x => x);
-
-    // --- 6) Stato precedente dei match live ----------------------------------
-    var existingStates = await writeDb.LiveMatchStates
-        .Where(s => liveIds.Contains(s.MatchId))
-        .ToListAsync();
-
-    var stateById = existingStates.ToDictionary(s => s.MatchId, s => s);
-
-    // --- 7) Preferiti + subscription per utente ------------------------------
-    var favPerMatch = await writeDb.FavoriteMatches
-        .Where(fm => liveIds.Contains((int)fm.MatchId))   // 👈 cast esplicito
-        .GroupBy(fm => fm.MatchId)
-        .Select(g => new
-        {
-            MatchId = g.Key,
-            UserIds = g.Select(fm => fm.UserId).Distinct().ToList()
-        })
-        .ToListAsync();
-
-
-    var favUsersByMatch = favPerMatch.ToDictionary(x => x.MatchId, x => x.UserIds);
-
-    var activeSubs = await writeDb.PushSubscriptions
-        .Where(s => s.IsActive && s.MatchNotificationsEnabled && s.UserId != null)
-        .ToListAsync();
-
-    var subsByUser = activeSubs
-        .GroupBy(s => s.UserId!)
-        .ToDictionary(g => g.Key, g => g.ToList());
-
-    // --- 8) Rilevazione eventi + costruzione notifiche -----------------------
-    string[] LIVE_STATUSES = { "1H", "2H", "ET", "P", "BT", "LIVE", "HT" };
-    string[] FINISHED_STATUSES = { "FT", "AET", "PEN" }; // per ora non li vediamo da live=all, ma li consideriamo
-
-    var nowUtc = DateTime.UtcNow;
-    var toSend = new List<(DbPushSubscription sub, string title, string body, string url)>();
-
-    foreach (var item in liveList)
-    {
-        var id = item.Fixture.Id; // ✅ int
-
-        var status = (item.Fixture.Status.Short ?? "").ToUpperInvariant();
-        var elapsed = item.Fixture.Status.Elapsed;
-        var home = item.Goals.Home;
-        var away = item.Goals.Away;
-
-        metaById.TryGetValue(id, out var m);
-        var leagueName = m?.LeagueName ?? "Match";
-        var homeName = m?.HomeName ?? "Home";
-        var awayName = m?.AwayName ?? "Away";
-
-        stateById.TryGetValue(id, out var prev);
-
-        var prevStatus = prev?.LastStatus;
-        var prevHome = prev?.LastHome;
-        var prevAway = prev?.LastAway;
-
-        bool isLiveNow = LIVE_STATUSES.Contains(status);
-        bool isLivePrev = prevStatus != null && LIVE_STATUSES.Contains(prevStatus);
-        bool isFinishedNow = FINISHED_STATUSES.Contains(status);
-        bool isFinishedPrev = prevStatus != null && FINISHED_STATUSES.Contains(prevStatus);
-
-        int? currHome = home;
-        int? currAway = away;
-        int prevHomeVal = prevHome ?? 0;
-        int prevAwayVal = prevAway ?? 0;
-
-        bool scoreChanged = prev != null &&
-                            (prevHome != currHome || prevAway != currAway);
-
-        int prevTotal = prevHomeVal + prevAwayVal;
-        int currTotal = (currHome ?? 0) + (currAway ?? 0);
-
-        // Nessun favorito su questo match? Salta le notifiche, ma aggiorna lo stato
-        if (!favUsersByMatch.TryGetValue(id, out var userIdsForMatch) || userIdsForMatch.Count == 0)
-        {
-            if (prev == null)
-            {
-                writeDb.LiveMatchStates.Add(new LiveMatchState
-                {
-                    MatchId = id,
-                    LastStatus = status,
-                    LastHome = currHome,
-                    LastAway = currAway,
-                    LastElapsed = elapsed,
-                    LastUpdatedUtc = nowUtc
-                });
-            }
-            else
-            {
-                prev.LastStatus = status;
-                prev.LastHome = currHome;
-                prev.LastAway = currAway;
-                prev.LastElapsed = elapsed;
-                prev.LastUpdatedUtc = nowUtc;
-            }
-            continue;
-        }
-
-        // Se non abbiamo stato precedente, inizializziamo solo e NON notifichiamo
-        if (prev == null)
-        {
-            writeDb.LiveMatchStates.Add(new LiveMatchState
-            {
-                MatchId = id,
-                LastStatus = status,
-                LastHome = currHome,
-                LastAway = currAway,
-                LastElapsed = elapsed,
-                LastUpdatedUtc = nowUtc
-            });
-            continue;
-        }
-
-        // Abbiamo un prev: possiamo rilevare eventi
-        var events = new List<string>();
-
-        // Inizio partita: da non-live a live
-        if (!isLivePrev && isLiveNow)
-        {
-            events.Add("start");
-        }
-
-        // Fine primo tempo: 1H -> HT
-        if (prevStatus == "1H" && status == "HT")
-        {
-            events.Add("halftime");
-        }
-
-        // Inizio secondo tempo: HT -> 2H
-        if (prevStatus == "HT" && status == "2H")
-        {
-            events.Add("second");
-        }
-
-        // Fine partita
-        if (!isFinishedPrev && isFinishedNow)
-        {
-            events.Add("end");
-        }
-
-        // Goal / Rettifica
-        if (scoreChanged && !isFinishedNow)
-        {
-            if (currTotal > prevTotal)
-            {
-                events.Add("goal");
-            }
-            else if (currTotal < prevTotal)
-            {
-                events.Add("correction");
-            }
-        }
-
-        if (events.Count > 0)
-        {
-            var scoreStr = (currHome.HasValue && currAway.HasValue)
-                ? $"{currHome}-{currAway}"
-                : "";
-
-            var minuteStr = elapsed.HasValue ? $"{elapsed}'" : null;
-            var matchLabel = $"{homeName} - {awayName}";
-            var leagueLabel = leagueName;
-
-            foreach (var ev in events)
-            {
-                string title;
-                string body;
-
-                switch (ev)
-                {
-                    case "start":
-                        title = "Inizio partita";
-                        body = $"{leagueLabel} | {matchLabel} è iniziata.";
-                        break;
-                    case "halftime":
-                        title = "Fine primo tempo";
-                        body = $"{leagueLabel} | {matchLabel} | HT {scoreStr}";
-                        break;
-                    case "second":
-                        title = "Inizio secondo tempo";
-                        body = $"{leagueLabel} | {matchLabel} | Ripresa in corso.";
-                        break;
-                    case "end":
-                        title = "Partita terminata";
-                        body = $"{leagueLabel} | {matchLabel} | Finale {scoreStr}";
-                        break;
-                    case "goal":
-                        title = "GOAL!";
-                        body = $"{leagueLabel} | {matchLabel} | {scoreStr}"
-                             + (minuteStr != null ? $" al {minuteStr}" : "");
-                        break;
-                    case "correction":
-                        title = "Rettifica punteggio";
-                        body = $"{leagueLabel} | {matchLabel} | Nuovo punteggio {scoreStr}";
-                        break;
-                    default:
-                        title = "Aggiornamento match";
-                        body = $"{leagueLabel} | {matchLabel}";
-                        break;
-                }
-
-                var url = $"/Match/Details?id={id}";
-
-                foreach (var userId in userIdsForMatch)
-                {
-                    if (!subsByUser.TryGetValue(userId, out var userSubs)) continue;
-
-                    foreach (var sub in userSubs)
-                    {
-                        toSend.Add((sub, title, body, url));
-                    }
-                }
-            }
-        }
-
-        // Aggiorna stato in DB
-        prev.LastStatus = status;
-        prev.LastHome = currHome;
-        prev.LastAway = currAway;
-        prev.LastElapsed = elapsed;
-        prev.LastUpdatedUtc = nowUtc;
-    }
-
-    // Salva stati aggiornati
-    await writeDb.SaveChangesAsync();
-
-    // --- 9) Invio Web Push ----------------------------------------------------
-    int success = 0;
-    int failed = 0;
-
-    foreach (var item in toSend)
-    {
-        var sub = item.sub;
-
-        var payloadObj = new
-        {
-            title = item.title,
-            body = item.body,
-            url = item.url
-        };
-        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payloadObj);
-
-        var pushSub = new WebPushSubscription(sub.Endpoint, sub.P256Dh, sub.Auth);
-
-        try
-        {
-            await client.SendNotificationAsync(pushSub, payloadJson, vapidDetails);
-            success++;
-        }
-        catch (WebPushException wex)
-        {
-            // Endpoint scaduto/non valido → disattivo
-            if (wex.StatusCode == System.Net.HttpStatusCode.Gone ||
-                wex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                sub.IsActive = false;
-            }
-
-            failed++;
-            Console.WriteLine($"[LIVEPUSH][ERROR] {wex.StatusCode} {wex.Message}");
-        }
-        catch (Exception ex)
-        {
-            failed++;
-            Console.WriteLine($"[LIVEPUSH][ERROR] {ex.Message}");
-        }
-    }
-
-    if (failed > 0)
-    {
-        await writeDb.SaveChangesAsync();
-    }
-
-    return Results.Ok(new
-    {
-        liveCount = liveList.Count,
-        sent = success,
-        failed,
-        events = toSend.Count
-    });
-});
-
+// 🛑 DISATTIVAZIONE CONSIGLIATA: Il job di notifica automatica
+// Questo job è quello che probabilmente consuma di più se gira ogni minuto.
+/*
+app.MapPost("/internal/jobs/live-notify", async (...) => { ... });
+*/
 
 app.MapPost("/api/push/unsubscribe", async (
     [FromBody] PushUnsubscribeDto body,
@@ -1086,18 +535,13 @@ app.MapPost("/api/push/unsubscribe", async (
     if (string.IsNullOrWhiteSpace(body.Endpoint))
         return Results.BadRequest(new { error = "Endpoint mancante" });
 
-    // opzionale: puoi richiedere login anche qui
     if (httpContext.User?.Identity?.IsAuthenticated != true)
         return Results.Unauthorized();
 
     var sub = await db.PushSubscriptions
         .FirstOrDefaultAsync(x => x.Endpoint == body.Endpoint);
 
-    if (sub is null)
-    {
-        // idempotente: ok anche se non esiste
-        return Results.Ok(new { ok = true });
-    }
+    if (sub is null) return Results.Ok(new { ok = true });
 
     sub.IsActive = false;
     await db.SaveChangesAsync();
