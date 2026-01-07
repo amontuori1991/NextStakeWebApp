@@ -2111,18 +2111,6 @@ TESTO DA RISCRIVERE:
                 ComboFinale = GetField<string>(rd, "ComboFinale")
             };
 
-            // IMPORTANTISSIMO: consumare eventuali resultset rimanenti in modo safe.
-            // Se lo script genera più SELECT, questo evita che il dispose faccia casino su NextResult.
-            try
-            {
-                while (await rd.NextResultAsync()) { /* discard */ }
-            }
-            catch
-            {
-                // Se la connessione è già caduta, non vogliamo mascherare il risultato principale.
-                // Render può troncare lo stream durante NextResult: ignoriamo e ritorniamo comunque.
-            }
-
             return row;
         }
 
@@ -2152,7 +2140,7 @@ TESTO DA RISCRIVERE:
 
             cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
 
-            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+            await using var rd = await cmd.ExecuteReaderAsync();
 
             if (!await rd.ReadAsync())
                 return null;
@@ -2199,7 +2187,7 @@ TESTO DA RISCRIVERE:
             cmd.Parameters.Add("@Season", NpgsqlDbType.Integer).Value = season;
             cmd.Parameters.Add("@LeagueId", NpgsqlDbType.Integer).Value = leagueId;
 
-            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+            await using var rd = await cmd.ExecuteReaderAsync();
 
             if (!await rd.ReadAsync())
                 return null;
