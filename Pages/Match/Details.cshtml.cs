@@ -14,6 +14,7 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 using Npgsql;
+using NpgsqlTypes;
 using System.Text;
 
 namespace NextStakeWebApp.Pages.Match
@@ -2072,17 +2073,25 @@ TESTO DA RISCRIVERE:
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-            if (string.IsNullOrWhiteSpace(script)) return null;
+            if (string.IsNullOrWhiteSpace(script))
+                return null;
 
             var cs = _read.Database.GetConnectionString();
+
             await using var conn = new NpgsqlConnection(cs);
             await conn.OpenAsync();
 
-            await using var cmd = new NpgsqlCommand(script, conn);
-            cmd.Parameters.AddWithValue("@MatchId", (int)matchId);
+            await using var cmd = new NpgsqlCommand(script, conn)
+            {
+                CommandTimeout = 180
+            };
 
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync()) return null;
+            cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
+
+            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+
+            if (!await rd.ReadAsync())
+                return null;
 
             return new PredictionRow
             {
@@ -2113,17 +2122,25 @@ TESTO DA RISCRIVERE:
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-            if (string.IsNullOrWhiteSpace(script)) return null;
+            if (string.IsNullOrWhiteSpace(script))
+                return null;
 
             var cs = _read.Database.GetConnectionString();
+
             await using var conn = new NpgsqlConnection(cs);
             await conn.OpenAsync();
 
-            await using var cmd = new NpgsqlCommand(script, conn);
-            cmd.Parameters.AddWithValue("@MatchId", (int)matchId);
+            await using var cmd = new NpgsqlCommand(script, conn)
+            {
+                CommandTimeout = 180
+            };
 
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync()) return null;
+            cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
+
+            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+
+            if (!await rd.ReadAsync())
+                return null;
 
             return new ExchangePredictionRow
             {
@@ -2138,6 +2155,7 @@ TESTO DA RISCRIVERE:
             };
         }
 
+
         // =======================
         // Analyses generiche (ritorna MetricGroup.Metrics)
         // =======================
@@ -2149,32 +2167,51 @@ TESTO DA RISCRIVERE:
                 .AsNoTracking()
                 .FirstOrDefaultAsync();
 
-            if (string.IsNullOrWhiteSpace(script)) return null;
+            if (string.IsNullOrWhiteSpace(script))
+                return null;
 
             var cs = _read.Database.GetConnectionString();
+
             await using var conn = new NpgsqlConnection(cs);
             await conn.OpenAsync();
 
-            await using var cmd = new NpgsqlCommand(script, conn);
-            cmd.Parameters.AddWithValue("@MatchId", matchId);
-            cmd.Parameters.AddWithValue("@Season", season);
-            cmd.Parameters.AddWithValue("@LeagueId", leagueId);
+            await using var cmd = new NpgsqlCommand(script, conn)
+            {
+                CommandTimeout = 180
+            };
 
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync()) return null;
+            cmd.Parameters.Add("@MatchId", NpgsqlDbType.Integer).Value = matchId;
+            cmd.Parameters.Add("@Season", NpgsqlDbType.Integer).Value = season;
+            cmd.Parameters.Add("@LeagueId", NpgsqlDbType.Integer).Value = leagueId;
 
-            var mg = new MetricGroup { Metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) };
+            await using var rd = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+
+            if (!await rd.ReadAsync())
+                return null;
+
+            var mg = new MetricGroup
+            {
+                Metrics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            };
+
             for (int i = 0; i < rd.FieldCount; i++)
             {
                 var name = rd.GetName(i);
-                if (name.Equals("Id", StringComparison.OrdinalIgnoreCase) || name.Equals("MatchId", StringComparison.OrdinalIgnoreCase))
+
+                if (name.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("MatchId", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                var value = rd.IsDBNull(i) ? "—" : Convert.ToString(rd.GetValue(i)) ?? "—";
+                var value = rd.IsDBNull(i)
+                    ? "—"
+                    : Convert.ToString(rd.GetValue(i)) ?? "—";
+
                 mg.Metrics[name] = value;
             }
+
             return mg;
         }
+
 
         private async Task<int> GetRemainingMatchesAsync(int leagueId, int season)
         {
