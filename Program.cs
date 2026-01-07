@@ -286,124 +286,18 @@ app.MapRazorPages();
 
 
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
-app.MapGet("/api/livescores", async (
-    IHttpClientFactory httpFactory,
-    IConfiguration cfg,
-    IMemoryCache cache,
-    ApplicationDbContext writeDb,
+// --- Proxy minimal per Live Scores (API-FOOTBALL) ---
+// Modificato per restituire zero risultati ed evitare chiamate API/DB
+app.MapGet("/api/livescores", (
     [FromQuery] string? ids
 ) =>
 {
-    var key = cfg["ApiSports:Key"];
-    if (string.IsNullOrWhiteSpace(key))
-        return Results.Problem("Missing ApiSports:Key");
+    // Restituiamo una lista vuota immediatamente.
+    // In questo modo il widget nel frontend non riceve errori, 
+    // semplicemente vedrà che non ci sono partite live disponibili.
+    var emptyPayload = new List<object>();
 
-    var cacheKey = $"livescores:{ids ?? "live-all"}";
-    if (cache.TryGetValue(cacheKey, out object? cached) && cached is not null)
-        return Results.Json(cached);
-
-    var http = httpFactory.CreateClient("ApiSports");
-    var url = "fixtures?live=all&timezone=Europe/Rome";
-
-    var req = new HttpRequestMessage(HttpMethod.Get, url);
-    req.Headers.Add("x-apisports-key", key);
-
-    using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-
-    // 🛑 DISATTIVATO: Inserimento nel CallCounter (Risparmio Neon)
-    // Questo blocco scriveva nel DB ad ogni singolo refresh della pagina.
-    /*
-    const string origin = "WidgetWebApp";
-    try
-    {
-        await writeDb.Database.ExecuteSqlRawAsync(
-            @"INSERT INTO callcounter(date, origin, counter)
-              VALUES (CURRENT_DATE, {0}, 1)
-              ON CONFLICT (date, origin)
-              DO UPDATE SET counter = callcounter.counter + 1;",
-            origin);
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[CALLCOUNTER][WidgetWebApp] ERROR: {ex.Message}");
-    }
-    */
-
-    if (!resp.IsSuccessStatusCode)
-        return Results.StatusCode((int)resp.StatusCode);
-
-    var raw = await resp.Content.ReadAsStringAsync();
-    var json = System.Text.Json.JsonSerializer.Deserialize<ApiFootballFixturesResponse>(raw);
-
-    // 🛑 DISATTIVATO: Aggiornamento LiveMatchStates (Risparmio Neon)
-    // Questa era la parte più costosa: centinaia di UPDATE continui per ogni match live.
-    // Disattivandola, risparmi CPU e scritture su Neon.
-    /*
-    if (json?.Response != null && json.Response.Count > 0)
-    {
-        var nowUtc = DateTime.UtcNow;
-
-        var liveIds = json.Response
-            .Select(f => f.Fixture.Id)
-            .Distinct()
-            .ToList();
-
-        if (liveIds.Count > 0)
-        {
-            var existingStates = await writeDb.LiveMatchStates
-                .Where(s => liveIds.Contains(s.MatchId))
-                .ToListAsync();
-
-            var stateById = existingStates.ToDictionary(s => s.MatchId, s => s);
-
-            foreach (var item in json.Response)
-            {
-                var id = item.Fixture.Id;
-                var status = (item.Fixture.Status.Short ?? "").Trim().ToUpperInvariant();
-                var home = item.Goals.Home;
-                var away = item.Goals.Away;
-                var elapsed = item.Fixture.Status.Elapsed;
-
-                if (!stateById.TryGetValue(id, out var st))
-                {
-                    st = new LiveMatchState
-                    {
-                        MatchId = id
-                    };
-                    writeDb.LiveMatchStates.Add(st);
-                    stateById[id] = st;
-                }
-
-                st.LastStatus = status;
-                st.LastHome = home;
-                st.LastAway = away;
-                st.LastElapsed = elapsed;
-                st.LastUpdatedUtc = nowUtc;
-
-            }
-
-            await writeDb.SaveChangesAsync();
-        }
-    }
-    */
-
-    var payload = json?.Response?
-        .Select(x => (object)new
-        {
-            id = x.Fixture.Id,
-            status = x.Fixture.Status.Short,
-            elapsed = x.Fixture.Status.Elapsed,
-            home = x.Goals.Home,
-            away = x.Goals.Away
-        })
-        .ToList()
-        ?? new List<object>();
-
-    // ✅ OTTIMIZZAZIONE: Cache aumentata a 30 secondi (era 1s)
-    // Riduce drasticamente il numero di chiamate all'API esterna e l'elaborazione del server.
-    cache.Set(cacheKey, payload, TimeSpan.FromSeconds(30));
-
-    return Results.Json(payload);
+    return Results.Json(emptyPayload);
 })
 .WithName("LiveScores");
 
