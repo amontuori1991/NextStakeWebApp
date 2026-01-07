@@ -180,7 +180,7 @@ builder.Services.AddRazorPages(o =>
 
 
 builder.Services.AddControllersWithViews();
-// builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>();
+// builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>(); // 🛑 DISATTIVATO: worker notifiche live
 
 
 var app = builder.Build();
