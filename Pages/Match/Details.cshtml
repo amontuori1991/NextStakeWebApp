@@ -427,6 +427,60 @@
                 </ul>
             </div>
         </div>
+        @if (User?.Identity?.IsAuthenticated ?? false)
+{
+    <div class="card mt-3">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span>🎫 La tua schedina</span>
+            <a class="btn btn-sm btn-outline-primary" asp-page="/Schedine/Index">Apri archivio</a>
+        </div>
+
+        <div class="card-body">
+            <form method="post" asp-page-handler="AddToSlip">
+                @Html.AntiForgeryToken()
+
+                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Salva in</label>
+                        <select class="form-select" name="slipId">
+                            <option value="">➕ Nuova multipla…</option>
+                            @foreach (var s in Model.MySlips)
+                            {
+                                <option value="@s.Id">@s.Name</option>
+                            }
+                        </select>
+                        <small class="text-muted">Se scegli “Nuova multipla” creerà una schedina nuova.</small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Nome nuova multipla (solo se sopra è vuoto)</label>
+                        <input class="form-control" name="newSlipTitle" placeholder="Es. Weekend 1" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Il tuo pronostico per questo match</label>
+                        <input class="form-control" name="pickText" value="@p.ComboFinale" />
+                        <small class="text-muted">Precompilato con la combo, ma puoi modificarlo.</small>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        ✅ Salva in archivio
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-secondary mt-3">
+        Accedi per creare e salvare le tue schedine personali.
+    </div>
+}
 
         @* 🔹 Quote collegate ai pronostici (solo BetId indicati) *@
         @if (Model.Data.Odds != null && Model.Data.Odds.Any())

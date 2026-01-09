@@ -62,6 +62,15 @@ namespace NextStakeWebApp.Pages.Match
 
         public VM Data { get; private set; } = new();
 
+        public List<UserSlipItem> MySlips { get; set; } = new();
+
+        public class UserSlipItem
+        {
+            public long Id { get; set; }
+            public string Name { get; set; } = "";
+        }
+
+
 
         public class VM
         {
@@ -1729,6 +1738,13 @@ TESTO DA RISCRIVERE:
 
             var userId = _userManager.GetUserId(User)!;
             var isFav = await _write.FavoriteMatches.AnyAsync(f => f.UserId == userId && f.MatchId == id);
+            // ✅ Carico le schedine dell’utente (per dropdown)
+            MySlips = await _write.BetSlips
+                .AsNoTracking()
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.CreatedAtUtc)
+                .Select(x => new UserSlipItem { Id = x.Id, Name = (x.Title ?? $"Schedina #{x.Id}") })
+                .ToListAsync();
 
             // Carichi accessori
             var remaining = await GetRemainingMatchesAsync(dto.LeagueId, dto.Season);
@@ -1938,6 +1954,90 @@ TESTO DA RISCRIVERE:
             TempData["StatusMessage"] = "✅ Pronostico inviato su Telegram.";
             return RedirectToPage(new { id });
         }
+
+        public async Task<IActionResult> OnPostAddToSlipAsync(
+            long id,
+            long? slipId,
+            string? newSlipTitle,
+            string? pickText)
+        {
+            if (User?.Identity?.IsAuthenticated != true)
+                return Unauthorized();
+
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(userId))
+                return Unauthorized();
+
+            pickText = (pickText ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(pickText))
+            {
+                TempData["StatusMessage"] = "⚠️ Inserisci un pronostico prima di salvare.";
+                return RedirectToPage(new { id });
+            }
+
+            // 1) Se non scelgo slipId → creo una nuova schedina (multipla)
+            long targetSlipId;
+
+            if (!slipId.HasValue)
+            {
+                var title = (newSlipTitle ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(title))
+                    title = $"Multipla {DateTime.Now:dd/MM HH:mm}";
+
+                var slip = new BetSlip
+                {
+                    UserId = userId,
+                    Title = title,
+                    Type = "Draft",
+                    IsPublic = false,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    UpdatedAtUtc = DateTime.UtcNow
+                };
+
+                _write.BetSlips.Add(slip);
+                await _write.SaveChangesAsync();
+
+                targetSlipId = slip.Id;
+            }
+            else
+            {
+                // 2) Verifico che la schedina sia dell’utente
+                var owns = await _write.BetSlips.AnyAsync(x => x.Id == slipId.Value && x.UserId == userId);
+                if (!owns) return Forbid();
+
+                targetSlipId = slipId.Value;
+            }
+
+            // 3) Evito duplicati dello stesso match nella stessa schedina
+            var existing = await _write.BetSelections
+                .FirstOrDefaultAsync(x => x.BetSlipId == targetSlipId && x.MatchId == id);
+
+            if (existing == null)
+            {
+                _write.BetSelections.Add(new BetSelection
+                {
+                    BetSlipId = targetSlipId,
+                    MatchId = id,
+                    Pick = pickText,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                existing.Pick = pickText;
+                // BetSelection non ha UpdatedAtUtc: se vuoi, lo aggiungiamo al model.
+            }
+
+            var slipToUpdate = await _write.BetSlips.FirstAsync(x => x.Id == targetSlipId);
+            slipToUpdate.UpdatedAtUtc = DateTime.UtcNow;
+
+            await _write.SaveChangesAsync();
+
+            TempData["StatusMessage"] = "✅ Pronostico salvato nella tua schedina.";
+            return RedirectToPage(new { id });
+        }
+
+
         public async Task<IActionResult> OnPostSendOddsIdeaAsync(
             long id,
             string topicName,

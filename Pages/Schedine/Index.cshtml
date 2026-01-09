@@ -1,0 +1,137 @@
+﻿@page
+@model NextStakeWebApp.Pages.Schedine.IndexModel
+@{
+    ViewData["Title"] = "Le mie schedine";
+}
+
+<div class="container py-4">
+    <h3 class="mb-3">📌 Le mie schedine</h3>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-info">@Model.StatusMessage</div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="post" asp-page-handler="CreateDraft" class="d-flex flex-wrap gap-2 align-items-center">
+                @Html.AntiForgeryToken()
+                <input class="form-control" style="max-width:320px" name="title" placeholder="Titolo multipla (es: Weekend)" />
+                <button class="btn btn-primary" type="submit">➕ Crea multipla (bozza)</button>
+            </form>
+            <small class="text-muted d-block mt-2">
+                La “bozza” serve per aggiungere selezioni da più match e poi pubblicarla.
+            </small>
+        </div>
+    </div>
+
+    @if (Model.Items.Count == 0)
+    {
+        <div class="text-muted">Non hai ancora creato schedine.</div>
+    }
+    else
+    {
+        foreach (var s in Model.Items)
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
+                        <span class="badge bg-secondary ms-2">@s.Type</span>
+                        @if (s.IsPublic)
+                        {
+                            <span class="badge bg-success ms-1">PUBBLICA</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-light text-dark ms-1">PRIVATA</span>
+                        }
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <form method="post" asp-page-handler="TogglePublic" class="m-0">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@s.Id" />
+                            <button class="btn btn-outline-primary btn-sm" type="submit">
+                                @(s.IsPublic ? "Rendi privata" : "Pubblica")
+                            </button>
+                        </form>
+
+                        <form method="post" asp-page-handler="Delete" class="m-0" onsubmit="return confirm('Eliminare la schedina?');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@s.Id" />
+                            <button class="btn btn-outline-danger btn-sm" type="submit">🗑 Elimina</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div class="text-muted mb-2">
+                        Creata: @s.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        • Aggiornata: @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                    </div>
+
+                    @if (s.Selections.Count == 0)
+                    {
+                        <div class="text-muted">Nessuna selezione.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group">
+                            @foreach (var sel in s.Selections)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <div>
+                                        @{
+                                            Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
+                                        }
+
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
+                                            {
+                                                <img src="@mi.HomeLogo" alt="@mi.HomeName" style="width:22px;height:22px;object-fit:contain;" />
+                                            }
+                                            <strong>@(mi?.HomeName ?? $"Match {sel.MatchId}")</strong>
+
+                                            <span class="text-muted">vs</span>
+
+                                            <strong>@(mi?.AwayName ?? "")</strong>
+                                            @if (!string.IsNullOrWhiteSpace(mi?.AwayLogo))
+                                            {
+                                                <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
+                                            }
+
+                                            @if (mi?.DateUtc != null)
+                                            {
+                                                <span class="text-muted ms-2" style="font-size:0.9em;">
+                                                    @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                                                </span>
+                                            }
+
+                                            <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                        </div>
+
+                                        @if (sel.Odd.HasValue)
+                                        {
+                                            <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(sel.Note))
+                                        {
+                                            <div class="text-muted small">📝 @sel.Note</div>
+                                        }
+                                    </div>
+
+                                    <form method="post" asp-page-handler="RemoveSelection" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="selectionId" value="@sel.Id" />
+                                        <button class="btn btn-outline-secondary btn-sm" type="submit">Rimuovi</button>
+                                    </form>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>

@@ -57,6 +57,16 @@
                         @if (User?.Identity?.IsAuthenticated ?? false)
                         {
                             <li class="nav-item">
+                                <a class="nav-link text-dark" asp-page="/Schedine/Index">Le mie schedine</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-page="/Community/Index">Community</a>
+                            </li>
+                        }
+
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <li class="nav-item">
                                 <a class="nav-link text-dark" asp-page="/Feedback/Index">Invia il tuo feedback</a>
                             </li>
                         }

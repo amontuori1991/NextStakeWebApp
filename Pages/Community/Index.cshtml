@@ -1,0 +1,134 @@
+﻿@page
+@model NextStakeWebApp.Pages.Community.IndexModel
+@{
+    ViewData["Title"] = "Community";
+}
+
+<div class="container py-4">
+    <h3 class="mb-2">🌍 Community</h3>
+    <div class="text-muted mb-3">
+        Qui trovi le schedine pubblicate dagli utenti. Puoi commentare (stile chat).
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-info">@Model.StatusMessage</div>
+    }
+
+    @if (Model.PublicSlips.Count == 0)
+    {
+        <div class="text-muted">Nessuna schedina pubblicata al momento.</div>
+    }
+    else
+    {
+        foreach (var s in Model.PublicSlips)
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex flex-column">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
+                            <span class="badge bg-secondary">@s.Type</span>
+                            <span class="badge bg-success">PUBBLICA</span>
+                        </div>
+
+                        @{
+                            Model.AuthorMap.TryGetValue(s.UserId, out var slipAuthor);
+                        }
+                        <div class="small text-muted">
+                            Pubblicata da <strong>@(slipAuthor ?? "Utente")</strong>
+                        </div>
+                    </div>
+
+                    <div class="text-muted small">
+                        @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                    </div>
+                </div>
+
+
+                <div class="card-body">
+                    @if (s.Selections.Count == 0)
+                    {
+                        <div class="text-muted">Nessuna selezione.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group mb-3">
+                            @foreach (var sel in s.Selections.OrderBy(x => x.Id))
+                            {
+                                Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
+
+                                <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
+                                        {
+                                            <img src="@mi.HomeLogo" alt="@mi.HomeName" style="width:22px;height:22px;object-fit:contain;" />
+                                        }
+                                        <strong>@(mi?.HomeName ?? $"Match {sel.MatchId}")</strong>
+
+                                        <span class="text-muted">vs</span>
+
+                                        <strong>@(mi?.AwayName ?? "")</strong>
+                                        @if (!string.IsNullOrWhiteSpace(mi?.AwayLogo))
+                                        {
+                                            <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
+                                        }
+
+                                        @if (mi?.DateUtc != null)
+                                        {
+                                            <span class="text-muted ms-2" style="font-size:0.9em;">
+                                                @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                                            </span>
+                                        }
+
+                                        <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    <div class="mb-2"><strong>💬 Commenti</strong></div>
+
+                    @if (s.Comments.Count == 0)
+                    {
+                        <div class="text-muted mb-2">Ancora nessun commento.</div>
+                    }
+                    else
+                    {
+                        <div class="border rounded p-2 mb-2" style="max-height:260px; overflow:auto;">
+                            @foreach (var c in s.Comments.OrderByDescending(x => x.CreatedAtUtc).Take(40))
+                            {
+                                Model.AuthorMap.TryGetValue(c.UserId, out var author);
+
+                                <div class="mb-2">
+                                    <div class="small text-muted d-flex justify-content-between flex-wrap">
+                                        <span><strong>@(author ?? "Utente")</strong></span>
+                                        <span>@c.CreatedAtUtc.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                    </div>
+                                    <div>@c.Text</div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (User?.Identity?.IsAuthenticated ?? false)
+                    {
+                        <form method="post" asp-page-handler="Comment" class="d-flex gap-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="slipId" value="@s.Id" />
+                            <input class="form-control" name="text" maxlength="600" placeholder="Scrivi un commento..." />
+                            <button class="btn btn-primary" type="submit">Invia</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <div class="alert alert-secondary mt-2">
+                            Accedi per commentare.
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
