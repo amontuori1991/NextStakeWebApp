@@ -273,7 +273,7 @@ namespace NextStakeWebApp.Services
 
             // helper per scegliere icon/image
             string ResolveIcon(string? leagueLogo, string? homeLogo, string? awayLogo)
-                => "/icons/favicon_grinch.svg"; // teniamo sempre il logo NextStake come icona piccola
+                => "/icons/favicon.svg"; // teniamo sempre il logo NextStake come icona piccola
 
             string? ResolveImage(string? leagueLogo, string? homeLogo, string? awayLogo)
             {
