@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
+using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace NextStakeWebApp.Pages.Community
 {
@@ -21,6 +22,11 @@ namespace NextStakeWebApp.Pages.Community
         }
 
         [TempData] public string? StatusMessage { get; set; }
+        [BindProperty(SupportsGet = true)]
+        public string? UserFilter { get; set; }
+
+        public List<SelectListItem> AuthorOptions { get; set; } = new();
+
 
         public List<BetSlip> PublicSlips { get; set; } = new();
 
@@ -35,22 +41,42 @@ namespace NextStakeWebApp.Pages.Community
             public string? HomeLogo { get; set; }
             public string? AwayLogo { get; set; }
             public DateTime? DateUtc { get; set; }
+
+            public string? StatusShort { get; set; }
+            public int? HomeGoal { get; set; }
+            public int? AwayGoal { get; set; }
         }
+
 
         // UserId -> nome autore
         public Dictionary<string, string> AuthorMap { get; set; } = new();
 
         public async Task OnGetAsync()
         {
+
+            AuthorOptions = new List<SelectListItem>
+{
+    new SelectListItem { Value = "", Text = "Tutti gli utenti" }
+};
+
             // Feed: schedine pubbliche, con selezioni + commenti
-            PublicSlips = await _db.BetSlips
+            var q = _db.BetSlips
                 .AsNoTracking()
-                .Where(x => x.IsPublic)
+                .Where(x => x.IsPublic);
+
+            if (!string.IsNullOrWhiteSpace(UserFilter))
+            {
+                // filtro per UserId
+                q = q.Where(x => x.UserId == UserFilter);
+            }
+
+            PublicSlips = await q
                 .Include(x => x.Selections)
                 .Include(x => x.Comments)
                 .OrderByDescending(x => x.UpdatedAtUtc)
                 .Take(50)
                 .ToListAsync();
+
 
             // --- MATCH MAP (nome/loghi) ---
             var matchIds = PublicSlips
@@ -73,8 +99,13 @@ namespace NextStakeWebApp.Pages.Community
                         AwayName = ta.Name ?? "",
                         HomeLogo = th.Logo,
                         AwayLogo = ta.Logo,
-                        DateUtc = m.Date
+                        DateUtc = m.Date,
+
+                        StatusShort = m.StatusShort,
+                        HomeGoal = m.HomeGoal,
+                        AwayGoal = m.AwayGoal
                     }
+
                 ).ToListAsync();
 
                 MatchMap = rows.ToDictionary(x => x.MatchId, x => x);
@@ -107,10 +138,23 @@ namespace NextStakeWebApp.Pages.Community
 
                 AuthorMap = users.ToDictionary(
                     x => x.Id,
-                    x => !string.IsNullOrWhiteSpace(x.DisplayName)
-                        ? x.DisplayName!
-                        : (!string.IsNullOrWhiteSpace(x.Email) ? x.Email! : (x.UserName ?? "Utente"))
+                    x => !string.IsNullOrWhiteSpace(x.UserName)
+                        ? x.UserName!
+                        : (!string.IsNullOrWhiteSpace(x.DisplayName) ? x.DisplayName! : "Utente")
                 );
+                AuthorOptions.AddRange(
+                    users
+                        .OrderBy(u => u.UserName ?? u.DisplayName ?? u.Email)
+                        .Select(u => new SelectListItem
+                        {
+                            Value = u.Id,
+                            Text = !string.IsNullOrWhiteSpace(u.UserName)
+                                ? u.UserName!
+                                : (!string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName! : "Utente")
+                        })
+                );
+
+
             }
         }
 

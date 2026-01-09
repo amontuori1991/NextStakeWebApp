@@ -9,11 +9,35 @@
     <div class="text-muted mb-3">
         Qui trovi le schedine pubblicate dagli utenti. Puoi commentare (stile chat).
     </div>
+    <form method="get" class="card mb-3">
+        <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+            <label class="form-label m-0">Filtra per autore:</label>
+
+            <select class="form-select" style="max-width:280px" name="UserFilter" onchange="this.form.submit()">
+                @foreach (var opt in Model.AuthorOptions)
+                {
+                    <option value="@opt.Value" selected="@(opt.Value == (Model.UserFilter ?? ""))">
+                        @opt.Text
+                    </option>
+                }
+            </select>
+
+            @if (!string.IsNullOrWhiteSpace(Model.UserFilter))
+            {
+                <a class="btn btn-outline-secondary" asp-page="/Community/Index">Reset</a>
+            }
+        </div>
+    </form>
 
     @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
     {
         <div class="alert alert-info">@Model.StatusMessage</div>
     }
+    [BindProperty(SupportsGet = true)]
+    public string? UserFilter { get; set; }
+
+    public List<SelectListItem>
+        AuthorOptions { get; set; } = new();
 
     @if (Model.PublicSlips.Count == 0)
     {
@@ -79,6 +103,15 @@
                                             <span class="text-muted ms-2" style="font-size:0.9em;">
                                                 @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
                                             </span>
+                                        }
+                                        @if (mi?.StatusShort is "FT" or "AET" or "PEN")
+                                        {
+                                            if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+                                            {
+                                                <span class="badge bg-light text-dark ms-2">
+                                                    Risultato: @mi.HomeGoal - @mi.AwayGoal
+                                                </span>
+                                            }
                                         }
 
                                         <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
