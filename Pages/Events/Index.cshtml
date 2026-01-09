@@ -534,15 +534,12 @@
 </style>
 
 <div id="loadingOverlay" class="loading-overlay d-none" aria-hidden="true">
-    <div class="loading-panel video-only">
-        <video src="/videos/loading.mp4"
-               class="loading-video"
-               autoplay
-               muted
-               loop
-               playsinline></video>
+    <div class="loading-panel">
+        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+        <span id="loadingMessage">Caricamento…</span>
     </div>
 </div>
+
 
 
 <script>
@@ -1996,51 +1993,6 @@
                 .loading-panel .spinner-border {
                     color: #fff;
                 }
-
-                .loading-panel.video-only {
-                    padding: 0;
-                    background: transparent;
-                    border: none;
-                    box-shadow: none;
-                }
-
-                .loading-panel.video-only {
-                    padding: 0;
-                    background: transparent;
-                    border: none;
-                    box-shadow: none;
-                }
-
-            /* Desktop: bello grande */
-            .loading-video {
-                width: 480px; /* prima era 320 */
-                max-width: 70vw; /* non oltre il 70% della viewport */
-                height: auto;
-                display: block;
-                border-radius: 1rem;
-            }
-
-            /* Tablet */
-            @@media (max-width: 1024px) {
-                .loading-video
-
-            {
-                width: 360px;
-                max-width: 80vw;
-            }
-
-            }
-
-            /* Smartphone */
-            @@media (max-width: 576px) {
-                .loading-video
-
-            {
-                width: 240px;
-                max-width: 90vw;
-            }
-
-            }
 
 
             /* Stato “attivo” dei bottoni tema */
