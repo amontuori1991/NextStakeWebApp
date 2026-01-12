@@ -25,5 +25,8 @@ namespace NextStakeWebApp.Models
         public string? Note { get; set; }
 
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+        public short? ManualOutcome { get; set; } // null=auto, 1=win, 2=loss
+
     }
 }

@@ -161,6 +161,61 @@
                                                 }
 
                                                 <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                                @{
+    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
+}
+
+@if (mi?.StatusShort is "FT" or "AET" or "PEN")
+{
+    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+    {
+        <span class="badge bg-light text-dark ms-2">
+            Risultato: @mi.HomeGoal - @mi.AwayGoal
+        </span>
+    }
+}
+
+@if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
+{
+    <span class="badge bg-success ms-2">✅ Vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+{
+    <span class="badge bg-danger ms-2">❌ Persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+{
+    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+}
+else
+{
+    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+
+    <span class="ms-2 d-inline-flex gap-1">
+        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="selectionId" value="@sel.Id" />
+            <input type="hidden" name="outcome" value="win" />
+            <button class="btn btn-sm btn-outline-success" type="submit">✅</button>
+        </form>
+
+        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="selectionId" value="@sel.Id" />
+            <input type="hidden" name="outcome" value="loss" />
+            <button class="btn btn-sm btn-outline-danger" type="submit">❌</button>
+        </form>
+
+        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="selectionId" value="@sel.Id" />
+            <input type="hidden" name="outcome" value="auto" />
+            <button class="btn btn-sm btn-outline-secondary" type="submit">↩️</button>
+        </form>
+    </span>
+}
+
+
 
                                                 @if (sel.Odd.HasValue)
                                                 {
@@ -311,6 +366,37 @@
 }
 
                                             <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                            @{
+    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
+}
+
+@if (mi?.StatusShort is "FT" or "AET" or "PEN")
+{
+    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+    {
+        <span class="badge bg-light text-dark ms-2">
+            Risultato: @mi.HomeGoal - @mi.AwayGoal
+        </span>
+    }
+}
+
+@if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
+{
+    <span class="badge bg-success ms-2">✅ Vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+{
+    <span class="badge bg-danger ms-2">❌ Persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+{
+    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+}
+else
+{
+    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+}
+
 
                                             @if (sel.Odd.HasValue)
                                             {

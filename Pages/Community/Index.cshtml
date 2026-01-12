@@ -151,6 +151,38 @@
                                         }
 
                                         <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+
+                                        @{
+                                            var outcome = BetPickEvaluator.EvaluateSelectionOutcome(sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal);
+                                        }
+
+                                        @if (outcome == BetPickEvaluator.SelectionOutcome.Won)
+                                        {
+                                            <span class="badge bg-success ms-2">✅ Vinta</span>
+                                        }
+                                        else if (outcome == BetPickEvaluator.SelectionOutcome.Lost)
+                                        {
+                                            <span class="badge bg-danger ms-2">❌ Persa</span>
+                                        }
+                                        else if (outcome == BetPickEvaluator.SelectionOutcome.Pending)
+                                        {
+                                            <span class="badge bg-secondary ms-2">⏳ In corso</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+                                        }
+
+
+                                        @if (sel.ManualOutcome == 1)
+                                        {
+                                            <span class="badge bg-success ms-2">✅ Esito manuale: Vinta</span>
+                                        }
+                                        else if (sel.ManualOutcome == 2)
+                                        {
+                                            <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
+                                        }
+
                                     </div>
                                 </li>
                             }
