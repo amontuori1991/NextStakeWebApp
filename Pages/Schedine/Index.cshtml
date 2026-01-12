@@ -25,63 +25,256 @@
         </div>
     </div>
 
-    @if (Model.Items.Count == 0)
+    @if (Model.ActiveItems.Count == 0 && Model.ArchivedItems.Count == 0)
     {
         <div class="text-muted">Non hai ancora creato schedine.</div>
     }
     else
     {
-        foreach (var s in Model.Items)
+        @* ===================== ATTIVE ===================== *@
+        @if (Model.ActiveItems.Count > 0)
         {
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
-                        <span class="badge bg-secondary ms-2">@s.Type</span>
-                        @if (s.IsPublic)
+            <h5 class="mt-3 mb-2">🟢 Schedine attive</h5>
+
+            foreach (var s in Model.ActiveItems)
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div class="d-flex flex-column">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
+                                <span class="badge bg-secondary ms-1">@s.Type</span>
+
+                                @if (s.IsPublic)
+                                {
+                                    <span class="badge bg-success ms-1">PUBBLICA</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-dark ms-1">PRIVATA</span>
+                                }
+
+                                @* Stato risultato *@
+                                @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Win)
+                                {
+                                    <span class="badge bg-success ms-1">Vincente</span>
+                                }
+                                else if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Loss)
+                                {
+                                    <span class="badge bg-danger ms-1">Perdente</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary ms-1">Da assegnare</span>
+                                }
+                            </div>
+
+                            @* Bottoni esito (solo se non assegnato) *@
+                            @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.None)
+                            {
+                                <div class="mt-2 d-flex gap-2 flex-wrap">
+                                    <form method="post" asp-page-handler="SetResult" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="slipId" value="@s.Id" />
+                                        <input type="hidden" name="result" value="win" />
+                                        <button class="btn btn-sm btn-outline-success" type="submit">✅ Vincente</button>
+                                    </form>
+
+                                    <form method="post" asp-page-handler="SetResult" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="slipId" value="@s.Id" />
+                                        <input type="hidden" name="result" value="loss" />
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">✖ Perdente</button>
+                                    </form>
+
+                                    <small class="text-muted align-self-center">
+                                        Se non assegni l’esito entro 12h dall’inizio dell’ultima partita, verrà archiviata automaticamente.
+                                    </small>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="d-flex flex-column align-items-end gap-2">
+                            <div class="text-muted small">
+                                @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <form method="post" asp-page-handler="TogglePublic" class="m-0">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@s.Id" />
+                                    <button class="btn btn-outline-primary btn-sm" type="submit">
+                                        @(s.IsPublic ? "Rendi privata" : "Pubblica")
+                                    </button>
+                                </form>
+
+                                <form method="post" asp-page-handler="Delete" class="m-0" onsubmit="return confirm('Eliminare la schedina?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@s.Id" />
+                                    <button class="btn btn-outline-danger btn-sm" type="submit">🗑 Elimina</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="text-muted mb-2">
+                            Creata: @s.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            • Aggiornata: @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </div>
+
+                        @if (s.Selections.Count == 0)
                         {
-                            <span class="badge bg-success ms-1">PUBBLICA</span>
+                            <div class="text-muted">Nessuna selezione.</div>
                         }
                         else
                         {
-                            <span class="badge bg-light text-dark ms-1">PRIVATA</span>
+                            <ul class="list-group">
+                                @foreach (var sel in s.Selections.OrderByDescending(x => x.Id))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <div>
+                                            @{
+                                                Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
+                                            }
+
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
+                                                {
+                                                    <img src="@mi.HomeLogo" alt="@mi.HomeName" style="width:22px;height:22px;object-fit:contain;" />
+                                                }
+                                                <strong>@(mi?.HomeName ?? $"Match {sel.MatchId}")</strong>
+
+                                                <span class="text-muted">vs</span>
+
+                                                <strong>@(mi?.AwayName ?? "")</strong>
+                                                @if (!string.IsNullOrWhiteSpace(mi?.AwayLogo))
+                                                {
+                                                    <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
+                                                }
+
+                                                @if (mi?.DateUtc != null)
+                                                {
+                                                    <span class="text-muted ms-2" style="font-size:0.9em;">
+                                                        @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
+                                                    </span>
+                                                }
+
+                                                <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+
+                                                @if (sel.Odd.HasValue)
+                                                {
+                                                    <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
+                                                }
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(sel.Note))
+                                            {
+                                                <div class="text-muted small">📝 @sel.Note</div>
+                                            }
+                                        </div>
+
+                                        <form method="post" asp-page-handler="RemoveSelection" class="m-0">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="selectionId" value="@sel.Id" />
+                                            <button class="btn btn-outline-secondary btn-sm" type="submit">Rimuovi</button>
+                                        </form>
+                                    </li>
+                                }
+                            </ul>
                         }
                     </div>
-
-                    <div class="d-flex gap-2">
-                        <form method="post" asp-page-handler="TogglePublic" class="m-0">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="id" value="@s.Id" />
-                            <button class="btn btn-outline-primary btn-sm" type="submit">
-                                @(s.IsPublic ? "Rendi privata" : "Pubblica")
-                            </button>
-                        </form>
-
-                        <form method="post" asp-page-handler="Delete" class="m-0" onsubmit="return confirm('Eliminare la schedina?');">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="id" value="@s.Id" />
-                            <button class="btn btn-outline-danger btn-sm" type="submit">🗑 Elimina</button>
-                        </form>
-                    </div>
                 </div>
+            }
+        }
 
-                <div class="card-body">
-                    <div class="text-muted mb-2">
-                        Creata: @s.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                        • Aggiornata: @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+        @* ===================== ARCHIVIATE ===================== *@
+        @if (Model.ArchivedItems.Count > 0)
+        {
+            <h5 class="mt-4 mb-2">📦 Schedine archiviate</h5>
+
+            foreach (var s in Model.ArchivedItems)
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
+                            <span class="badge bg-secondary ms-2">@s.Type</span>
+
+                            @if (s.IsPublic)
+                            {
+                                <span class="badge bg-success ms-1">PUBBLICA</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-light text-dark ms-1">PRIVATA</span>
+                            }
+
+                            @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Win)
+                            {
+                                <span class="badge bg-success ms-1">Vincente</span>
+                            }
+                            else if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Loss)
+                            {
+                                <span class="badge bg-danger ms-1">Perdente</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary ms-1">Archiviata</span>
+                            }
+
+                            @if (s.AutoArchived)
+                            {
+                                <span class="badge bg-secondary ms-1">Auto</span>
+                            }
+                            <form method="post"
+      asp-page-handler="Reopen"
+      class="d-inline ms-2"
+      onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="slipId" value="@s.Id" />
+    <button class="btn btn-sm btn-outline-warning">
+        🔄 Riapri
+    </button>
+</form>
+
+                        </div>
+
+<div class="d-flex align-items-center gap-2">
+    <div class="text-muted small">
+        Archiviata: @(s.ArchivedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")
+    </div>
+
+    <form method="post"
+          asp-page-handler="Reopen"
+          class="m-0"
+          onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="slipId" value="@s.Id" />
+        <button class="btn btn-sm btn-outline-warning">
+            🔄 Riapri
+        </button>
+    </form>
+</div>
+
                     </div>
 
-                    @if (s.Selections.Count == 0)
-                    {
-                        <div class="text-muted">Nessuna selezione.</div>
-                    }
-                    else
-                    {
-                        <ul class="list-group">
-                            @foreach (var sel in s.Selections)
-                            {
-                                <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                    <div>
+                    <div class="card-body">
+                        <div class="text-muted mb-2">
+                            Creata: @s.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            • Aggiornata: @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </div>
+
+                        @if (s.Selections.Count == 0)
+                        {
+                            <div class="text-muted">Nessuna selezione.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group">
+                                @foreach (var sel in s.Selections.OrderByDescending(x => x.Id))
+                                {
+                                    <li class="list-group-item">
                                         @{
                                             Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
                                         }
@@ -107,31 +300,35 @@
                                                     @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
                                                 </span>
                                             }
+                                            @if (mi?.StatusShort is "FT" or "AET" or "PEN")
+{
+    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+    {
+        <span class="badge bg-light text-dark ms-2">
+            Risultato: @mi.HomeGoal - @mi.AwayGoal
+        </span>
+    }
+}
 
                                             <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+
+                                            @if (sel.Odd.HasValue)
+                                            {
+                                                <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
+                                            }
                                         </div>
 
-                                        @if (sel.Odd.HasValue)
-                                        {
-                                            <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
-                                        }
                                         @if (!string.IsNullOrWhiteSpace(sel.Note))
                                         {
-                                            <div class="text-muted small">📝 @sel.Note</div>
+                                            <div class="text-muted small mt-1">📝 @sel.Note</div>
                                         }
-                                    </div>
-
-                                    <form method="post" asp-page-handler="RemoveSelection" class="m-0">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="selectionId" value="@sel.Id" />
-                                        <button class="btn btn-outline-secondary btn-sm" type="submit">Rimuovi</button>
-                                    </form>
-                                </li>
-                            }
-                        </ul>
-                    }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
         }
     }
 </div>

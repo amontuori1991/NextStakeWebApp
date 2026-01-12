@@ -48,6 +48,23 @@
                             <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
                             <span class="badge bg-secondary">@s.Type</span>
                             <span class="badge bg-success">PUBBLICA</span>
+                            @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Win)
+                            {
+                                <span class="badge bg-success">Vincente</span>
+                            }
+                            else if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Loss)
+                            {
+                                <span class="badge bg-danger">Perdente</span>
+                            }
+                            else if (s.ArchivedAtUtc != null)
+                            {
+                                <span class="badge bg-secondary">Archiviata</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Da assegnare</span>
+                            }
+
                         </div>
 
                         @{

@@ -28,5 +28,21 @@ namespace NextStakeWebApp.Models
 
         public List<BetSelection> Selections { get; set; } = new();
         public List<BetComment> Comments { get; set; } = new();
+
+        public enum BetSlipResult
+        {
+            None = 0,
+            Win = 1,
+            Loss = 2
+        }
+
+        public BetSlipResult Result { get; set; } = BetSlipResult.None;
+
+        // Quando diventa archiviata (manuale o automatica)
+        public DateTime? ArchivedAtUtc { get; set; }
+
+        // True se archiviata automaticamente (solo info)
+        public bool AutoArchived { get; set; } = false;
+
     }
 }
