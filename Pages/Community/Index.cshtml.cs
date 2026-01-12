@@ -51,6 +51,9 @@ namespace NextStakeWebApp.Pages.Community
         // UserId -> nome autore
         public Dictionary<string, string> AuthorMap { get; set; } = new();
 
+        public HashSet<string> FollowedUserIds { get; set; } = new();
+
+
         public async Task OnGetAsync()
         {
 
@@ -58,6 +61,7 @@ namespace NextStakeWebApp.Pages.Community
 {
     new SelectListItem { Value = "", Text = "Tutti gli utenti" }
 };
+            var me = _userManager.GetUserId(User);
 
             // Feed: schedine pubbliche, con selezioni + commenti
             var q = _db.BetSlips
@@ -120,6 +124,16 @@ namespace NextStakeWebApp.Pages.Community
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct()
                 .ToList();
+            if (!string.IsNullOrWhiteSpace(me))
+            {
+                FollowedUserIds = (await _db.UserFollows
+                        .AsNoTracking()
+                        .Where(f => f.FollowerUserId == me)
+                        .Select(f => f.FollowedUserId)
+                        .ToListAsync())
+                    .ToHashSet();
+
+            }
 
 
             if (userIds.Count > 0)
@@ -156,6 +170,49 @@ namespace NextStakeWebApp.Pages.Community
 
 
             }
+        }
+        public async Task<IActionResult> OnPostFollowAsync(string targetUserId)
+        {
+            if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+            var me = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(me)) return Unauthorized();
+            if (string.IsNullOrWhiteSpace(targetUserId)) return BadRequest();
+            if (me == targetUserId) return BadRequest();
+
+            var exists = await _db.UserFollows.AnyAsync(x => x.FollowerUserId == me && x.FollowedUserId == targetUserId);
+            if (!exists)
+            {
+                _db.UserFollows.Add(new UserFollow
+                {
+                    FollowerUserId = me,
+                    FollowedUserId = targetUserId,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+            }
+
+            StatusMessage = "✅ Utente seguito.";
+            return RedirectToPage(new { UserFilter }); // mantiene filtro se presente
+        }
+
+        public async Task<IActionResult> OnPostUnfollowAsync(string targetUserId)
+        {
+            if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+            var me = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(me)) return Unauthorized();
+            if (string.IsNullOrWhiteSpace(targetUserId)) return BadRequest();
+
+            var row = await _db.UserFollows.FirstOrDefaultAsync(x => x.FollowerUserId == me && x.FollowedUserId == targetUserId);
+            if (row != null)
+            {
+                _db.UserFollows.Remove(row);
+                await _db.SaveChangesAsync();
+            }
+
+            StatusMessage = "✅ Utente rimosso dai seguiti.";
+            return RedirectToPage(new { UserFilter });
         }
 
         public async Task<IActionResult> OnPostCommentAsync(long slipId, string? text)

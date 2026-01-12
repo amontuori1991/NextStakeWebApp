@@ -63,6 +63,12 @@
                                 <a class="nav-link text-dark" asp-page="/Community/Index">Community</a>
                             </li>
                         }
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-page="/Seguiti/Index">Seguiti</a>
+                            </li>
+                        }
 
                         @if (User?.Identity?.IsAuthenticated ?? false)
                         {

@@ -19,6 +19,8 @@ namespace NextStakeWebApp.Data
         public DbSet<BetSlip> BetSlips { get; set; } = default!;
         public DbSet<BetSelection> BetSelections { get; set; } = default!;
         public DbSet<BetComment> BetComments { get; set; } = default!;
+        public DbSet<UserFollow> UserFollows { get; set; } = default!;
+
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -29,6 +31,14 @@ namespace NextStakeWebApp.Data
 
             builder.Entity<LiveMatchState>()
                 .HasKey(x => x.MatchId);
+
+            builder.Entity<UserFollow>(e =>
+            {
+                e.ToTable("UserFollows");
+                e.HasKey(x => new { x.FollowerUserId, x.FollowedUserId });
+                e.HasIndex(x => x.FollowerUserId);
+                e.HasIndex(x => x.FollowedUserId);
+            });
 
             builder.Entity<CallCounter>(entity =>
             {
