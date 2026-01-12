@@ -20,3 +20,106 @@ html {
 body {
     margin-bottom: 60px;
 }
+/* =========================
+   NEXTSTAKE GLOBAL THEME
+   ========================= */
+
+:root[data-theme="dark"] {
+    --bg: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
+    --text: #e9edf3;
+    --muted-text: rgba(255,255,255,.6);
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.16);
+    --nav-bg: rgba(20,26,36,.85);
+    --nav-link: rgba(233,237,243,.9);
+    --input-bg: rgba(255,255,255,.10);
+    --input-border: rgba(255,255,255,.24);
+    --primary: #00baff;
+}
+
+:root[data-theme="light"] {
+    --bg: #f0f2f5;
+    --text: #1a2230;
+    --muted-text: #566079;
+    --card: #ffffff;
+    --border: rgba(0,0,0,0.10);
+    --nav-bg: #ffffff;
+    --nav-link: rgba(26,34,48,.9);
+    --input-bg: #ffffff;
+    --input-border: rgba(0,0,0,.15);
+    --primary: #0d6efd;
+}
+
+/* Base */
+html, body {
+    height: 100%;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* Navbar “theme-aware” */
+.ns-navbar {
+    background: var(--nav-bg) !important;
+    border-bottom: 1px solid var(--border) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+    .ns-navbar .navbar-brand,
+    .ns-navbar .nav-link {
+        color: var(--nav-link) !important;
+    }
+
+        .ns-navbar .nav-link:hover {
+            opacity: .9;
+        }
+
+/* Card / list-group / dropdown / modal */
+.card,
+.list-group-item,
+.dropdown-menu,
+.modal-content {
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+}
+
+/* Form controls */
+.form-control,
+.form-select {
+    background: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    color: var(--text) !important;
+}
+
+    .form-control::placeholder {
+        color: var(--muted-text) !important;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 4px rgba(0,195,255,.18) !important;
+    }
+
+/* Testi muted bootstrap */
+.text-muted {
+    color: var(--muted-text) !important;
+}
+
+
+/* Footer must scroll - never fixed */
+.footer {
+    position: static !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: auto !important;
+    z-index: auto !important;
+}
+main[role="main"] {
+    padding-bottom: 4rem; /* spazio extra per evitare che qualsiasi footer/bottom bar copra */
+}

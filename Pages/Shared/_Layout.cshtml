@@ -35,6 +35,38 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/NextStakeWebApp.styles.css" asp-append-version="true" />
+    <script>
+        (function () {
+            // Legge tema: cookie > localStorage > default dark
+            function currentChoice() {
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
+                const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+                const stored = cookieValue || localStorage.getItem('theme');
+
+                if (stored === 'light' || stored === 'dark') return stored;
+                return 'dark';
+            }
+
+            // Applica subito su <html> (così CSS :root[data-theme] funziona ovunque)
+            const choice = currentChoice();
+            document.documentElement.setAttribute('data-theme', choice);
+
+            // Espongo helper globali (li userai per i bottoni tema in Events)
+            window.__nsTheme = window.__nsTheme || {};
+            window.__nsTheme.currentChoice = currentChoice;
+            window.__nsTheme.applyTheme = function (c) {
+                const applied = (c === 'light') ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', applied);
+            };
+            window.__nsTheme.persist = function (c) {
+                const applied = (c === 'light') ? 'light' : 'dark';
+                localStorage.setItem('theme', applied);
+                document.cookie = "theme=" + encodeURIComponent(applied) +
+                    "; path=/; max-age=31536000; samesite=lax";
+            };
+        })();
+    </script>
+
     @RenderSection("Styles", required: false)
 </head>
 <body>
@@ -144,6 +176,8 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/theme.js" asp-append-version="true"></script>
+
     @await RenderSectionAsync("Scripts", required: false)
 
     <div id="snow-container"></div>

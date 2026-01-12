@@ -4157,52 +4157,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
     </script>
         <script>
-        (function () {
-            // Lettura tema corrente: cookie > localStorage > default "dark"
-            function currentChoice() {
-                const cookieMatch = document.cookie.match(/(?:^|;\s*)theme=([^;]+)/);
-                const cookieValue = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
-                const stored = cookieValue || localStorage.getItem('theme');
+    (function () {
+        const btns = document.querySelectorAll('[data-theme-choice]');
+        if (!btns.length || !window.__nsTheme) return;
 
-                // Compatibilità con vecchio "system": lo trattiamo come dark
-                if (stored === 'light' || stored === 'dark') return stored;
-                return 'dark';
-            }
+        btns.forEach(b => {
+            b.addEventListener('click', () => {
+                const choice = b.getAttribute('data-theme-choice');
+                window.__nsTheme.applyTheme(choice);
+                window.__nsTheme.persist(choice);
 
-            function applyTheme(choice) {
-                const applied = (choice === 'light') ? 'light' : 'dark';
-                document.documentElement.setAttribute('data-theme', applied);
-            }
-
-            function persist(choice) {
-                const applied = (choice === 'light') ? 'light' : 'dark';
-                localStorage.setItem('theme', applied);
-                document.cookie = "theme=" + encodeURIComponent(applied) +
-                    "; path=/; max-age=31536000; samesite=lax";
-            }
-
-            const btns = document.querySelectorAll('[data-theme-choice]');
-
-            btns.forEach(b => {
-                b.addEventListener('click', () => {
-                    const choice = b.getAttribute('data-theme-choice');
-
-                    applyTheme(choice);
-                    persist(choice); // 🔁 salva per TUTTE le pagine
-
-                    // Aggiorna stato "active"
-                    btns.forEach(x => x.classList.remove('active'));
-                    b.classList.add('active');
-                });
+                btns.forEach(x => x.classList.remove('active'));
+                b.classList.add('active');
             });
+        });
 
-            // Stato iniziale quando apro il dettaglio
-            const choice = currentChoice();
-            applyTheme(choice);
-            const active = document.querySelector(`[data-theme-choice="${choice}"]`);
-            if (active) active.classList.add('active');
-        })();
-    </script>
+        // Stato iniziale
+        const cur = window.__nsTheme.currentChoice();
+        const active = document.querySelector(`[data-theme-choice="${cur}"]`);
+        if (active) active.classList.add('active');
+    })();
+</script>
+
 <script>
     (function () {
         // URL dell'handler PlayerStats sulla stessa pagina (Details)
