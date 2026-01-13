@@ -223,6 +223,7 @@
                             {
                                 if (!saved)
                                 {
+                                    <!-- COPIA -->
                                     <form method="post" asp-page-handler="SaveToMySlips" class="m-0">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="slipId" value="@s.Id" />
@@ -234,17 +235,13 @@
                                 }
                                 else
                                 {
-                                    <form method="post"
-                                          asp-page-handler="Unsave"
-                                          class="m-0"
-                                          onsubmit="return confirm('Rimuovere questa schedina dalle tue?');">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="slipId" value="@s.Id" />
-                                        <input type="hidden" name="userFilter" value="@Model.UserFilter" />
-                                        <button class="btn btn-sm btn-outline-danger">
-                                            🗑 Rimuovi
-                                        </button>
-                                    </form>
+                                    <!-- RIMUOVI (APRE MODAL) -->
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#unsaveModal_@s.Id">
+                                        🗑 Rimuovi
+                                    </button>
                                 }
                             }
                             else
@@ -253,6 +250,50 @@
                             }
 
                         </div>
+                        @if (saved && (User?.Identity?.IsAuthenticated ?? false))
+                        {
+                            <div class="modal fade" id="unsaveModal_@s.Id" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content">
+
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Rimuovere la schedina?</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+
+                                        <div class="modal-body">
+                                            <p class="mb-2">
+                                                Vuoi rimuovere questa schedina dalle tue?
+                                            </p>
+                                            <p class="text-muted small mb-0">
+                                                👉 Potrai sempre salvarla di nuovo dalla Community.
+                                            </p>
+                                        </div>
+
+                                        <div class="modal-footer">
+                                            <button type="button"
+                                                    class="btn btn-outline-secondary"
+                                                    data-bs-dismiss="modal">
+                                                Annulla
+                                            </button>
+
+                                            <form method="post"
+                                                  asp-page-handler="Unsave"
+                                                  class="m-0">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="slipId" value="@s.Id" />
+                                                <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+                                                <button type="submit" class="btn btn-danger">
+                                                    🗑 Rimuovi
+                                                </button>
+                                            </form>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
 
 
                         <!-- COMMENTI COLLASSABILI -->
