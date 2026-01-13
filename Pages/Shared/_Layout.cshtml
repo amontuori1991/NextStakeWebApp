@@ -154,11 +154,13 @@
         </nav>
 
         <div class="text-center mb-4">
-            <img src="~/icons/favicon.svg"
-                 alt="NextStake Logo"
-                 style="width: 250px; height: auto;" />
-
+            <a asp-page="/Events/Index" title="Torna agli eventi" style="display:inline-block;">
+                <img src="~/icons/favicon.svg"
+                     alt="NextStake Logo"
+                     style="width: 250px; height: auto; cursor: pointer;" />
+            </a>
         </div>
+
     </header>
 
     <div class="container">
@@ -228,6 +230,29 @@
 
         {
             animation: none !important;
+        }
+
+        }
+
+        /* Logo centrale cliccabile */
+        .ns-logo-link {
+            display: inline-block;
+        }
+
+        /* Stato normale */
+        .ns-logo-img {
+            width: 250px;
+            height: auto;
+            transition: transform 0.25s ease, filter 0.25s ease;
+        }
+
+        /* Hover solo su dispositivi con mouse */
+        @@media (hover: hover) {
+            .ns-logo-link:hover .ns-logo-img
+
+        {
+            transform: scale(1.04);
+            filter: brightness(1.15);
         }
 
         }
