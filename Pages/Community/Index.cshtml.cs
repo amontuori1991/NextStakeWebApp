@@ -31,6 +31,10 @@ namespace NextStakeWebApp.Pages.Community
         public List<BetSlip> PublicSlips { get; set; } = new();
 
         public Dictionary<long, MatchInfo> MatchMap { get; set; } = new();
+        public Dictionary<long, int> LikeCounts { get; set; } = new();
+        public HashSet<long> LikedByMe { get; set; } = new();
+
+        public HashSet<long> SavedByMe { get; set; } = new();
 
         public class MatchInfo
         {
@@ -74,6 +78,36 @@ namespace NextStakeWebApp.Pages.Community
                 .OrderByDescending(x => x.UpdatedAtUtc)
                 .Take(50)
                 .ToListAsync();
+
+            var slipIds = PublicSlips.Select(x => x.Id).ToList();
+
+            if (slipIds.Count > 0)
+            {
+                LikeCounts = await _db.BetSlipLikes
+                    .AsNoTracking()
+                    .Where(l => slipIds.Contains(l.BetSlipId))
+                    .GroupBy(l => l.BetSlipId)
+                    .Select(g => new { BetSlipId = g.Key, Cnt = g.Count() })
+                    .ToDictionaryAsync(x => x.BetSlipId, x => x.Cnt);
+
+                if (!string.IsNullOrWhiteSpace(me))
+                {
+                    LikedByMe = (await _db.BetSlipLikes
+                            .AsNoTracking()
+                            .Where(l => slipIds.Contains(l.BetSlipId) && l.UserId == me)
+                            .Select(l => l.BetSlipId)
+                            .ToListAsync())
+                        .ToHashSet();
+
+                    SavedByMe = (await _db.BetSlipSaves
+                            .AsNoTracking()
+                            .Where(s => slipIds.Contains(s.SourceBetSlipId) && s.SavedByUserId == me)
+                            .Select(s => s.SourceBetSlipId)
+                            .ToListAsync())
+                        .ToHashSet();
+                }
+            }
+
 
             // ✅ auto-archiviazione (serve DB tracking separato)
             await AutoArchiveExpiredPublicAsync(PublicSlips);
@@ -311,5 +345,107 @@ namespace NextStakeWebApp.Pages.Community
             StatusMessage = "✅ Commento inviato.";
             return RedirectToPage();
         }
+
+        public async Task<IActionResult> OnPostToggleLikeAsync(long slipId, string? userFilter)
+        {
+            if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+            var me = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(me)) return Unauthorized();
+
+            var slip = await _db.BetSlips.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == slipId && x.IsPublic);
+            if (slip == null) return NotFound();
+
+            var existing = await _db.BetSlipLikes
+                .FirstOrDefaultAsync(x => x.BetSlipId == slipId && x.UserId == me);
+
+            if (existing == null)
+            {
+                _db.BetSlipLikes.Add(new BetSlipLike
+                {
+                    BetSlipId = slipId,
+                    UserId = me,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+                StatusMessage = "👍 Like aggiunto.";
+            }
+            else
+            {
+                _db.BetSlipLikes.Remove(existing);
+                await _db.SaveChangesAsync();
+                StatusMessage = "👎 Like rimosso.";
+            }
+
+            return RedirectToPage(new { UserFilter = userFilter });
+        }
+        public async Task<IActionResult> OnPostSaveToMySlipsAsync(long slipId, string? userFilter)
+        {
+            if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+            var me = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(me)) return Unauthorized();
+
+            var source = await _db.BetSlips
+                .AsNoTracking()
+                .Include(x => x.Selections)
+                .FirstOrDefaultAsync(x => x.Id == slipId && x.IsPublic);
+
+            if (source == null) return NotFound();
+
+            // già salvata?
+            var already = await _db.BetSlipSaves
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.SourceBetSlipId == slipId && x.SavedByUserId == me);
+
+            if (already != null)
+            {
+                StatusMessage = "📌 Schedina già salvata tra le tue.";
+                return RedirectToPage(new { UserFilter = userFilter });
+            }
+
+            // COPIA tra le mie: privata, draft, BLOCCATA (ImportedFromCommunity = true)
+            var copy = new BetSlip
+            {
+                UserId = me,
+                Title = string.IsNullOrWhiteSpace(source.Title) ? $"Schedina di @{source.UserId}" : source.Title,
+                Type = "Saved",
+                IsPublic = false,                 // NON pubblicabile
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+                Result = BetSlipResult.None,
+                ArchivedAtUtc = null,
+                AutoArchived = false,
+
+                ImportedFromCommunity = true,
+                SourceBetSlipId = source.Id,
+                SourceUserId = source.UserId,
+
+                Selections = source.Selections.Select(s => new BetSelection
+                {
+                    MatchId = s.MatchId,
+                    Pick = s.Pick,
+                    Odd = s.Odd,
+                    Note = s.Note
+                }).ToList()
+            };
+
+            _db.BetSlips.Add(copy);
+            await _db.SaveChangesAsync();
+
+            _db.BetSlipSaves.Add(new BetSlipSave
+            {
+                SourceBetSlipId = source.Id,
+                SavedByUserId = me,
+                CopiedBetSlipId = copy.Id,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+
+            StatusMessage = "✅ Schedina salvata tra le tue (non ripubblicabile).";
+            return RedirectToPage(new { UserFilter = userFilter });
+        }
+
     }
 }

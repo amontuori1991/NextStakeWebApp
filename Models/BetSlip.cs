@@ -43,6 +43,9 @@ namespace NextStakeWebApp.Models
 
         // True se archiviata automaticamente (solo info)
         public bool AutoArchived { get; set; } = false;
+        public bool ImportedFromCommunity { get; set; } = false;
+        public long? SourceBetSlipId { get; set; }
+        public string? SourceUserId { get; set; }
 
     }
 }

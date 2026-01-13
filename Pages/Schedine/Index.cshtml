@@ -68,6 +68,13 @@
                                     <span class="badge bg-secondary ms-1">Da assegnare</span>
                                 }
                             </div>
+                            @if (s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
+{
+    Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
+    <div class="small text-muted">
+        Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
+    </div>
+}
 
                             @* Bottoni esito (solo se non assegnato) *@
                             @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.None)
@@ -103,9 +110,20 @@
                                 <form method="post" asp-page-handler="TogglePublic" class="m-0">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@s.Id" />
-                                    <button class="btn btn-outline-primary btn-sm" type="submit">
-                                        @(s.IsPublic ? "Rendi privata" : "Pubblica")
-                                    </button>
+                                    @if (!s.ImportedFromCommunity)
+{
+    <button class="btn btn-outline-primary btn-sm" type="submit">
+        @(s.IsPublic ? "Rendi privata" : "Pubblica")
+    </button>
+}
+else
+{
+    <button class="btn btn-outline-secondary btn-sm" type="button" disabled
+            title="Schedina salvata dalla Community: non ripubblicabile">
+        Non ripubblicabile
+    </button>
+}
+
                                 </form>
 
                                 <form method="post" asp-page-handler="Delete" class="m-0" onsubmit="return confirm('Eliminare la schedina?');">
@@ -292,6 +310,13 @@ else
         🔄 Riapri
     </button>
 </form>
+@if (s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
+{
+    Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
+    <div class="small text-muted mt-1">
+        Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
+    </div>
+}
 
                         </div>
 

@@ -27,6 +27,9 @@ namespace NextStakeWebApp.Pages.Schedine
 
         // 👇 Liste separate
         public List<BetSlip> ActiveItems { get; set; } = new();
+
+        public Dictionary<string, string> SourceAuthorMap { get; set; } = new();
+
         public List<BetSlip> ArchivedItems { get; set; } = new();
 
         public Dictionary<long, MatchInfo> MatchMap { get; set; } = new();
@@ -66,6 +69,27 @@ namespace NextStakeWebApp.Pages.Schedine
                 .Include(x => x.Selections)
                 .OrderByDescending(x => x.UpdatedAtUtc)
                 .ToListAsync();
+            var sourceUserIds = all
+    .Where(s => s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
+    .Select(s => s.SourceUserId!)
+    .Distinct()
+    .ToList();
+
+            if (sourceUserIds.Count > 0)
+            {
+                var users = await _db.Users
+                    .AsNoTracking()
+                    .Where(u => sourceUserIds.Contains(u.Id))
+                    .Select(u => new { u.Id, u.UserName, u.DisplayName, u.Email })
+                    .ToListAsync();
+
+                SourceAuthorMap = users.ToDictionary(
+                    x => x.Id,
+                    x => !string.IsNullOrWhiteSpace(x.UserName)
+                        ? x.UserName!
+                        : (!string.IsNullOrWhiteSpace(x.DisplayName) ? x.DisplayName! : (x.Email ?? "Utente"))
+                );
+            }
 
             // 2) auto-archiviazione (12h dal kickoff dell’ultima partita) per quelle senza esito
             await AutoArchiveExpiredAsync(all);
@@ -141,6 +165,11 @@ namespace NextStakeWebApp.Pages.Schedine
 
             var slip = await _db.BetSlips.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
             if (slip == null) return NotFound();
+            if (slip.ImportedFromCommunity)
+            {
+                StatusMessage = "⛔ Questa schedina è stata salvata dalla Community e non può essere ripubblicata.";
+                return RedirectToPage();
+            }
 
             slip.IsPublic = !slip.IsPublic;
             slip.UpdatedAtUtc = DateTime.UtcNow;

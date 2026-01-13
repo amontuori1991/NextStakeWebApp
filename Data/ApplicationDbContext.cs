@@ -21,10 +21,21 @@ namespace NextStakeWebApp.Data
         public DbSet<BetComment> BetComments { get; set; } = default!;
         public DbSet<UserFollow> UserFollows { get; set; } = default!;
 
+        public DbSet<BetSlipLike> BetSlipLikes { get; set; } = default!;
+        public DbSet<BetSlipSave> BetSlipSaves { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+
+            builder.Entity<BetSlipLike>()
+    .HasIndex(x => new { x.BetSlipId, x.UserId })
+    .IsUnique();
+
+            builder.Entity<BetSlipSave>()
+                .HasIndex(x => new { x.SourceBetSlipId, x.SavedByUserId })
+                .IsUnique();
+
 
             // schema
             builder.HasDefaultSchema("public");

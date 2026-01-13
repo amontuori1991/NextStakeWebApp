@@ -100,9 +100,47 @@
 
                     </div>
 
-                    <div class="text-muted small">
-                        @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                    </div>
+<div class="d-flex align-items-center gap-2 flex-wrap">
+    @* --- LIKE + SALVA (solo se loggato) --- *@
+    @if (User?.Identity?.IsAuthenticated ?? false)
+    {
+        var likeCnt = Model.LikeCounts.TryGetValue(s.Id, out var c) ? c : 0;
+        var liked = Model.LikedByMe.Contains(s.Id);
+        var saved = Model.SavedByMe.Contains(s.Id);
+
+        <form method="post" asp-page-handler="ToggleLike" class="m-0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="slipId" value="@s.Id" />
+            <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+            <button type="submit" class="btn btn-sm @(liked ? "btn-primary" : "btn-outline-primary")" title="Mi piace">
+                👍 <span class="ms-1">@likeCnt</span>
+            </button>
+        </form>
+
+        <form method="post" asp-page-handler="SaveToMySlips" class="m-0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="slipId" value="@s.Id" />
+            <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+            <button type="submit"
+                    class="btn btn-sm @(saved ? "btn-success" : "btn-outline-success")"
+                    title="Aggiungi tra le mie schedine"
+                    @(saved ? "disabled" : "")>
+                📌 @(saved ? "Salvata" : "Copia")
+            </button>
+        </form>
+    }
+    else
+    {
+        @* se non loggato: mostro solo conteggio like *@
+        var likeCnt = Model.LikeCounts.TryGetValue(s.Id, out var c) ? c : 0;
+        <span class="badge bg-light text-dark" title="Like">👍 @likeCnt</span>
+    }
+
+    <span class="text-muted small ms-2">
+        @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+    </span>
+</div>
+
                 </div>
 
 
