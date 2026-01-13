@@ -129,9 +129,19 @@
 
                                     <li class="list-group-item">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
+                                            {
+                                                <img src="@mi.HomeLogo" alt="@mi.HomeName" style="width:22px;height:22px;object-fit:contain;" />
+                                            }
                                             <strong>@(mi?.HomeName ?? "Casa")</strong>
+
                                             <span class="text-muted">vs</span>
+
                                             <strong>@(mi?.AwayName ?? "Ospite")</strong>
+                                            @if (!string.IsNullOrWhiteSpace(mi?.AwayLogo))
+                                            {
+                                                <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
+                                            }
 
                                             @if (mi?.StatusShort is "FT" or "AET" or "PEN"
                                                                         && mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
@@ -142,12 +152,10 @@
                                             }
 
                                             <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+
                                             @{
                                                 var outcome = BetPickEvaluator.EvaluateSelectionOutcome(
-                                                sel,
-                                                mi?.StatusShort,
-                                                mi?.HomeGoal,
-                                                mi?.AwayGoal
+                                                sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal
                                                 );
                                             }
 
@@ -176,8 +184,8 @@
                                             {
                                                 <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
                                             }
-
                                         </div>
+
                                     </li>
                                 }
                             </ul>
