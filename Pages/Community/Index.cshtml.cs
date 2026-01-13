@@ -102,9 +102,14 @@ namespace NextStakeWebApp.Pages.Community
                     SavedByMe = (await _db.BetSlipSaves
                             .AsNoTracking()
                             .Where(s => slipIds.Contains(s.SourceBetSlipId) && s.SavedByUserId == me)
-                            .Select(s => s.SourceBetSlipId)
+                            .Join(_db.BetSlips.AsNoTracking(),
+                                  s => s.CopiedBetSlipId,
+                                  b => b.Id,
+                                  (s, b) => new { s.SourceBetSlipId, b.Id })
+                            .Select(x => x.SourceBetSlipId)
                             .ToListAsync())
                         .ToHashSet();
+
                 }
             }
 
@@ -446,6 +451,45 @@ namespace NextStakeWebApp.Pages.Community
             StatusMessage = "✅ Schedina salvata tra le tue (non ripubblicabile).";
             return RedirectToPage(new { UserFilter = userFilter });
         }
+        public async Task<IActionResult> OnPostUnsaveAsync(long slipId, string? userFilter)
+        {
+            if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+            var me = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(me)) return Unauthorized();
+
+            // Prendo la riga di salvataggio (serve per sapere anche CopiedBetSlipId)
+            var save = await _db.BetSlipSaves
+                .FirstOrDefaultAsync(x => x.SourceBetSlipId == slipId && x.SavedByUserId == me);
+
+            if (save == null)
+            {
+                StatusMessage = "ℹ️ Nessuna schedina salvata da rimuovere.";
+                return RedirectToPage(new { UserFilter = userFilter });
+            }
+
+            // Se esiste una copia nel mio profilo, la elimino (con selezioni)
+            if (save.CopiedBetSlipId.HasValue)
+            {
+                var copied = await _db.BetSlips
+                    .Include(x => x.Selections)
+                    .FirstOrDefaultAsync(x => x.Id == save.CopiedBetSlipId.Value && x.UserId == me);
+
+                if (copied != null)
+                {
+                    _db.BetSlips.Remove(copied);
+                }
+            }
+
+            // Rimuovo il link di salvataggio
+            _db.BetSlipSaves.Remove(save);
+
+            await _db.SaveChangesAsync();
+
+            StatusMessage = "🗑 Schedina rimossa dalle tue.";
+            return RedirectToPage(new { UserFilter = userFilter });
+        }
+
 
     }
 }

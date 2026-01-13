@@ -7,8 +7,9 @@
 <div class="container py-4">
     <h3 class="mb-2">🌍 Community</h3>
     <div class="text-muted mb-3">
-        Qui trovi le schedine pubblicate dagli utenti. Puoi commentare (stile chat).
+        Qui trovi le schedine pubblicate dagli utenti.
     </div>
+
     <form method="get" class="card mb-3">
         <div class="card-body d-flex flex-wrap gap-2 align-items-center">
             <label class="form-label m-0">Filtra per autore:</label>
@@ -33,49 +34,60 @@
     {
         <div class="alert alert-info">@Model.StatusMessage</div>
     }
+
     @if (Model.PublicSlips.Count == 0)
     {
         <div class="text-muted">Nessuna schedina pubblicata al momento.</div>
     }
     else
     {
-        foreach (var s in Model.PublicSlips)
-        {
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div class="d-flex flex-column">
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
-                            <span class="badge bg-secondary">@s.Type</span>
-                            <span class="badge bg-success">PUBBLICA</span>
-                            @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Win)
-                            {
-                                <span class="badge bg-success">Vincente</span>
-                            }
-                            else if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Loss)
-                            {
-                                <span class="badge bg-danger">Perdente</span>
-                            }
-                            else if (s.ArchivedAtUtc != null)
-                            {
-                                <span class="badge bg-secondary">Archiviata</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Da assegnare</span>
-                            }
+        <div class="accordion" id="communityAccordion">
 
-                        </div>
+            @foreach (var s in Model.PublicSlips)
+            {
+                var collapseId = $"comments_{s.Id}";
+                var likeCnt = Model.LikeCounts.TryGetValue(s.Id, out var lc) ? lc : 0;
+                var commentCnt = s.Comments?.Count ?? 0;
+                var liked = Model.LikedByMe.Contains(s.Id);
+                var saved = Model.SavedByMe.Contains(s.Id);
 
-                        @{
-                            Model.AuthorMap.TryGetValue(s.UserId, out var slipAuthor);
-                        }
-                        <div class="small text-muted">
-                            Pubblicata da <strong>@(slipAuthor ?? "Utente")</strong>
-                        </div>
+                <div class="card mb-3">
+
+                    <!-- HEADER -->
+                    <div class="card-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <strong>@(string.IsNullOrWhiteSpace(s.Title) ? $"Schedina #{s.Id}" : s.Title)</strong>
+                                <span class="badge bg-secondary">@s.Type</span>
+                                <span class="badge bg-success">PUBBLICA</span>
+
+                                @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Win)
+                                {
+                                    <span class="badge bg-success">Vincente</span>
+                                }
+                                else if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.Loss)
+                                {
+                                    <span class="badge bg-danger">Perdente</span>
+                                }
+                                else if (s.ArchivedAtUtc != null)
+                                {
+                                    <span class="badge bg-secondary">Archiviata</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Da assegnare</span>
+                                }
+                            </div>
+
+                            @{
+                                Model.AuthorMap.TryGetValue(s.UserId, out var author);
+                            }
+                            <div class="small text-muted">
+                                Pubblicata da <strong>@(author ?? "Utente")</strong>
+                            </div>
+
                             @if (User?.Identity?.IsAuthenticated ?? false)
                             {
-                                
                                 var isFollowing = Model.FollowedUserIds.Contains(s.UserId);
 
                                 <div class="mt-1">
@@ -84,190 +96,210 @@
                                         <form method="post" asp-page-handler="Follow" class="d-inline">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="targetUserId" value="@s.UserId" />
-                                            <button class="btn btn-sm btn-outline-success" type="submit">➕ Segui</button>
+                                            <button class="btn btn-sm btn-outline-success">➕ Segui</button>
                                         </form>
                                     }
                                     else
                                     {
-                                        <form method="post" asp-page-handler="Unfollow" class="d-inline" onsubmit="return confirm('Smettere di seguire questo utente?');">
+                                        <form method="post" asp-page-handler="Unfollow" class="d-inline">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="targetUserId" value="@s.UserId" />
-                                            <button class="btn btn-sm btn-outline-secondary" type="submit">✓ Seguito</button>
+                                            <button class="btn btn-sm btn-outline-secondary">✓ Seguito</button>
                                         </form>
                                     }
                                 </div>
                             }
+                        </div>
 
+                        <div class="text-muted small">
+                            @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </div>
                     </div>
 
-<div class="d-flex align-items-center gap-2 flex-wrap">
-    @* --- LIKE + SALVA (solo se loggato) --- *@
-    @if (User?.Identity?.IsAuthenticated ?? false)
-    {
-        var likeCnt = Model.LikeCounts.TryGetValue(s.Id, out var c) ? c : 0;
-        var liked = Model.LikedByMe.Contains(s.Id);
-        var saved = Model.SavedByMe.Contains(s.Id);
+                    <!-- BODY -->
+                    <div class="card-body">
 
-        <form method="post" asp-page-handler="ToggleLike" class="m-0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="slipId" value="@s.Id" />
-            <input type="hidden" name="userFilter" value="@Model.UserFilter" />
-            <button type="submit" class="btn btn-sm @(liked ? "btn-primary" : "btn-outline-primary")" title="Mi piace">
-                👍 <span class="ms-1">@likeCnt</span>
-            </button>
-        </form>
+                        <!-- SELEZIONI -->
+                        @if (s.Selections.Count > 0)
+                        {
+                            <ul class="list-group mb-3">
+                                @foreach (var sel in s.Selections.OrderBy(x => x.Id))
+                                {
+                                    Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
 
-        <form method="post" asp-page-handler="SaveToMySlips" class="m-0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="slipId" value="@s.Id" />
-            <input type="hidden" name="userFilter" value="@Model.UserFilter" />
-            <button type="submit"
-                    class="btn btn-sm @(saved ? "btn-success" : "btn-outline-success")"
-                    title="Aggiungi tra le mie schedine"
-                    @(saved ? "disabled" : "")>
-                📌 @(saved ? "Salvata" : "Copia")
-            </button>
-        </form>
-    }
-    else
-    {
-        @* se non loggato: mostro solo conteggio like *@
-        var likeCnt = Model.LikeCounts.TryGetValue(s.Id, out var c) ? c : 0;
-        <span class="badge bg-light text-dark" title="Like">👍 @likeCnt</span>
-    }
+                                    <li class="list-group-item">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <strong>@(mi?.HomeName ?? "Casa")</strong>
+                                            <span class="text-muted">vs</span>
+                                            <strong>@(mi?.AwayName ?? "Ospite")</strong>
 
-    <span class="text-muted small ms-2">
-        @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-    </span>
-</div>
-
-                </div>
-
-
-                <div class="card-body">
-                    @if (s.Selections.Count == 0)
-                    {
-                        <div class="text-muted">Nessuna selezione.</div>
-                    }
-                    else
-                    {
-                        <ul class="list-group mb-3">
-                            @foreach (var sel in s.Selections.OrderBy(x => x.Id))
-                            {
-                                Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
-
-                                <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
-                                        {
-                                            <img src="@mi.HomeLogo" alt="@mi.HomeName" style="width:22px;height:22px;object-fit:contain;" />
-                                        }
-                                        <strong>@(mi?.HomeName ?? $"Match {sel.MatchId}")</strong>
-
-                                        <span class="text-muted">vs</span>
-
-                                        <strong>@(mi?.AwayName ?? "")</strong>
-                                        @if (!string.IsNullOrWhiteSpace(mi?.AwayLogo))
-                                        {
-                                            <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
-                                        }
-
-                                        @if (mi?.DateUtc != null)
-                                        {
-                                            <span class="text-muted ms-2" style="font-size:0.9em;">
-                                                @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
-                                            </span>
-                                        }
-                                        @if (mi?.StatusShort is "FT" or "AET" or "PEN")
-                                        {
-                                            if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+                                            @if (mi?.StatusShort is "FT" or "AET" or "PEN"
+                                                                        && mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
                                             {
                                                 <span class="badge bg-light text-dark ms-2">
-                                                    Risultato: @mi.HomeGoal - @mi.AwayGoal
+                                                    @mi.HomeGoal - @mi.AwayGoal
                                                 </span>
                                             }
-                                        }
 
-                                        <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                            <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                            @{
+                                                var outcome = BetPickEvaluator.EvaluateSelectionOutcome(
+                                                sel,
+                                                mi?.StatusShort,
+                                                mi?.HomeGoal,
+                                                mi?.AwayGoal
+                                                );
+                                            }
 
-                                        @{
-                                            var outcome = BetPickEvaluator.EvaluateSelectionOutcome(sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal);
-                                        }
+                                            @if (outcome == BetPickEvaluator.SelectionOutcome.Won)
+                                            {
+                                                <span class="badge bg-success ms-2">✅ Vinta</span>
+                                            }
+                                            else if (outcome == BetPickEvaluator.SelectionOutcome.Lost)
+                                            {
+                                                <span class="badge bg-danger ms-2">❌ Persa</span>
+                                            }
+                                            else if (outcome == BetPickEvaluator.SelectionOutcome.Pending)
+                                            {
+                                                <span class="badge bg-secondary ms-2">⏳ In corso</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+                                            }
 
-                                        @if (outcome == BetPickEvaluator.SelectionOutcome.Won)
-                                        {
-                                            <span class="badge bg-success ms-2">✅ Vinta</span>
-                                        }
-                                        else if (outcome == BetPickEvaluator.SelectionOutcome.Lost)
-                                        {
-                                            <span class="badge bg-danger ms-2">❌ Persa</span>
-                                        }
-                                        else if (outcome == BetPickEvaluator.SelectionOutcome.Pending)
-                                        {
-                                            <span class="badge bg-secondary ms-2">⏳ In corso</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
-                                        }
+                                            @if (sel.ManualOutcome == 1)
+                                            {
+                                                <span class="badge bg-success ms-2">✅ Esito manuale: Vinta</span>
+                                            }
+                                            else if (sel.ManualOutcome == 2)
+                                            {
+                                                <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
+                                            }
 
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
+                        }
 
-                                        @if (sel.ManualOutcome == 1)
-                                        {
-                                            <span class="badge bg-success ms-2">✅ Esito manuale: Vinta</span>
-                                        }
-                                        else if (sel.ManualOutcome == 2)
-                                        {
-                                            <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
-                                        }
+                        <!-- CONTATORI -->
+                        <div class="d-flex justify-content-between small text-muted mb-2">
+                            <div>👍 <strong>@likeCnt</strong></div>
+                            <div>💬 <strong>@commentCnt</strong> commenti</div>
+                        </div>
 
-                                    </div>
-                                </li>
-                            }
-                        </ul>
-                    }
+                        <hr />
 
-                    <div class="mb-2"><strong>💬 Commenti</strong></div>
+                        <!-- AZIONI -->
+                        <div class="d-flex justify-content-around mb-2">
 
-                    @if (s.Comments.Count == 0)
-                    {
-                        <div class="text-muted mb-2">Ancora nessun commento.</div>
-                    }
-                    else
-                    {
-                        <div class="border rounded p-2 mb-2" style="max-height:260px; overflow:auto;">
-                            @foreach (var c in s.Comments.OrderByDescending(x => x.CreatedAtUtc).Take(40))
+                            @* LIKE *@
+                            @if (User?.Identity?.IsAuthenticated ?? false)
                             {
-                                Model.AuthorMap.TryGetValue(c.UserId, out var author);
-
-                                <div class="mb-2">
-                                    <div class="small text-muted d-flex justify-content-between flex-wrap">
-                                        <span><strong>@(author ?? "Utente")</strong></span>
-                                        <span>@c.CreatedAtUtc.ToLocalTime().ToString("dd/MM HH:mm")</span>
-                                    </div>
-                                    <div>@c.Text</div>
-                                </div>
+                                <form method="post" asp-page-handler="ToggleLike" class="m-0">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="slipId" value="@s.Id" />
+                                    <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+                                    <button class="btn btn-sm @(liked ? "btn-primary" : "btn-outline-primary")">
+                                        👍 Mi piace
+                                    </button>
+                                </form>
                             }
-                        </div>
-                    }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-primary" disabled>👍 Mi piace</button>
+                            }
 
-                    @if (User?.Identity?.IsAuthenticated ?? false)
-                    {
-                        <form method="post" asp-page-handler="Comment" class="d-flex gap-2">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="slipId" value="@s.Id" />
-                            <input class="form-control" name="text" maxlength="600" placeholder="Scrivi un commento..." />
-                            <button class="btn btn-primary" type="submit">Invia</button>
-                        </form>
-                    }
-                    else
-                    {
-                        <div class="alert alert-secondary mt-2">
-                            Accedi per commentare.
+                            @* COMMENTI *@
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#@collapseId">
+                                💬 Commenta
+                            </button>
+
+                            @* COPIA / RIMUOVI *@
+                            @if (User?.Identity?.IsAuthenticated ?? false)
+                            {
+                                if (!saved)
+                                {
+                                    <form method="post" asp-page-handler="SaveToMySlips" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="slipId" value="@s.Id" />
+                                        <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+                                        <button class="btn btn-sm btn-outline-success">
+                                            📌 Copia
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form method="post"
+                                          asp-page-handler="Unsave"
+                                          class="m-0"
+                                          onsubmit="return confirm('Rimuovere questa schedina dalle tue?');">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="slipId" value="@s.Id" />
+                                        <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+                                        <button class="btn btn-sm btn-outline-danger">
+                                            🗑 Rimuovi
+                                        </button>
+                                    </form>
+                                }
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success" disabled>📌 Copia</button>
+                            }
+
                         </div>
-                    }
+
+
+                        <!-- COMMENTI COLLASSABILI -->
+                        <div id="@collapseId"
+                             class="accordion-collapse collapse"
+                             data-bs-parent="#communityAccordion">
+
+                            <div class="border rounded p-2 mt-2">
+
+                                @if (commentCnt == 0)
+                                {
+                                    <div class="text-muted">Ancora nessun commento.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var c in s.Comments.OrderByDescending(x => x.CreatedAtUtc))
+                                    {
+                                        Model.AuthorMap.TryGetValue(c.UserId, out var ca);
+
+                                        <div class="mb-2">
+                                            <div class="small text-muted d-flex justify-content-between">
+                                                <strong>@(ca ?? "Utente")</strong>
+                                                <span>@c.CreatedAtUtc.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                            </div>
+                                            <div>@c.Text</div>
+                                        </div>
+                                    }
+                                }
+
+                                @if (User?.Identity?.IsAuthenticated ?? false)
+                                {
+                                    <form method="post" asp-page-handler="Comment" class="d-flex gap-2 mt-2">
+                                        <input type="hidden" name="UserFilter" value="@Model.UserFilter" />
+
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="slipId" value="@s.Id" />
+                                        <input class="form-control" name="text" placeholder="Scrivi un commento..." />
+                                        <button class="btn btn-primary">Invia</button>
+                                    </form>
+                                }
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
-            </div>
-        }
+            }
+
+        </div>
     }
 </div>

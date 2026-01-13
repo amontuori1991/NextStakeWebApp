@@ -191,12 +191,26 @@ namespace NextStakeWebApp.Pages.Schedine
 
             if (slip == null) return NotFound();
 
+            // ✅ Se è una copia dalla Community, elimino anche la riga di "save"
+            if (slip.ImportedFromCommunity && slip.SourceBetSlipId.HasValue)
+            {
+                var saveRow = await _db.BetSlipSaves
+                    .FirstOrDefaultAsync(x =>
+                        x.SavedByUserId == userId &&
+                        x.CopiedBetSlipId == slip.Id &&
+                        x.SourceBetSlipId == slip.SourceBetSlipId.Value);
+
+                if (saveRow != null)
+                    _db.BetSlipSaves.Remove(saveRow);
+            }
+
             _db.BetSlips.Remove(slip);
             await _db.SaveChangesAsync();
 
             StatusMessage = "✅ Schedina eliminata.";
             return RedirectToPage();
         }
+
 
         public async Task<IActionResult> OnPostRemoveSelectionAsync(long selectionId)
         {
