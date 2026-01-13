@@ -183,15 +183,7 @@ else
     var outcome = Model.EvaluateSelectionOutcome(sel, mi);
 }
 
-@if (mi?.StatusShort is "FT" or "AET" or "PEN")
-{
-    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
-    {
-        <span class="badge bg-light text-dark ms-2">
-            Risultato: @mi.HomeGoal - @mi.AwayGoal
-        </span>
-    }
-}
+
 
 @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
 {
@@ -395,15 +387,7 @@ else
     var outcome = Model.EvaluateSelectionOutcome(sel, mi);
 }
 
-@if (mi?.StatusShort is "FT" or "AET" or "PEN")
-{
-    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
-    {
-        <span class="badge bg-light text-dark ms-2">
-            Risultato: @mi.HomeGoal - @mi.AwayGoal
-        </span>
-    }
-}
+
 
 @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
 {
