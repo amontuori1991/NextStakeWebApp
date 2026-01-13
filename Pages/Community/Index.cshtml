@@ -183,73 +183,85 @@
                             </ul>
                         }
 
-                        <!-- CONTATORI -->
-                        <div class="d-flex justify-content-between small text-muted mb-2">
-                            <div>👍 <strong>@likeCnt</strong></div>
-                            <div>💬 <strong>@commentCnt</strong> commenti</div>
-                        </div>
+                        <!-- ACTION BAR (LIKE | COPIA | COMMENTI) -->
+                        <div class="d-flex justify-content-between align-items-center mb-2">
 
-                        <hr />
-
-                        <!-- AZIONI -->
-                        <div class="d-flex justify-content-around mb-2">
-
-                            @* LIKE *@
-                            @if (User?.Identity?.IsAuthenticated ?? false)
-                            {
-                                <form method="post" asp-page-handler="ToggleLike" class="m-0">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="slipId" value="@s.Id" />
-                                    <input type="hidden" name="userFilter" value="@Model.UserFilter" />
-                                    <button class="btn btn-sm @(liked ? "btn-primary" : "btn-outline-primary")">
-                                        👍 Mi piace
-                                    </button>
-                                </form>
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-primary" disabled>👍 Mi piace</button>
-                            }
-
-                            @* COMMENTI *@
-                            <button class="btn btn-sm btn-outline-secondary"
-                                    data-bs-toggle="collapse"
-                                    data-bs-target="#@collapseId">
-                                💬 Commenta
-                            </button>
-
-                            @* COPIA / RIMUOVI *@
-                            @if (User?.Identity?.IsAuthenticated ?? false)
-                            {
-                                if (!saved)
+                            <!-- LIKE (sinistra) -->
+                            <div>
+                                @if (User?.Identity?.IsAuthenticated ?? false)
                                 {
-                                    <!-- COPIA -->
-                                    <form method="post" asp-page-handler="SaveToMySlips" class="m-0">
+                                    <form method="post" asp-page-handler="ToggleLike" class="m-0 d-inline">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="slipId" value="@s.Id" />
                                         <input type="hidden" name="userFilter" value="@Model.UserFilter" />
-                                        <button class="btn btn-sm btn-outline-success">
-                                            📌 Copia
+
+                                        <button type="submit"
+                                                class="btn btn-sm @(liked ? "btn-primary" : "btn-outline-primary")">
+                                            👍 <strong class="ms-1">@likeCnt</strong> Mi piace
                                         </button>
                                     </form>
                                 }
                                 else
                                 {
-                                    <!-- RIMUOVI (APRE MODAL) -->
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-danger"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#unsaveModal_@s.Id">
-                                        🗑 Rimuovi
+                                    <button class="btn btn-sm btn-outline-primary" disabled
+                                            title="Accedi per mettere like">
+                                        👍 <strong class="ms-1">@likeCnt</strong> Mi piace
                                     </button>
                                 }
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-success" disabled>📌 Copia</button>
-                            }
+                            </div>
+
+                            <!-- COPIA / RIMUOVI (centro) -->
+                            <div>
+                                @if (User?.Identity?.IsAuthenticated ?? false)
+                                {
+                                    if (!saved)
+                                    {
+                                        <form method="post" asp-page-handler="SaveToMySlips" class="m-0 d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="slipId" value="@s.Id" />
+                                            <input type="hidden" name="userFilter" value="@Model.UserFilter" />
+                                            <button class="btn btn-sm btn-outline-success">
+                                                📌 Copia
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <button type="button"
+                                                class="btn btn-sm btn-success"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#unsaveModal_@s.Id"
+                                                title="Già salvata: clicca per rimuovere">
+                                            ✅ Salvata
+                                        </button>
+                                    }
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success" disabled
+                                            title="Accedi per copiare">
+                                        📌 Copia
+                                    </button>
+                                }
+                            </div>
+
+                            <!-- COMMENTI (destra) -->
+                            <div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#@collapseId"
+                                        aria-expanded="false"
+                                        aria-controls="@collapseId">
+                                    💬 <strong class="ms-1">@commentCnt</strong> Commenta
+                                </button>
+                            </div>
 
                         </div>
+
+                        <hr />
+
+                        @* MODAL di conferma rimozione (solo se salvata e loggato) *@
                         @if (saved && (User?.Identity?.IsAuthenticated ?? false))
                         {
                             <div class="modal fade" id="unsaveModal_@s.Id" tabindex="-1" aria-hidden="true">
@@ -266,7 +278,7 @@
                                                 Vuoi rimuovere questa schedina dalle tue?
                                             </p>
                                             <p class="text-muted small mb-0">
-                                                👉 Potrai sempre salvarla di nuovo dalla Community.
+                                                Potrai sempre salvarla di nuovo dalla Community.
                                             </p>
                                         </div>
 
@@ -277,9 +289,7 @@
                                                 Annulla
                                             </button>
 
-                                            <form method="post"
-                                                  asp-page-handler="Unsave"
-                                                  class="m-0">
+                                            <form method="post" asp-page-handler="Unsave" class="m-0">
                                                 @Html.AntiForgeryToken()
                                                 <input type="hidden" name="slipId" value="@s.Id" />
                                                 <input type="hidden" name="userFilter" value="@Model.UserFilter" />
@@ -293,6 +303,7 @@
                                 </div>
                             </div>
                         }
+
 
 
 
