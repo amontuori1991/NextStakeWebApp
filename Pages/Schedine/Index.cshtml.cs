@@ -390,6 +390,38 @@ namespace NextStakeWebApp.Pages.Schedine
                 }
                 catch { return null; }
             }
+            // logo locale (wwwroot) -> data uri (PNG/JPG)
+            string? LocalImageToDataUri(string relativePathFromWwwroot)
+            {
+                try
+                {
+                    var env = HttpContext?.RequestServices?.GetService(typeof(IWebHostEnvironment)) as IWebHostEnvironment;
+                    if (env == null) return null;
+
+                    var fullPath = Path.Combine(
+                        env.WebRootPath,
+                        relativePathFromWwwroot.Replace("/", Path.DirectorySeparatorChar.ToString())
+                    );
+
+                    if (!System.IO.File.Exists(fullPath)) return null;
+
+                    var bytes = System.IO.File.ReadAllBytes(fullPath);
+                    var b64 = Convert.ToBase64String(bytes);
+
+                    // deduco mime da estensione
+                    var ext = Path.GetExtension(fullPath).ToLowerInvariant();
+                    var mime = ext switch
+                    {
+                        ".png" => "image/png",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        ".webp" => "image/webp",
+                        _ => "image/png"
+                    };
+
+                    return $"data:{mime};base64,{b64}";
+                }
+                catch { return null; }
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine($@"<svg xmlns=""http://www.w3.org/2000/svg"" width=""{W}"" height=""{height}"" viewBox=""0 0 {W} {height}"">");
@@ -426,17 +458,29 @@ namespace NextStakeWebApp.Pages.Schedine
             sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""none"" stroke=""#1f2937"" stroke-width=""2""/>");
 
             // header
-            sb.AppendLine($@"  <text x=""80"" y=""120"" class=""font title white"">{Esc(title)}</text>");
-            sb.AppendLine($@"  <text x=""80"" y=""170"" class=""font sub muted"">NextStake • {Esc(slip.Type)} • {slip.UpdatedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}</text>");
+            // LOGO IN ALTO A SINISTRA (PNG - compatibile con Skia)
+            var headerLogo = LocalImageToDataUri("icons/android-chrome-512x512.png");
+            if (!string.IsNullOrWhiteSpace(headerLogo))
+            {
+                sb.AppendLine($@"  <image href=""{headerLogo}"" x=""465"" y=""78"" width=""180"" height=""180""/>");
+
+            }
 
             // badge stato
-            sb.AppendLine($@"  <rect x=""720"" y=""92"" width=""280"" height=""56"" rx=""28"" fill=""{slipBadgeColor}""/>");
-            sb.AppendLine($@"  <text x=""860"" y=""128"" text-anchor=""middle"" class=""font badgeText"">{Esc(slipBadge)}</text>");
+            // badge stato (stile uguale alla pill "Quota totale")
+            // pill stato (stessa dimensione della quota)
+            sb.AppendLine($@"  <rect x=""640"" y=""200"" width=""360"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
+            sb.AppendLine($@"  <text x=""820"" y=""238"" text-anchor=""middle"" class=""font pillText"">{Esc(slipBadge)}</text>");
+
+
+
 
             // quota totale
             var totalLabel = totalOdd.HasValue ? totalOdd.Value.ToString("0.00") : "N/D";
-            sb.AppendLine($@"  <rect x=""80"" y=""200"" width=""380"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
-            sb.AppendLine($@"  <text x=""110"" y=""238"" class=""font pillText"">Quota totale: {Esc(totalLabel)}</text>");
+            // pill quota totale (larghezza uniforme)
+            sb.AppendLine($@"  <rect x=""80"" y=""200"" width=""360"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
+            sb.AppendLine($@"  <text x=""260"" y=""238"" text-anchor=""middle"" class=""font pillText"">Quota totale: {Esc(totalLabel)}</text>");
+
 
             // page indicator
             if (pages > 1)
@@ -501,25 +545,16 @@ namespace NextStakeWebApp.Pages.Schedine
             // ✅ footer separato (non può più sovrapporsi)
             sb.AppendLine($@"  <line x1=""80"" y1=""{footerLineY}"" x2=""1000"" y2=""{footerLineY}"" stroke=""#1f2937"" stroke-width=""2""/>");
 
-            // Logo + brand (sinistra)
-            var brandLogo = LocalSvgToDataUri("icons/favicon.svg"); // wwwroot/icons/favicon.svg
-            int brandIconSize = 28;
-            int brandIconX = 80;
-            int brandIconY = footerTextY - 24; // allineamento visivo con testo
 
-            if (!string.IsNullOrWhiteSpace(brandLogo))
-            {
-                sb.AppendLine($@"  <image href=""{brandLogo}"" x=""{brandIconX}"" y=""{brandIconY}"" width=""{brandIconSize}"" height=""{brandIconSize}""/>");
-                sb.AppendLine($@"  <text x=""{brandIconX + brandIconSize + 12}"" y=""{footerTextY}"" class=""font sub muted"">NextStake - Football Prediction</text>");
-            }
-            else
-            {
-                // fallback se non trova il file
-                sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub muted"">NextStake - Football Prediction</text>");
-            }
+
+
 
             // Destra: timestamp
-            sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">Generata {DateTime.Now:dd/MM/yyyy HH:mm}</text>");
+            // Titolo schedina in basso a sinistra
+            sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub white"">{Esc(title)}</text>");
+
+            sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">{slip.UpdatedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}</text>");
+
 
 
             sb.AppendLine("</svg>");
