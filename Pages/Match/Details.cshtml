@@ -524,97 +524,96 @@ else
 
 <div class="table-responsive d-none" id="pronostici-odds-wrapper">
     <table class="table table-sm table-striped align-middle mb-0" id="pronostici-odds-table">
-        <thead>
-            <tr>
-                <th scope="col">Selezione</th>
-                <th scope="col">Quota</th>
-                <th scope="col">Bookmaker</th>
-                <th scope="col" class="text-end">Telegram</th>
-                <th class="text-end">Schedina</th>
-
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var market in markets)
+    <thead>
+        <tr>
+            <th scope="col">Selezione</th>
+            <th scope="col">Quota</th>
+            <th scope="col">Bookmaker</th>
+            <th scope="col" class="text-end">Schedina</th>
+            <th scope="col" class="text-end">Telegram</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var market in markets)
+        {
+            var key = $"{market.Key.BetId}_{market.Key.Description}";
+            foreach (var o in market.OrderBy(o => o.Value))
             {
-                var key = $"{market.Key.BetId}_{market.Key.Description}";
-                foreach (var o in market.OrderBy(o => o.Value))
-                {
-                    <tr data-market-key="@key">
-                        <td>@o.Value</td>
-                        <td>@o.Odd.ToString("0.00")</td>
-                        <td>
-    @* Mostra logo Bet365 se l'id è 8, altrimenti fallback al valore grezzo *@
-    @if (o.Bookmaker == 8)
-    {
-        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-    }
-    else
-    {
-        @o.Bookmaker
-    }
-</td>
-                        <td class="text-end">
-                            @* 🔐 Bottone visibile solo a chi ha plan = 1, come gli altri tasti *@
-                            @if (User.HasClaim("plan", "1"))
-                            {
-                                <form method="post"
-                                      asp-page-handler="SendOddsIdea"
-                                      class="d-inline">
-                                    @Html.AntiForgeryToken()
+                <tr data-market-key="@key">
+                    <td>@o.Value</td>
+                    <td>@o.Odd.ToString("0.00")</td>
+                    <td>
+                        @* Mostra logo Bet365 se l'id è 8, altrimenti fallback al valore grezzo *@
+                        @if (o.Bookmaker == 8)
+                        {
+                            <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                        }
+                        else
+                        {
+                            @o.Bookmaker
+                        }
+                    </td>
 
-                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                    @* stesso topic che usi per l’invio pronostico *@
-                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+                    <td class="text-end">
+                        @* 📌 SCHEDINA: libero a tutti (se non loggato → login) *@
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Aggiungi alla schedina"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addOddToSlipModal"
+                                    data-match-id="@Model.Data.MatchId"
+                                    data-pick="@o.Value"
+                                    data-odd="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-market="@(market.Key.Description) (@(market.Key.BetId))">
+                                ➕
+                            </button>
+                        }
+                        else
+                        {
+                            <a class="btn btn-sm btn-outline-primary"
+                               asp-area="Identity"
+                               asp-page="/Account/Login"
+                               asp-route-returnUrl="@(HttpContext.Request.Path + HttpContext.Request.QueryString)"
+                               title="Accedi per aggiungere alla schedina">
+                                ➕
+                            </a>
+                        }
+                    </td>
 
-                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                    <input type="hidden" name="selectionValue" value="@o.Value" />
-                                    <input type="hidden" name="odd" value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    <td class="text-end">
+                        @* 🔐 Bottone visibile solo a chi ha plan = 1, come gli altri tasti *@
+                        @if (User.HasClaim("plan", "1"))
+                        {
+                            <form method="post"
+                                  asp-page-handler="SendOddsIdea"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
 
-                                    <button type="submit"
-                                            class="btn btn-sm btn-outline-success"
-                                            title="Invia">
-                                        🚀
-                                    </button>
-                                </form>
-                            }
-                        </td>
+                                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
 
- <td class="text-end">
-    @* 📌 SCHEDINA: libero a tutti (se non loggato → login) *@
-    @if (User?.Identity?.IsAuthenticated ?? false)
-    {
-        <button type="button"
-                class="btn btn-sm btn-outline-primary"
-                title="Aggiungi alla schedina"
-                data-bs-toggle="modal"
-                data-bs-target="#addOddToSlipModal"
-                data-match-id="@Model.Data.MatchId"
-                data-pick="@o.Value"
-                data-odd="@o.Odd.ToString("0.00")"
-                data-market="@($"{market.Key.Description} ({market.Key.BetId})")">
-            📌
-        </button>
-    }
-    else
-    {
-        <a class="btn btn-sm btn-outline-primary"
-           asp-area="Identity"
-           asp-page="/Account/Login"
-           asp-route-returnUrl="@(HttpContext.Request.Path + HttpContext.Request.QueryString)"
-           title="Accedi per aggiungere alla schedina">
-            📌
-        </a>
-    }
-</td>
+                                <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                <input type="hidden" name="selectionValue" value="@o.Value" />
+                                <input type="hidden" name="odd" value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
 
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-success"
+                                        title="Invia">
+                                    🚀
+                                </button>
+                            </form>
+                        }
+                    </td>
 
-                    </tr>
-                }
+                </tr>
             }
-        </tbody>
-    </table>
+        }
+    </tbody>
+</table>
+
 </div>
 
 
@@ -911,64 +910,86 @@ switch (esitoGoals)
                         </div>
 
                         <div class="table-responsive d-none" id="goal-odds-wrapper">
-                            <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Selezione</th>
-                                        <th scope="col">Quota</th>
-                                        <th scope="col">Bookmaker</th>
-                                        <th scope="col" class="text-end">Telegram</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var market in goalMarkets)
-                                    {
-                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                        foreach (var o in market.OrderBy(o => o.Value))
-                                        {
-                                            <tr data-market-key="@key">
-                                                <td>@o.Value</td>
-                                                <td>@o.Odd.ToString("0.00")</td>
-                                                <td>
-                                                    @if (o.Bookmaker == 8)
-                                                    {
-                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                    }
-                                                    else
-                                                    {
-                                                        @o.Bookmaker
-                                                    }
-                                                </td>
-                                                <td class="text-end">
-                                                    @if (User.HasClaim("plan", "1"))
-                                                    {
-                                                        <form method="post"
-                                                              asp-page-handler="SendOddsIdea"
-                                                              class="d-inline">
-                                                            @Html.AntiForgeryToken()
+  <table class="table table-sm table-striped align-middle mb-0" id="goal-odds-table">
+    <thead>
+        <tr>
+            <th scope="col">Selezione</th>
+            <th scope="col">Quota</th>
+            <th scope="col">Bookmaker</th>
+            <th scope="col" class="text-end">Schedina</th>
+            <th scope="col" class="text-end">Telegram</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var market in goalMarkets)
+        {
+            var key = $"{market.Key.BetId}_{market.Key.Description}";
+            foreach (var o in market.OrderBy(o => o.Value))
+            {
+                <tr data-market-key="@key">
+                    <td>@o.Value</td>
+                    <td>@o.Odd.ToString("0.00")</td>
+                    <td>
+                        @if (o.Bookmaker == 8)
+                        {
+                            <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                        }
+                        else
+                        {
+                            @o.Bookmaker
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+                    @* ✅ COLONNA SCHEDINA *@
+                    <td class="text-end">
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Aggiungi alla schedina"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addOddToSlipModal"
+                                    data-match-id="@Model.Data.MatchId"
+                                    data-pick="@o.Value"
+                                    data-odd="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-market="@(market.Key.Description) (@(market.Key.BetId))">
+                                ➕
+                            </button>
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                            <input type="hidden" name="odd"
-                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    @* ✅ COLONNA TELEGRAM *@
+                    <td class="text-end">
+                        @if (User.HasClaim("plan", "1"))
+                        {
+                            <form method="post"
+                                  asp-page-handler="SendOddsIdea"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
 
-                                                            <button type="submit"
-                                                                    class="btn btn-sm btn-outline-success"
-                                                                    title="Invia su Telegram">
-                                                                🚀
-                                                            </button>
-                                                        </form>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
+                                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                <input type="hidden" name="selectionValue" value="@o.Value" />
+                                <input type="hidden" name="odd"
+                                       value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-success"
+                                        title="Invia su Telegram">
+                                    🚀
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
                         </div>
 
                     </div>
@@ -1445,62 +1466,85 @@ switch (esitoGoals)
 
                                 <div class="table-responsive d-none" id="corner-odds-wrapper">
                                     <table class="table table-sm table-striped align-middle mb-0" id="corner-odds-table">
-                                        <thead>
-                                            <tr>
-                                                <th scope="col">Selezione</th>
-                                                <th scope="col">Quota</th>
-                                                <th scope="col">Bookmaker</th>
-                                                <th scope="col" class="text-end">Telegram</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                                @foreach (var market in cornerMarkets)
-    {
-        var key = market.Key.Description ?? $"Bet {market.Key.BetId}";
-        foreach (var o in market.OrderBy(o => o.Value))
+    <thead>
+        <tr>
+            <th scope="col">Selezione</th>
+            <th scope="col">Quota</th>
+            <th scope="col">Bookmaker</th>
+            <th scope="col" class="text-end">Schedina</th>
+            <th scope="col" class="text-end">Telegram</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var market in cornerMarkets)
         {
-            <tr data-market-key="@key">
-                <td>@o.Value</td>
-                <td>@o.Odd.ToString("0.00")</td>
-                <td>
-                    @if (o.Bookmaker == 8)
-                    {
-                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                    }
-                    else
-                    {
-                        @o.Bookmaker
-                    }
-                </td>
-                <td class="text-end">
-                                                            @if (User.HasClaim("plan", "1"))
-                                                            {
-                                                                <form method="post"
-                                                                      asp-page-handler="SendOddsIdea"
-                                                                      class="d-inline">
-                                                                    @Html.AntiForgeryToken()
+            var key = market.Key.Description ?? $"Bet {market.Key.BetId}";
+            foreach (var o in market.OrderBy(o => o.Value))
+            {
+                <tr data-market-key="@key">
+                    <td>@o.Value</td>
+                    <td>@o.Odd.ToString("0.00")</td>
+                    <td>
+                        @if (o.Bookmaker == 8)
+                        {
+                            <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                        }
+                        else
+                        {
+                            @o.Bookmaker
+                        }
+                    </td>
 
-                                                                    <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                                    <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+                    @* ✅ COLONNA SCHEDINA *@
+                    <td class="text-end">
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Aggiungi alla schedina"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addOddToSlipModal"
+                                    data-match-id="@Model.Data.MatchId"
+                                    data-pick="@o.Value"
+                                    data-odd="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-market="@(market.Key.Description) (@(market.Key.BetId))">
+                                ➕
+                            </button>
+                        }
+                    </td>
 
-                                                                    <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                                    <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                                    <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                                    <input type="hidden" name="odd" value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    @* ✅ COLONNA TELEGRAM *@
+                    <td class="text-end">
+                        @if (User.HasClaim("plan", "1"))
+                        {
+                            <form method="post"
+                                  asp-page-handler="SendOddsIdea"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
 
-                                                                    <button type="submit"
-                                                                            class="btn btn-sm btn-outline-success"
-                                                                            title="Invia">
-                                                                        🚀
-                                                                    </button>
-                                                                </form>
-                                                            }
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            }
-                                        </tbody>
-                                    </table>
+                                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                <input type="hidden" name="selectionValue" value="@o.Value" />
+                                <input type="hidden" name="odd"
+                                       value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-success"
+                                        title="Invia">
+                                    🚀
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
                                 </div>
                             </div>
                         </div>
@@ -1902,64 +1946,86 @@ switch (esitoCards)
                         </div>
 
                         <div class="table-responsive d-none" id="cards-odds-wrapper">
-                            <table class="table table-sm table-striped align-middle mb-0" id="cards-odds-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Selezione</th>
-                                        <th scope="col">Quota</th>
-                                        <th scope="col">Bookmaker</th>
-                                        <th scope="col" class="text-end">Telegram</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var market in cardsMarkets)
-                                    {
-                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                        foreach (var o in market.OrderBy(o => o.Value))
-                                        {
-                                            <tr data-market-key="@key">
-                                                <td>@o.Value</td>
-                                                <td>@o.Odd.ToString("0.00")</td>
-                                                <td>
-                                                    @if (o.Bookmaker == 8)
-                                                    {
-                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                    }
-                                                    else
-                                                    {
-                                                        @o.Bookmaker
-                                                    }
-                                                </td>
-                                                <td class="text-end">
-                                                    @if (User.HasClaim("plan", "1"))
-                                                    {
-                                                        <form method="post"
-                                                              asp-page-handler="SendOddsIdea"
-                                                              class="d-inline">
-                                                            @Html.AntiForgeryToken()
+ <table class="table table-sm table-striped align-middle mb-0" id="cards-odds-table">
+    <thead>
+        <tr>
+            <th scope="col">Selezione</th>
+            <th scope="col">Quota</th>
+            <th scope="col">Bookmaker</th>
+            <th scope="col" class="text-end">Schedina</th>
+            <th scope="col" class="text-end">Telegram</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var market in cardsMarkets)
+        {
+            var key = $"{market.Key.BetId}_{market.Key.Description}";
+            foreach (var o in market.OrderBy(o => o.Value))
+            {
+                <tr data-market-key="@key">
+                    <td>@o.Value</td>
+                    <td>@o.Odd.ToString("0.00")</td>
+                    <td>
+                        @if (o.Bookmaker == 8)
+                        {
+                            <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                        }
+                        else
+                        {
+                            @o.Bookmaker
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+                    @* ✅ COLONNA SCHEDINA *@
+                    <td class="text-end">
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Aggiungi alla schedina"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addOddToSlipModal"
+                                    data-match-id="@Model.Data.MatchId"
+                                    data-pick="@o.Value"
+                                    data-odd="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-market="@(market.Key.Description) (@(market.Key.BetId))">
+                                ➕
+                            </button>
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                            <input type="hidden" name="odd"
-                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    @* ✅ COLONNA TELEGRAM *@
+                    <td class="text-end">
+                        @if (User.HasClaim("plan", "1"))
+                        {
+                            <form method="post"
+                                  asp-page-handler="SendOddsIdea"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
 
-                                                            <button type="submit"
-                                                                    class="btn btn-sm btn-outline-warning"
-                                                                    title="Invia cartellini">
-                                                                🚀
-                                                            </button>
-                                                        </form>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
+                                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                <input type="hidden" name="selectionValue" value="@o.Value" />
+                                <input type="hidden" name="odd"
+                                       value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-warning"
+                                        title="Invia cartellini">
+                                    🚀
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
                         </div>
 
                     </div>
@@ -3028,64 +3094,87 @@ switch (esitoCards)
                         </div>
 
                         <div class="table-responsive d-none" id="shots-odds-wrapper">
-                            <table class="table table-sm table-striped align-middle mb-0" id="shots-odds-table">
-                                <thead>
-                                    <tr>
-                                        <th scope="col">Selezione</th>
-                                        <th scope="col">Quota</th>
-                                        <th scope="col">Bookmaker</th>
-                                        <th scope="col" class="text-end">Telegram</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var market in shotsMarkets)
-                                    {
-                                        var key = $"{market.Key.BetId}_{market.Key.Description}";
-                                        foreach (var o in market.OrderBy(o => o.Value))
-                                        {
-                                            <tr data-market-key="@key">
-                                                <td>@o.Value</td>
-                                                <td>@o.Odd.ToString("0.00")</td>
-                                                <td>
-                                                    @if (o.Bookmaker == 8)
-                                                    {
-                                                        <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
-                                                    }
-                                                    else
-                                                    {
-                                                        @o.Bookmaker
-                                                    }
-                                                </td>
-                                                <td class="text-end">
-                                                    @if (User.HasClaim("plan", "1"))
-                                                    {
-                                                        <form method="post"
-                                                              asp-page-handler="SendOddsIdea"
-                                                              class="d-inline">
-                                                            @Html.AntiForgeryToken()
+ <table class="table table-sm table-striped align-middle mb-0" id="shots-odds-table">
+    <thead>
+        <tr>
+            <th scope="col">Selezione</th>
+            <th scope="col">Quota</th>
+            <th scope="col">Bookmaker</th>
+            <th scope="col" class="text-end">Schedina</th>
+            <th scope="col" class="text-end">Telegram</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var market in shotsMarkets)
+        {
+            var key = $"{market.Key.BetId}_{market.Key.Description}";
+            foreach (var o in market.OrderBy(o => o.Value))
+            {
+                <tr data-market-key="@key">
+                    <td>@o.Value</td>
+                    <td>@o.Odd.ToString("0.00")</td>
+                    <td>
+                        @if (o.Bookmaker == 8)
+                        {
+                            <img src="/img/bet365.png" alt="Bet365" class="bookmaker-logo" />
+                        }
+                        else
+                        {
+                            @o.Bookmaker
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="id" value="@Model.Data.MatchId" />
-                                                            <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+                    <!-- ✅ COLONNA SCHEDINA -->
+                    <td class="text-end">
+                        @if (User?.Identity?.IsAuthenticated ?? false)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="Aggiungi alla schedina"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#addOddToSlipModal"
+                                    data-match-id="@Model.Data.MatchId"
+                                    data-pick="@o.Value"
+                                    data-odd="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-market="@(market.Key.Description) (@(market.Key.BetId))">
+                                ➕
+                            </button>
+                        }
+                    </td>
 
-                                                            <input type="hidden" name="betId" value="@market.Key.BetId" />
-                                                            <input type="hidden" name="marketDescription" value="@market.Key.Description" />
-                                                            <input type="hidden" name="selectionValue" value="@o.Value" />
-                                                            <input type="hidden" name="odd"
-                                                                   value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    <!-- ✅ COLONNA TELEGRAM -->
+                    <td class="text-end">
+                        @if (User.HasClaim("plan", "1"))
+                        {
+                            <form method="post"
+                                  asp-page-handler="SendOddsIdea"
+                                  class="d-inline">
+                                @Html.AntiForgeryToken()
 
-                                                            <button type="submit"
-                                                                    class="btn btn-sm btn-outline-success"
-                                                                    title="Invia">
-                                                                🚀
-                                                            </button>
-                                                        </form>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    }
-                                </tbody>
-                            </table>
+                                <input type="hidden" name="id" value="@Model.Data.MatchId" />
+                                <input type="hidden" name="topicName" value="PronosticiDaPubblicare" />
+
+                                <input type="hidden" name="betId" value="@market.Key.BetId" />
+                                <input type="hidden" name="marketDescription" value="@market.Key.Description" />
+                                <input type="hidden" name="selectionValue" value="@o.Value" />
+                                <input type="hidden" name="odd"
+                                       value="@o.Odd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-success"
+                                        title="Invia">
+                                    🚀
+                                </button>
+                            </form>
+                        }
+                    </td>
+
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
                         </div>
 
                     </div>
