@@ -33,7 +33,6 @@ namespace NextStakeWebApp.Pages.Match
         private readonly ILogger<DetailsModel> _logger;
 
 
-
         public DetailsModel(
             ReadDbContext read,
             ApplicationDbContext write,
@@ -919,14 +918,14 @@ namespace NextStakeWebApp.Pages.Match
 
                 // 🔹 Suggerimenti CORNER (usa logica vittorie/perse + quote reali)
                 // 🔹 Suggerimenti CORNER (usa linee indicative + quote reali)
- cornerSuggestionsInternal = BuildCornerSuggestions(
-    lines,
-    teamLines,
-    oddsForAi,
-    esitoProprietario,
-    dto.Home,
-    dto.Away
-);
+                cornerSuggestionsInternal = BuildCornerSuggestions(
+                   lines,
+                   teamLines,
+                   oddsForAi,
+                   esitoProprietario,
+                   dto.Home,
+                   dto.Away
+               );
 
                 shotsSuggestionsInternal = BuildShotsSuggestions(
                     lines,
@@ -1081,26 +1080,26 @@ TESTO DA RISCRIVERE:
 
             // =============== HELPERS LOCALI ===============
             static string BuildAnalysisContextForAi(string? json, string home, string away)
-{
-    if (string.IsNullOrWhiteSpace(json))
-        return "(nessun payload analitico disponibile)";
+            {
+                if (string.IsNullOrWhiteSpace(json))
+                    return "(nessun payload analitico disponibile)";
 
-    JsonObject root;
-    try
-    {
-        root = JsonNode.Parse(json)!.AsObject();
-    }
-    catch
-    {
-        return "(errore nel parsing del payload analitico)";
-    }
+                JsonObject root;
+                try
+                {
+                    root = JsonNode.Parse(json)!.AsObject();
+                }
+                catch
+                {
+                    return "(errore nel parsing del payload analitico)";
+                }
 
-    // 🔹 Esito 1X2 dalla sezione Prediction
-    string esito = "";
-    if (root.TryGetPropertyValue("Prediction", out var predNode) && predNode is JsonObject predObj)
-    {
-        esito = predObj["Esito"]?.ToString()?.Trim().ToUpperInvariant() ?? "";
-    }
+                // 🔹 Esito 1X2 dalla sezione Prediction
+                string esito = "";
+                if (root.TryGetPropertyValue("Prediction", out var predNode) && predNode is JsonObject predObj)
+                {
+                    esito = predObj["Esito"]?.ToString()?.Trim().ToUpperInvariant() ?? "";
+                }
 
                 string esitoConQuota = "";
                 if (root.TryGetPropertyValue("EsitoConQuota", out var quotaNode))
@@ -1108,170 +1107,170 @@ TESTO DA RISCRIVERE:
                     esitoConQuota = quotaNode?.ToString() ?? "";
                 }
                 // 🔹 Blocchi metrics per goals / shots / etc.
-                var goalsMetrics   = FindMetricsBlock(root, "goal");
-    var shotsMetrics   = FindMetricsBlock(root, "shot");
-    var cornersMetrics = FindMetricsBlock(root, "corner"); // per futuro uso
-    var cardsMetrics   = FindMetricsBlock(root, "card");   // per futuro uso
+                var goalsMetrics = FindMetricsBlock(root, "goal");
+                var shotsMetrics = FindMetricsBlock(root, "shot");
+                var cornersMetrics = FindMetricsBlock(root, "corner"); // per futuro uso
+                var cardsMetrics = FindMetricsBlock(root, "card");   // per futuro uso
 
-    // ----------------------------------------------------
-    // 1) PRONOSTICI GOAL ATTESI (stessa logica della cshtml)
-    // ----------------------------------------------------
-    decimal? pronXgHome = null;
-    decimal? pronXgAway = null;
+                // ----------------------------------------------------
+                // 1) PRONOSTICI GOAL ATTESI (stessa logica della cshtml)
+                // ----------------------------------------------------
+                decimal? pronXgHome = null;
+                decimal? pronXgAway = null;
 
-    if (goalsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
-    {
-        var homeWon  = GetMetric(goalsMetrics, "Partite Vinte",      "Home");
-        var homeDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Home");
-        var homeLost = GetMetric(goalsMetrics, "Partite Perse",      "Home");
+                if (goalsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
+                {
+                    var homeWon = GetMetric(goalsMetrics, "Partite Vinte", "Home");
+                    var homeDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Home");
+                    var homeLost = GetMetric(goalsMetrics, "Partite Perse", "Home");
 
-        var awayWon  = GetMetric(goalsMetrics, "Partite Vinte",      "Away");
-        var awayDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Away");
-        var awayLost = GetMetric(goalsMetrics, "Partite Perse",      "Away");
+                    var awayWon = GetMetric(goalsMetrics, "Partite Vinte", "Away");
+                    var awayDraw = GetMetric(goalsMetrics, "Partite Pareggiate", "Away");
+                    var awayLost = GetMetric(goalsMetrics, "Partite Perse", "Away");
 
-        var homeScoredHome      = GetMetric(goalsMetrics, "Fatti in Casa",       "Home");
-        var awayScoredAway      = GetMetric(goalsMetrics, "Fatti in Trasferta",  "Away");
-        var homeConcededHome    = GetMetric(goalsMetrics, "Subiti in Casa",      "Home");
-        var homeConcededAway    = GetMetric(goalsMetrics, "Subiti in Trasferta", "Home");
-        var awayConcededHome    = GetMetric(goalsMetrics, "Subiti in Casa",      "Away");
-        var awayConcededAway    = GetMetric(goalsMetrics, "Subiti in Trasferta", "Away");
+                    var homeScoredHome = GetMetric(goalsMetrics, "Fatti in Casa", "Home");
+                    var awayScoredAway = GetMetric(goalsMetrics, "Fatti in Trasferta", "Away");
+                    var homeConcededHome = GetMetric(goalsMetrics, "Subiti in Casa", "Home");
+                    var homeConcededAway = GetMetric(goalsMetrics, "Subiti in Trasferta", "Home");
+                    var awayConcededHome = GetMetric(goalsMetrics, "Subiti in Casa", "Away");
+                    var awayConcededAway = GetMetric(goalsMetrics, "Subiti in Trasferta", "Away");
 
-        switch (esito)
-        {
-            case "1":
-                // Casa favorita:
-                //   (xG vinte + Fatti in Casa + Subiti in Casa dell'avversaria) / 3
-                if (homeWon.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
-                    pronXgHome = ((homeWon ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
+                    switch (esito)
+                    {
+                        case "1":
+                            // Casa favorita:
+                            //   (xG vinte + Fatti in Casa + Subiti in Casa dell'avversaria) / 3
+                            if (homeWon.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                                pronXgHome = ((homeWon ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
 
-                // Ospite sfavorita:
-                //   (xG perse + Fatti in Trasferta + Subiti in Trasferta della casa) / 3
-                if (awayLost.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
-                    pronXgAway = ((awayLost ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
-                break;
+                            // Ospite sfavorita:
+                            //   (xG perse + Fatti in Trasferta + Subiti in Trasferta della casa) / 3
+                            if (awayLost.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                                pronXgAway = ((awayLost ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+                            break;
 
-            case "2":
-                // Casa sfavorita:
-                //   (xG perse + Fatti in Casa + Subiti in Trasferta dell'avversaria) / 3
-                if (homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
-                    pronXgHome = ((homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 3m;
+                        case "2":
+                            // Casa sfavorita:
+                            //   (xG perse + Fatti in Casa + Subiti in Trasferta dell'avversaria) / 3
+                            if (homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+                                pronXgHome = ((homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 3m;
 
-                // Ospite favorita:
-                //   (xG vinte + Fatti in Trasferta + Subiti in Casa della casa) / 3
-                if (awayWon.HasValue || awayScoredAway.HasValue || homeConcededHome.HasValue)
-                    pronXgAway = ((awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededHome ?? 0m)) / 3m;
-                break;
+                            // Ospite favorita:
+                            //   (xG vinte + Fatti in Trasferta + Subiti in Casa della casa) / 3
+                            if (awayWon.HasValue || awayScoredAway.HasValue || homeConcededHome.HasValue)
+                                pronXgAway = ((awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededHome ?? 0m)) / 3m;
+                            break;
 
-            case "1X":
-                // Casa non perde:
-                //   (xG vinte + xG pareggiate + Fatti in Casa + Subiti in Casa dell'avversaria) / 4
-                if (homeWon.HasValue || homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
-                    pronXgHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 4m;
+                        case "1X":
+                            // Casa non perde:
+                            //   (xG vinte + xG pareggiate + Fatti in Casa + Subiti in Casa dell'avversaria) / 4
+                            if (homeWon.HasValue || homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                                pronXgHome = ((homeWon ?? 0m) + (homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 4m;
 
-                // Ospite: (perse + pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 4
-                if (awayLost.HasValue || awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
-                    pronXgAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 4m;
-                break;
+                            // Ospite: (perse + pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 4
+                            if (awayLost.HasValue || awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                                pronXgAway = ((awayLost ?? 0m) + (awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 4m;
+                            break;
 
-            case "X2":
-                // Casa (sfavorita / può soffrire):
-                //   xG pareggiate + xG perse + Fatti in Casa + Subiti in Trasferta avversaria
-                if (homeDraw.HasValue || homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
-                    pronXgHome = ((homeDraw ?? 0m) + (homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 4m;
+                        case "X2":
+                            // Casa (sfavorita / può soffrire):
+                            //   xG pareggiate + xG perse + Fatti in Casa + Subiti in Trasferta avversaria
+                            if (homeDraw.HasValue || homeLost.HasValue || homeScoredHome.HasValue || awayConcededAway.HasValue)
+                                pronXgHome = ((homeDraw ?? 0m) + (homeLost ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededAway ?? 0m)) / 4m;
 
-                // Trasferta (favorita, come da tuo esempio):
-                //   xG pareggiate + xG VINTE + Fatti in Trasferta + Goal segnati in casa dall'avversaria
-                if (awayDraw.HasValue || awayWon.HasValue || awayScoredAway.HasValue || homeScoredHome.HasValue)
-                    pronXgAway = ((awayDraw ?? 0m) + (awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeScoredHome ?? 0m)) / 4m;
-                break;
+                            // Trasferta (favorita, come da tuo esempio):
+                            //   xG pareggiate + xG VINTE + Fatti in Trasferta + Goal segnati in casa dall'avversaria
+                            if (awayDraw.HasValue || awayWon.HasValue || awayScoredAway.HasValue || homeScoredHome.HasValue)
+                                pronXgAway = ((awayDraw ?? 0m) + (awayWon ?? 0m) + (awayScoredAway ?? 0m) + (homeScoredHome ?? 0m)) / 4m;
+                            break;
 
-            case "X":
-                // Pareggio secco:
-                // Casa: (xG pareggiate + Fatti in Casa + Subiti in Casa avversaria) / 3
-                if (homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
-                    pronXgHome = ((homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
+                        case "X":
+                            // Pareggio secco:
+                            // Casa: (xG pareggiate + Fatti in Casa + Subiti in Casa avversaria) / 3
+                            if (homeDraw.HasValue || homeScoredHome.HasValue || awayConcededHome.HasValue)
+                                pronXgHome = ((homeDraw ?? 0m) + (homeScoredHome ?? 0m) + (awayConcededHome ?? 0m)) / 3m;
 
-                // Ospite: (xG pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 3
-                if (awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
-                    pronXgAway = ((awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
-                break;
+                            // Ospite: (xG pareggiate + Fatti in Trasferta + Subiti in Trasferta casa) / 3
+                            if (awayDraw.HasValue || awayScoredAway.HasValue || homeConcededAway.HasValue)
+                                pronXgAway = ((awayDraw ?? 0m) + (awayScoredAway ?? 0m) + (homeConcededAway ?? 0m)) / 3m;
+                            break;
 
-            default:
-                pronXgHome = null;
-                pronXgAway = null;
-                break;
-        }
-    }
+                        default:
+                            pronXgHome = null;
+                            pronXgAway = null;
+                            break;
+                    }
+                }
 
-    var pronXgTot = (pronXgHome.HasValue && pronXgAway.HasValue)
-        ? pronXgHome.Value + pronXgAway.Value
-        : (decimal?)null;
+                var pronXgTot = (pronXgHome.HasValue && pronXgAway.HasValue)
+                    ? pronXgHome.Value + pronXgAway.Value
+                    : (decimal?)null;
 
-    // ----------------------------------------------------
-    // 2) PRONOSTICI TIRI (stessa logica concettuale della cshtml)
-    // ----------------------------------------------------
-    decimal? pronShotsHome = null;
-    decimal? pronShotsAway = null;
+                // ----------------------------------------------------
+                // 2) PRONOSTICI TIRI (stessa logica concettuale della cshtml)
+                // ----------------------------------------------------
+                decimal? pronShotsHome = null;
+                decimal? pronShotsAway = null;
 
-    if (shotsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
-    {
-        var shEffHome   = GetMetric(shotsMetrics, "Effettuati",         "Home");
-        var shHomeHome  = GetMetric(shotsMetrics, "In Casa",            "Home");
-        var shDrawHome  = GetMetric(shotsMetrics, "Partite Pareggiate", "Home");
-        var shLostHome  = GetMetric(shotsMetrics, "Partite Perse",      "Home");
+                if (shotsMetrics is not null && !string.IsNullOrWhiteSpace(esito))
+                {
+                    var shEffHome = GetMetric(shotsMetrics, "Effettuati", "Home");
+                    var shHomeHome = GetMetric(shotsMetrics, "In Casa", "Home");
+                    var shDrawHome = GetMetric(shotsMetrics, "Partite Pareggiate", "Home");
+                    var shLostHome = GetMetric(shotsMetrics, "Partite Perse", "Home");
 
-        var shEffAway   = GetMetric(shotsMetrics, "Effettuati",         "Away");
-        var shAwayAway  = GetMetric(shotsMetrics, "Fuoricasa",          "Away");
-        var shDrawAway  = GetMetric(shotsMetrics, "Partite Pareggiate", "Away");
-        var shWonAway   = GetMetric(shotsMetrics, "Partite Vinte",      "Away");
+                    var shEffAway = GetMetric(shotsMetrics, "Effettuati", "Away");
+                    var shAwayAway = GetMetric(shotsMetrics, "Fuoricasa", "Away");
+                    var shDrawAway = GetMetric(shotsMetrics, "Partite Pareggiate", "Away");
+                    var shWonAway = GetMetric(shotsMetrics, "Partite Vinte", "Away");
 
-        switch (esito)
-        {
-            case "1":
-                if (shEffHome.HasValue || shHomeHome.HasValue || shWonAway.HasValue)
-                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shWonAway ?? 0m)) / 3m;
+                    switch (esito)
+                    {
+                        case "1":
+                            if (shEffHome.HasValue || shHomeHome.HasValue || shWonAway.HasValue)
+                                pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shWonAway ?? 0m)) / 3m;
 
-                if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
-                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
-                break;
+                            if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
+                                pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                            break;
 
-            case "2":
-                if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
-                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                        case "2":
+                            if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
+                                pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
 
-                if (shEffAway.HasValue || shAwayAway.HasValue || shWonAway.HasValue)
-                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shWonAway ?? 0m)) / 3m;
-                break;
+                            if (shEffAway.HasValue || shAwayAway.HasValue || shWonAway.HasValue)
+                                pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shWonAway ?? 0m)) / 3m;
+                            break;
 
-            case "1X":
-                if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
-                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
+                        case "1X":
+                            if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
+                                pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
 
-                if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
-                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
-                break;
+                            if (shEffAway.HasValue || shAwayAway.HasValue || shLostHome.HasValue)
+                                pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                            break;
 
-            case "X2":
-                if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
-                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
+                        case "X2":
+                            if (shEffHome.HasValue || shHomeHome.HasValue || shLostHome.HasValue)
+                                pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shLostHome ?? 0m)) / 3m;
 
-                if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
-                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
-                break;
+                            if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
+                                pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
+                            break;
 
-            case "X":
-                if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
-                    pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
+                        case "X":
+                            if (shEffHome.HasValue || shHomeHome.HasValue || shDrawHome.HasValue)
+                                pronShotsHome = ((shEffHome ?? 0m) + (shHomeHome ?? 0m) + (shDrawHome ?? 0m)) / 3m;
 
-                if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
-                    pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
-                break;
-        }
-    }
+                            if (shEffAway.HasValue || shAwayAway.HasValue || shDrawAway.HasValue)
+                                pronShotsAway = ((shEffAway ?? 0m) + (shAwayAway ?? 0m) + (shDrawAway ?? 0m)) / 3m;
+                            break;
+                    }
+                }
 
-    var pronShotsTot = (pronShotsHome.HasValue && pronShotsAway.HasValue)
-        ? pronShotsHome.Value + pronShotsAway.Value
-        : (decimal?)null;
+                var pronShotsTot = (pronShotsHome.HasValue && pronShotsAway.HasValue)
+                    ? pronShotsHome.Value + pronShotsAway.Value
+                    : (decimal?)null;
 
                 // ----------------------------------------------------
                 // 3) COSTRUZIONE DEL TESTO DA PASSARE ALL'AI
@@ -1286,72 +1285,72 @@ TESTO DA RISCRIVERE:
 
                 // GOAL ATTESI
                 if (pronXgHome.HasValue || pronXgAway.HasValue || pronXgTot.HasValue)
-    {
-        sb.AppendLine("PRONOSTICO GOAL ATTESI");
-        sb.AppendLine($"- {home}:   {(pronXgHome?.ToString("0.00") ?? "n.d.")}");
-        sb.AppendLine($"- {away}:   {(pronXgAway?.ToString("0.00") ?? "n.d.")}");
-        sb.AppendLine($"- Totale: {(pronXgTot?.ToString("0.00") ?? "n.d.")}");
-        sb.AppendLine();
-    }
+                {
+                    sb.AppendLine("PRONOSTICO GOAL ATTESI");
+                    sb.AppendLine($"- {home}:   {(pronXgHome?.ToString("0.00") ?? "n.d.")}");
+                    sb.AppendLine($"- {away}:   {(pronXgAway?.ToString("0.00") ?? "n.d.")}");
+                    sb.AppendLine($"- Totale: {(pronXgTot?.ToString("0.00") ?? "n.d.")}");
+                    sb.AppendLine();
+                }
 
-    // TIRI ATTESI
-    if (pronShotsHome.HasValue || pronShotsAway.HasValue || pronShotsTot.HasValue)
-    {
-        sb.AppendLine("PRONOSTICO TIRI");
-        sb.AppendLine($"- {home}:   {(pronShotsHome?.ToString("0.00") ?? "n.d.")}");
-        sb.AppendLine($"- {away}:   {(pronShotsAway?.ToString("0.00") ?? "n.d.")}");
-        if (pronShotsTot.HasValue)
-            sb.AppendLine($"- Totale: {(pronShotsTot?.ToString("0.00") ?? "n.d.")}");
-        sb.AppendLine();
-    }
+                // TIRI ATTESI
+                if (pronShotsHome.HasValue || pronShotsAway.HasValue || pronShotsTot.HasValue)
+                {
+                    sb.AppendLine("PRONOSTICO TIRI");
+                    sb.AppendLine($"- {home}:   {(pronShotsHome?.ToString("0.00") ?? "n.d.")}");
+                    sb.AppendLine($"- {away}:   {(pronShotsAway?.ToString("0.00") ?? "n.d.")}");
+                    if (pronShotsTot.HasValue)
+                        sb.AppendLine($"- Totale: {(pronShotsTot?.ToString("0.00") ?? "n.d.")}");
+                    sb.AppendLine();
+                }
 
-    // 🔹 Helper locale per avere anche il dump delle metriche grezze (come prima)
-    string ReadBlock(string blockName, params string[] alias)
-    {
-        var obj = root
-            .Where(kv => string.Equals(kv.Key, blockName, StringComparison.OrdinalIgnoreCase)
-                     || alias.Any(a => string.Equals(kv.Key, a, StringComparison.OrdinalIgnoreCase)))
-            .Select(kv => kv.Value as JsonObject)
-            .FirstOrDefault();
+                // 🔹 Helper locale per avere anche il dump delle metriche grezze (come prima)
+                string ReadBlock(string blockName, params string[] alias)
+                {
+                    var obj = root
+                        .Where(kv => string.Equals(kv.Key, blockName, StringComparison.OrdinalIgnoreCase)
+                                 || alias.Any(a => string.Equals(kv.Key, a, StringComparison.OrdinalIgnoreCase)))
+                        .Select(kv => kv.Value as JsonObject)
+                        .FirstOrDefault();
 
-        if (obj is null || obj.Count == 0) return "";
+                    if (obj is null || obj.Count == 0) return "";
 
-        var normalized = obj
-            .Where(kv => kv.Value is not null)
-            .Select(kv => new { Key = (kv.Key ?? "").Trim(), Val = kv.Value!.ToString()?.Trim() })
-            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Val))
-            .ToList();
+                    var normalized = obj
+                        .Where(kv => kv.Value is not null)
+                        .Select(kv => new { Key = (kv.Key ?? "").Trim(), Val = kv.Value!.ToString()?.Trim() })
+                        .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Val))
+                        .ToList();
 
-        if (normalized.Count == 0) return "";
+                    if (normalized.Count == 0) return "";
 
-        var pairs = new Dictionary<string, (string? casa, string? ospite)>(StringComparer.OrdinalIgnoreCase);
+                    var pairs = new Dictionary<string, (string? casa, string? ospite)>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var item in normalized)
-        {
-            var keyFull = item.Key;
-            var lastDash = keyFull.LastIndexOf('-');
-            var baseName = lastDash > 0 ? keyFull.Substring(0, lastDash).Trim() : keyFull;
-            var side = lastDash > 0 ? keyFull[(lastDash + 1)..].Trim() : "";
+                    foreach (var item in normalized)
+                    {
+                        var keyFull = item.Key;
+                        var lastDash = keyFull.LastIndexOf('-');
+                        var baseName = lastDash > 0 ? keyFull.Substring(0, lastDash).Trim() : keyFull;
+                        var side = lastDash > 0 ? keyFull[(lastDash + 1)..].Trim() : "";
 
-            bool isHome = side.Equals("Casa", StringComparison.OrdinalIgnoreCase) ||
-                          side.Equals("Home", StringComparison.OrdinalIgnoreCase);
-            bool isAway = side.Equals("Ospite", StringComparison.OrdinalIgnoreCase) ||
-                          side.Equals("Away", StringComparison.OrdinalIgnoreCase);
+                        bool isHome = side.Equals("Casa", StringComparison.OrdinalIgnoreCase) ||
+                                      side.Equals("Home", StringComparison.OrdinalIgnoreCase);
+                        bool isAway = side.Equals("Ospite", StringComparison.OrdinalIgnoreCase) ||
+                                      side.Equals("Away", StringComparison.OrdinalIgnoreCase);
 
-            if (!pairs.TryGetValue(baseName, out var t)) t = (null, null);
-            if (isHome) t.casa = item.Val;
-            else if (isAway) t.ospite = item.Val;
-            else
-            {
-                if (!pairs.ContainsKey(baseName))
-                    pairs[baseName] = (item.Val, item.Val);
-                continue;
-            }
-            pairs[baseName] = t;
-        }
+                        if (!pairs.TryGetValue(baseName, out var t)) t = (null, null);
+                        if (isHome) t.casa = item.Val;
+                        else if (isAway) t.ospite = item.Val;
+                        else
+                        {
+                            if (!pairs.ContainsKey(baseName))
+                                pairs[baseName] = (item.Val, item.Val);
+                            continue;
+                        }
+                        pairs[baseName] = t;
+                    }
 
-        string[] desiredOrder = new[]
-        {
+                    string[] desiredOrder = new[]
+                    {
             "Effettuati","Battuti","Fatti","Subiti","In Casa","Fuoricasa",
             "Ultime 5","Partite Vinte","Partite Pareggiate","Partite Perse",
             "% Over 1.5 Casa","% Over 1.5 Trasferta","% Over 1.5 Totale",
@@ -1359,30 +1358,30 @@ TESTO DA RISCRIVERE:
             "% Over 3.5 Casa","% Over 3.5 Trasferta","% Over 3.5 Totale"
         };
 
-        var rows = pairs.Keys
-            .OrderBy(k => { var i = Array.IndexOf(desiredOrder, k); return i < 0 ? int.MaxValue : i; })
-            .ThenBy(k => k)
-            .Select(k =>
-            {
-                var (casa, ospite) = pairs[k];
-                return $"• {k}: {home} {casa ?? "—"} | {away} {ospite ?? "—"}";
-            });
+                    var rows = pairs.Keys
+                        .OrderBy(k => { var i = Array.IndexOf(desiredOrder, k); return i < 0 ? int.MaxValue : i; })
+                        .ThenBy(k => k)
+                        .Select(k =>
+                        {
+                            var (casa, ospite) = pairs[k];
+                            return $"• {k}: {home} {casa ?? "—"} | {away} {ospite ?? "—"}";
+                        });
 
-        var title = blockName.ToLower() switch
-        {
-            "goals" or "goal" => "GOAL/OVER",
-            "shots"           => "TIRI",
-            "corners"         => "CORNER",
-            "fouls"           => "FALLI",
-            "cards"           => "CARTELLINI",
-            "offsides"        => "FUORIGIOCO",
-            _ => blockName.ToUpperInvariant()
-        };
+                    var title = blockName.ToLower() switch
+                    {
+                        "goals" or "goal" => "GOAL/OVER",
+                        "shots" => "TIRI",
+                        "corners" => "CORNER",
+                        "fouls" => "FALLI",
+                        "cards" => "CARTELLINI",
+                        "offsides" => "FUORIGIOCO",
+                        _ => blockName.ToUpperInvariant()
+                    };
 
-        return $"{title}\n{string.Join("\n", rows)}";
-    }
+                    return $"{title}\n{string.Join("\n", rows)}";
+                }
 
-    var extraBlocks = new List<string>
+                var extraBlocks = new List<string>
     {
         ReadBlock("goals",   "goal", "goalAttesi"),
         ReadBlock("shots",   "tiri"),
@@ -1392,18 +1391,18 @@ TESTO DA RISCRIVERE:
         ReadBlock("offsides","fuorigioco")
     };
 
-    var filteredBlocks = extraBlocks.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-    if (filteredBlocks.Count > 0)
-    {
-        sb.AppendLine();
-        sb.AppendLine(string.Join("\n\n", filteredBlocks));
-    }
+                var filteredBlocks = extraBlocks.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                if (filteredBlocks.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine(string.Join("\n\n", filteredBlocks));
+                }
 
-    var ctx = sb.ToString();
-    if (ctx.Length > 2000) ctx = ctx[..2000] + "...";
+                var ctx = sb.ToString();
+                if (ctx.Length > 2000) ctx = ctx[..2000] + "...";
 
-    return ctx;
-}
+                return ctx;
+            }
 
             static decimal? GetMetric(JsonObject? metrics, string baseName, string side)
             {
@@ -1827,12 +1826,12 @@ TESTO DA RISCRIVERE:
             // 🔹 carica i giocatori per le due squadre (tab "Squadre & Giocatori")
             if (Data.HomeId > 0)
             {
-                Data.HomePlayers = await LoadPlayersForTeamAsync(Data.HomeId,Data.Season,Data.LeagueId);
+                Data.HomePlayers = await LoadPlayersForTeamAsync(Data.HomeId, Data.Season, Data.LeagueId);
             }
 
             if (Data.AwayId > 0)
             {
-                Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId,Data.Season, Data.LeagueId);
+                Data.AwayPlayers = await LoadPlayersForTeamAsync(Data.AwayId, Data.Season, Data.LeagueId);
             }
 
             //if (Data.HomePlayers != null && Data.HomePlayers.Count > 0)
@@ -1959,7 +1958,9 @@ TESTO DA RISCRIVERE:
             long id,
             long? slipId,
             string? newSlipTitle,
-            string? pickText)
+            string? pickText,
+            decimal? odd,
+    string? market)
         {
             if (User?.Identity?.IsAuthenticated != true)
                 return Unauthorized();
@@ -2019,12 +2020,16 @@ TESTO DA RISCRIVERE:
                     BetSlipId = targetSlipId,
                     MatchId = id,
                     Pick = pickText,
+                    Odd = odd,
+                    Market = string.IsNullOrWhiteSpace(market) ? null : market.Trim(),
                     CreatedAtUtc = DateTime.UtcNow
                 });
             }
             else
             {
                 existing.Pick = pickText;
+                existing.Odd = odd;
+                existing.Market = string.IsNullOrWhiteSpace(market) ? null : market.Trim();
                 // BetSelection non ha UpdatedAtUtc: se vuoi, lo aggiungiamo al model.
             }
 
@@ -2456,7 +2461,7 @@ TESTO DA RISCRIVERE:
         // la stessa logica del tab Analisi (Razor)
         // 🔹 Carica giocatori + statistiche da Neon per una squadra
         // 🔹 Carica giocatori + statistiche da Neon usando il NOME squadra
-        private async Task<List<PlayerListItem>> LoadPlayersForTeamAsync(long teamId,int Season,int LeagueId)
+        private async Task<List<PlayerListItem>> LoadPlayersForTeamAsync(long teamId, int Season, int LeagueId)
         {
             var result = new List<PlayerListItem>();
 

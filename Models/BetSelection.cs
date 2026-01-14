@@ -28,5 +28,9 @@ namespace NextStakeWebApp.Models
 
         public short? ManualOutcome { get; set; } // null=auto, 1=win, 2=loss
 
+        [MaxLength(160)]
+        public string? Market { get; set; }
+
+
     }
 }

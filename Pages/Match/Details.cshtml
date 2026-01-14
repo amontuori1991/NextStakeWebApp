@@ -456,14 +456,14 @@
 
                     <div class="col-md-4">
                         <label class="form-label">Nome nuova multipla (solo se sopra è vuoto)</label>
-                        <input class="form-control" name="newSlipTitle" placeholder="Es. Weekend 1" />
+                        <input class="form-control" name="newSlipTitle" placeholder="Es. Weekend 1" />                      
                     </div>
 
                     <div class="col-md-4">
                         <label class="form-label">Il tuo pronostico per questo match</label>
                         <input class="form-control" name="pickText" value="@p.ComboFinale" />
                         <small class="text-muted">Precompilato con la combo, ma puoi modificarlo.</small>
-                    </div>
+                                     </div>
                 </div>
 
                 <div class="d-flex justify-content-end mt-3">
@@ -530,6 +530,8 @@ else
                 <th scope="col">Quota</th>
                 <th scope="col">Bookmaker</th>
                 <th scope="col" class="text-end">Telegram</th>
+                <th class="text-end">Schedina</th>
+
             </tr>
         </thead>
         <tbody>
@@ -578,12 +580,44 @@ else
                                 </form>
                             }
                         </td>
+
+ <td class="text-end">
+    @* 📌 SCHEDINA: libero a tutti (se non loggato → login) *@
+    @if (User?.Identity?.IsAuthenticated ?? false)
+    {
+        <button type="button"
+                class="btn btn-sm btn-outline-primary"
+                title="Aggiungi alla schedina"
+                data-bs-toggle="modal"
+                data-bs-target="#addOddToSlipModal"
+                data-match-id="@Model.Data.MatchId"
+                data-pick="@o.Value"
+                data-odd="@o.Odd.ToString("0.00")"
+                data-market="@($"{market.Key.Description} ({market.Key.BetId})")">
+            📌
+        </button>
+    }
+    else
+    {
+        <a class="btn btn-sm btn-outline-primary"
+           asp-area="Identity"
+           asp-page="/Account/Login"
+           asp-route-returnUrl="@(HttpContext.Request.Path + HttpContext.Request.QueryString)"
+           title="Accedi per aggiungere alla schedina">
+            📌
+        </a>
+    }
+</td>
+
+
                     </tr>
                 }
             }
         </tbody>
     </table>
 </div>
+
+
 
 
                     </div>
@@ -3891,7 +3925,67 @@ document.addEventListener("DOMContentLoaded", () => {
         <div id="aiLoadingMessage" class="fw-semibold">Caricamento…</div>
     </div>
 </div>
+@if (User?.Identity?.IsAuthenticated ?? false)
+{
+   <div class="modal fade" id="addOddToSlipModal" tabindex="-1" aria-hidden="true" style="z-index: 2000;">
 
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Aggiungi alla schedina</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div id="addOdd_preview" class="small mb-3 text-muted"></div>
+
+                    <form method="post" asp-page-handler="AddToSlip" class="m-0">
+                        @Html.AntiForgeryToken()
+
+                        @* ✅ NOMI CAMPI ALLINEATI ALLA FIRMA: id, slipId, newSlipTitle, pickText *@
+                        <input type="hidden" name="id" id="addOdd_matchId" value="@Model.Data.MatchId" />
+                        <input type="hidden" name="odd" id="addOdd_odd" />
+                        <input type="hidden" name="market" id="addOdd_market" />
+
+                        <div class="mb-2">
+                            <label class="form-label">Salva in</label>
+                            <select class="form-select" name="slipId" id="addOdd_slipId">
+                                <option value="">➕ Nuova multipla…</option>
+                                @foreach (var s in Model.MySlips)
+                                {
+                                    <option value="@s.Id">@s.Name</option>
+                                }
+                            </select>
+                            <small class="text-muted">Se scegli “Nuova multipla” creerà una schedina nuova.</small>
+                        </div>
+
+                        <div class="mb-2" id="addOdd_newWrap">
+                            <label class="form-label">Nome nuova multipla</label>
+                            <input class="form-control" name="newSlipTitle" id="addOdd_newTitle" placeholder="Es. Weekend 1" />
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">Il tuo pronostico</label>
+                            <input class="form-control" name="pickText" id="addOdd_pick" />
+                            <small class="text-muted">Precompilato con la selezione, puoi modificarlo.</small>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                ✅ Salva
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
 @section Scripts {
     <script type="module" src="https://widgets.api-sports.io/3.1.0/widgets.js"></script>
     <script>
@@ -4117,6 +4211,49 @@ document.addEventListener("DOMContentLoaded", () => {
             updateCardOdds();
         })();
     </script>
+ <script>
+(function () {
+    const modalEl = document.getElementById('addOddToSlipModal');
+    if (!modalEl) return;
+
+    modalEl.addEventListener('show.bs.modal', function (event) {
+        const btn = event.relatedTarget;
+        if (!btn) return;
+
+        const matchId = btn.getAttribute('data-match-id') || '';
+        const pick = btn.getAttribute('data-pick') || '';
+        const odd = btn.getAttribute('data-odd') || '';
+        const market = btn.getAttribute('data-market') || '';
+
+        // ✅ allineati alla firma server: id + pickText
+        document.getElementById('addOdd_matchId').value = matchId;
+        document.getElementById('addOdd_pick').value = pick;
+        document.getElementById('addOdd_odd').value = odd;
+        document.getElementById('addOdd_market').value = market;
+
+
+        // preview
+        const prev = document.getElementById('addOdd_preview');
+        if (prev) {
+            prev.innerHTML =
+                `<strong>Mercato:</strong> ${market}<br/>` +
+                `<strong>Selezione:</strong> ${pick}<br/>` +
+                `<strong>Quota:</strong> ${odd}`;
+        }
+    });
+
+    // mostra/nasconde "Nome nuova multipla"
+    const sel = document.getElementById('addOdd_slipId');
+    const wrap = document.getElementById('addOdd_newWrap');
+    if (sel && wrap) {
+        const refresh = () => wrap.style.display = sel.value ? 'none' : 'block';
+        sel.addEventListener('change', refresh);
+        refresh();
+    }
+})();
+</script>
+
+
     <script>
 (function () {
     let SNOW_COUNT = 50;

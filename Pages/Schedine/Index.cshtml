@@ -1,7 +1,33 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Schedine.IndexModel
+@using System.Text.RegularExpressions
 @{
     ViewData["Title"] = "Le mie schedine";
+}
+
+@functions{
+    private static string CleanMarket(string? market)
+    {
+        if (string.IsNullOrWhiteSpace(market)) return "";
+        // rimuove " (numero)" solo se è a fine stringa
+        return Regex.Replace(market.Trim(), @"\s*\(\d+\)\s*$", "");
+    }
+
+    private static decimal? CalcTotalOdd(IEnumerable<NextStakeWebApp.Models.BetSelection> sels)
+    {
+        if (sels == null) return null;
+        var list = sels.ToList();
+        if (list.Count == 0) return null;
+
+        // Se manca anche UNA quota -> N/D
+        if (list.Any(x => !x.Odd.HasValue)) return null;
+
+        decimal total = 1m;
+        foreach (var s in list)
+            total *= s.Odd!.Value;
+
+        return total;
+    }
 }
 
 <div class="container py-4">
@@ -38,6 +64,8 @@
 
             foreach (var s in Model.ActiveItems)
             {
+                var totalOdd = CalcTotalOdd(s.Selections);
+
                 <div class="card mb-3">
                     <div class="card-header d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div class="d-flex flex-column">
@@ -68,13 +96,14 @@
                                     <span class="badge bg-secondary ms-1">Da assegnare</span>
                                 }
                             </div>
+
                             @if (s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
-{
-    Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
-    <div class="small text-muted">
-        Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
-    </div>
-}
+                            {
+                                Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
+                                <div class="small text-muted">
+                                    Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
+                                </div>
+                            }
 
                             @* Bottoni esito (solo se non assegnato) *@
                             @if (s.Result == NextStakeWebApp.Models.BetSlip.BetSlipResult.None)
@@ -111,19 +140,18 @@
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@s.Id" />
                                     @if (!s.ImportedFromCommunity)
-{
-    <button class="btn btn-outline-primary btn-sm" type="submit">
-        @(s.IsPublic ? "Rendi privata" : "Pubblica")
-    </button>
-}
-else
-{
-    <button class="btn btn-outline-secondary btn-sm" type="button" disabled
-            title="Schedina salvata dalla Community: non ripubblicabile">
-        Non ripubblicabile
-    </button>
-}
-
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm" type="submit">
+                                            @(s.IsPublic ? "Rendi privata" : "Pubblica")
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-secondary btn-sm" type="button" disabled
+                                                title="Schedina salvata dalla Community: non ripubblicabile">
+                                            Non ripubblicabile
+                                        </button>
+                                    }
                                 </form>
 
                                 <form method="post" asp-page-handler="Delete" class="m-0" onsubmit="return confirm('Eliminare la schedina?');">
@@ -150,12 +178,11 @@ else
                             <ul class="list-group">
                                 @foreach (var sel in s.Selections.OrderByDescending(x => x.Id))
                                 {
+                                    Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
+                                    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
+
                                     <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
                                         <div>
-                                            @{
-                                                Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
-                                            }
-
                                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                                 @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
                                                 {
@@ -178,58 +205,59 @@ else
                                                     </span>
                                                 }
 
-                                                <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
-                                                @{
-    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
-}
+                                                @* ✅ ORDINE: Mercato -> Pick -> Quota -> Stato *@
+                                                @if (!string.IsNullOrWhiteSpace(sel.Market))
+                                                {
+                                                    <span class="ms-2 badge bg-light text-dark">🧩 @CleanMarket(sel.Market)</span>
+                                                }
 
-
-
-@if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
-{
-    <span class="badge bg-success ms-2">✅ Vinta</span>
-}
-else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
-{
-    <span class="badge bg-danger ms-2">❌ Persa</span>
-}
-else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
-{
-    <span class="badge bg-secondary ms-2">⏳ In corso</span>
-}
-else
-{
-    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
-
-    <span class="ms-2 d-inline-flex gap-1">
-        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="selectionId" value="@sel.Id" />
-            <input type="hidden" name="outcome" value="win" />
-            <button class="btn btn-sm btn-outline-success" type="submit">✅</button>
-        </form>
-
-        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="selectionId" value="@sel.Id" />
-            <input type="hidden" name="outcome" value="loss" />
-            <button class="btn btn-sm btn-outline-danger" type="submit">❌</button>
-        </form>
-
-        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="selectionId" value="@sel.Id" />
-            <input type="hidden" name="outcome" value="auto" />
-            <button class="btn btn-sm btn-outline-secondary" type="submit">↩️</button>
-        </form>
-    </span>
-}
-
-
+                                                <span class="ms-2 badge bg-light text-dark">
+                                                    <strong>Pick:</strong> @sel.Pick
+                                                </span>
 
                                                 @if (sel.Odd.HasValue)
                                                 {
                                                     <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
+                                                }
+
+                                                @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
+                                                {
+                                                    <span class="badge bg-success ms-2">✅ Vinta</span>
+                                                }
+                                                else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+                                                {
+                                                    <span class="badge bg-danger ms-2">❌ Persa</span>
+                                                }
+                                                else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+                                                {
+                                                    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+
+                                                    <span class="ms-2 d-inline-flex gap-1">
+                                                        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+                                                            @Html.AntiForgeryToken()
+                                                            <input type="hidden" name="selectionId" value="@sel.Id" />
+                                                            <input type="hidden" name="outcome" value="win" />
+                                                            <button class="btn btn-sm btn-outline-success" type="submit">✅</button>
+                                                        </form>
+
+                                                        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+                                                            @Html.AntiForgeryToken()
+                                                            <input type="hidden" name="selectionId" value="@sel.Id" />
+                                                            <input type="hidden" name="outcome" value="loss" />
+                                                            <button class="btn btn-sm btn-outline-danger" type="submit">❌</button>
+                                                        </form>
+
+                                                        <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
+                                                            @Html.AntiForgeryToken()
+                                                            <input type="hidden" name="selectionId" value="@sel.Id" />
+                                                            <input type="hidden" name="outcome" value="auto" />
+                                                            <button class="btn btn-sm btn-outline-secondary" type="submit">↩️</button>
+                                                        </form>
+                                                    </span>
                                                 }
                                             </div>
 
@@ -247,6 +275,17 @@ else
                                     </li>
                                 }
                             </ul>
+
+                            <div class="d-flex justify-content-end mt-2">
+                                @if (totalOdd.HasValue)
+                                {
+                                    <span class="badge bg-light text-dark">Quota totale: @totalOdd.Value.ToString("0.00")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Quota totale: N/D</span>
+                                }
+                            </div>
                         }
                     </div>
                 </div>
@@ -260,6 +299,8 @@ else
 
             foreach (var s in Model.ArchivedItems)
             {
+                var totalOdd = CalcTotalOdd(s.Selections);
+
                 <div class="card mb-3">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
@@ -292,43 +333,43 @@ else
                             {
                                 <span class="badge bg-secondary ms-1">Auto</span>
                             }
-                            <form method="post"
-      asp-page-handler="Reopen"
-      class="d-inline ms-2"
-      onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
-    @Html.AntiForgeryToken()
-    <input type="hidden" name="slipId" value="@s.Id" />
-    <button class="btn btn-sm btn-outline-warning">
-        🔄 Riapri
-    </button>
-</form>
-@if (s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
-{
-    Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
-    <div class="small text-muted mt-1">
-        Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
-    </div>
-}
 
+                            <form method="post"
+                                  asp-page-handler="Reopen"
+                                  class="d-inline ms-2"
+                                  onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="slipId" value="@s.Id" />
+                                <button class="btn btn-sm btn-outline-warning">
+                                    🔄 Riapri
+                                </button>
+                            </form>
+
+                            @if (s.ImportedFromCommunity && !string.IsNullOrWhiteSpace(s.SourceUserId))
+                            {
+                                Model.SourceAuthorMap.TryGetValue(s.SourceUserId!, out var srcName);
+                                <div class="small text-muted mt-1">
+                                    Salvata da Community • Autore: <strong>@(srcName ?? "Utente")</strong>
+                                </div>
+                            }
                         </div>
 
-<div class="d-flex align-items-center gap-2">
-    <div class="text-muted small">
-        Archiviata: @(s.ArchivedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")
-    </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="text-muted small">
+                                Archiviata: @(s.ArchivedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")
+                            </div>
 
-    <form method="post"
-          asp-page-handler="Reopen"
-          class="m-0"
-          onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="slipId" value="@s.Id" />
-        <button class="btn btn-sm btn-outline-warning">
-            🔄 Riapri
-        </button>
-    </form>
-</div>
-
+                            <form method="post"
+                                  asp-page-handler="Reopen"
+                                  class="m-0"
+                                  onsubmit="return confirm('Riaprire la schedina? Tornerà tra le attive e l’esito verrà azzerato.');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="slipId" value="@s.Id" />
+                                <button class="btn btn-sm btn-outline-warning">
+                                    🔄 Riapri
+                                </button>
+                            </form>
+                        </div>
                     </div>
 
                     <div class="card-body">
@@ -346,11 +387,10 @@ else
                             <ul class="list-group">
                                 @foreach (var sel in s.Selections.OrderByDescending(x => x.Id))
                                 {
-                                    <li class="list-group-item">
-                                        @{
-                                            Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
-                                        }
+                                    Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
+                                    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
 
+                                    <li class="list-group-item">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
                                             @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
                                             {
@@ -372,44 +412,46 @@ else
                                                     @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
                                                 </span>
                                             }
+
                                             @if (mi?.StatusShort is "FT" or "AET" or "PEN")
-{
-    if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
-    {
-        <span class="badge bg-light text-dark ms-2">
-            Risultato: @mi.HomeGoal - @mi.AwayGoal
-        </span>
-    }
-}
+                                            {
+                                                if (mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+                                                {
+                                                    <span class="badge bg-light text-dark ms-2">
+                                                        Risultato: @mi.HomeGoal - @mi.AwayGoal
+                                                    </span>
+                                                }
+                                            }
 
-                                            <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
-                                            @{
-    var outcome = Model.EvaluateSelectionOutcome(sel, mi);
-}
+                                            @if (!string.IsNullOrWhiteSpace(sel.Market))
+                                            {
+                                                <span class="ms-2 badge bg-light text-dark">🧩 @CleanMarket(sel.Market)</span>
+                                            }
 
-
-
-@if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
-{
-    <span class="badge bg-success ms-2">✅ Vinta</span>
-}
-else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
-{
-    <span class="badge bg-danger ms-2">❌ Persa</span>
-}
-else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
-{
-    <span class="badge bg-secondary ms-2">⏳ In corso</span>
-}
-else
-{
-    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
-}
-
+                                            <span class="ms-2 badge bg-light text-dark">
+                                                <strong>Pick:</strong> @sel.Pick
+                                            </span>
 
                                             @if (sel.Odd.HasValue)
                                             {
                                                 <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
+                                            }
+
+                                            @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
+                                            {
+                                                <span class="badge bg-success ms-2">✅ Vinta</span>
+                                            }
+                                            else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+                                            {
+                                                <span class="badge bg-danger ms-2">❌ Persa</span>
+                                            }
+                                            else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+                                            {
+                                                <span class="badge bg-secondary ms-2">⏳ In corso</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
                                             }
                                         </div>
 
@@ -420,6 +462,17 @@ else
                                     </li>
                                 }
                             </ul>
+
+                            <div class="d-flex justify-content-end mt-2">
+                                @if (totalOdd.HasValue)
+                                {
+                                    <span class="badge bg-light text-dark">Quota totale: @totalOdd.Value.ToString("0.00")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Quota totale: N/D</span>
+                                }
+                            </div>
                         }
                     </div>
                 </div>

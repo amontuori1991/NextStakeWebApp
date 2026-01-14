@@ -1,7 +1,33 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Community.IndexModel
+@using System.Text.RegularExpressions
 @{
     ViewData["Title"] = "Community";
+}
+
+@functions{
+    private static string CleanMarket(string? market)
+    {
+        if (string.IsNullOrWhiteSpace(market)) return "";
+        // rimuove " (numero)" solo se è a fine stringa
+        return Regex.Replace(market.Trim(), @"\s*\(\d+\)\s*$", "");
+    }
+
+    private static decimal? CalcTotalOdd(IEnumerable<NextStakeWebApp.Models.BetSelection> sels)
+    {
+        if (sels == null) return null;
+        var list = sels.ToList();
+        if (list.Count == 0) return null;
+
+        // Se manca anche UNA quota -> N/D
+        if (list.Any(x => !x.Odd.HasValue)) return null;
+
+        decimal total = 1m;
+        foreach (var s in list)
+            total *= s.Odd!.Value;
+
+        return total;
+    }
 }
 
 <div class="container py-4">
@@ -50,6 +76,7 @@
                 var commentCnt = s.Comments?.Count ?? 0;
                 var liked = Model.LikedByMe.Contains(s.Id);
                 var saved = Model.SavedByMe.Contains(s.Id);
+                var totalOdd = CalcTotalOdd(s.Selections);
 
                 <div class="card mb-3">
 
@@ -127,6 +154,10 @@
                                 {
                                     Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
 
+                                    var outcome = BetPickEvaluator.EvaluateSelectionOutcome(
+                                        sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal
+                                    );
+
                                     <li class="list-group-item">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
                                             @if (!string.IsNullOrWhiteSpace(mi?.HomeLogo))
@@ -144,19 +175,26 @@
                                             }
 
                                             @if (mi?.StatusShort is "FT" or "AET" or "PEN"
-                                                                        && mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
+                                                 && mi.HomeGoal.HasValue && mi.AwayGoal.HasValue)
                                             {
                                                 <span class="badge bg-light text-dark ms-2">
                                                     @mi.HomeGoal - @mi.AwayGoal
                                                 </span>
                                             }
 
-                                            <span class="ms-2"><strong>Pick:</strong> @sel.Pick</span>
+                                            @* ✅ ORDINE: Mercato -> Pick -> Quota -> Stato *@
+                                            @if (!string.IsNullOrWhiteSpace(sel.Market))
+                                            {
+                                                <span class="ms-2 badge bg-light text-dark">🧩 @CleanMarket(sel.Market)</span>
+                                            }
 
-                                            @{
-                                                var outcome = BetPickEvaluator.EvaluateSelectionOutcome(
-                                                sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal
-                                                );
+                                            <span class="ms-2 badge bg-light text-dark">
+                                                <strong>Pick:</strong> @sel.Pick
+                                            </span>
+
+                                            @if (sel.Odd.HasValue)
+                                            {
+                                                <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
                                             }
 
                                             @if (outcome == BetPickEvaluator.SelectionOutcome.Won)
@@ -185,10 +223,20 @@
                                                 <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
                                             }
                                         </div>
-
                                     </li>
                                 }
                             </ul>
+
+                            <div class="d-flex justify-content-end mt-1 mb-3">
+                                @if (totalOdd.HasValue)
+                                {
+                                    <span class="badge bg-light text-dark">Quota totale: @totalOdd.Value.ToString("0.00")</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Quota totale: N/D</span>
+                                }
+                            </div>
                         }
 
                         <!-- ACTION BAR (LIKE | COPIA | COMMENTI) -->
@@ -311,9 +359,6 @@
                                 </div>
                             </div>
                         }
-
-
-
 
                         <!-- COMMENTI COLLASSABILI -->
                         <div id="@collapseId"
