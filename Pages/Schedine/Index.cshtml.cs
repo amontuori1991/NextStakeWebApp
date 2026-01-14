@@ -7,6 +7,11 @@ using NextStakeWebApp.Models;
 using static NextStakeWebApp.Models.BetSlip;
 using System.Text.RegularExpressions;
 using System.Globalization;
+using System.Text;
+using System.IO.Compression;
+using SkiaSharp;
+using Svg.Skia;
+
 
 namespace NextStakeWebApp.Pages.Schedine
 {
@@ -15,6 +20,17 @@ namespace NextStakeWebApp.Pages.Schedine
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ReadDbContext _read;
+        // ================== IMMAGINI SCHEDINA (PAGINAZIONE) ==================
+
+        // Numero massimo di selezioni per pagina immagine
+        public const int SvgPageSize = 8;
+
+        // Calcola quante pagine servono in base alle selezioni
+        public static int CalcSvgPages(int selectionCount)
+        {
+            if (selectionCount <= 0) return 1;
+            return (int)Math.Ceiling(selectionCount / (double)SvgPageSize);
+        }
 
         public IndexModel(ApplicationDbContext db, ReadDbContext read, UserManager<ApplicationUser> userManager)
         {
@@ -157,6 +173,309 @@ namespace NextStakeWebApp.Pages.Schedine
             StatusMessage = "✅ Multipla (bozza) creata.";
             return RedirectToPage();
         }
+        public async Task<IActionResult> OnGetSlipImageZipAsync(long slipId)
+        {
+            // 🔐 solo plan=1
+            if (!(User?.Identity?.IsAuthenticated ?? false) || !User.HasClaim("plan", "1"))
+                return Forbid();
+
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(userId))
+                return Forbid();
+
+            // carico schedina dell’utente
+            var slip = await _db.BetSlips
+                .Include(s => s.Selections)
+                .FirstOrDefaultAsync(s => s.Id == slipId && s.UserId == userId);
+
+            if (slip == null) return NotFound();
+
+            var selections = slip.Selections.OrderBy(x => x.Id).ToList();
+
+            // Calcola quante pagine servono
+            var pages = CalcSvgPages(selections.Count);
+
+            // genero PNG per ogni pagina e metto in ZIP
+            using var zipStream = new MemoryStream();
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                for (int pageIndex = 0; pageIndex < pages; pageIndex++)
+                {
+                    var pageSelections = selections
+                        .Skip(pageIndex * SvgPageSize)
+                        .Take(SvgPageSize)
+                        .ToList();
+
+                    // genera SVG per questa pagina
+                    var svg = await BuildSlipSvgAsync(slip, pageSelections, pageIndex + 1, pages);
+
+                    // converte SVG->PNG
+                    var pngBytes = SvgToPng(svg, widthPx: 1080);
+
+                    var entryName = $"schedina_{slip.Id}_p{pageIndex + 1}.png";
+                    var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+
+                    using var entryStream = entry.Open();
+                    await entryStream.WriteAsync(pngBytes, 0, pngBytes.Length);
+                }
+            }
+
+            zipStream.Position = 0;
+            var zipBytes = zipStream.ToArray();
+
+            Response.Headers["Content-Disposition"] = $@"attachment; filename=""schedina_{slip.Id}.zip""";
+            return File(zipBytes, "application/zip");
+        }
+        private async Task<string> BuildSlipSvgAsync(BetSlip slip, List<BetSelection> pageSelections, int pageNo, int pages)
+        {
+            // match map locale (con loghi/nomi)
+            var matchIds = pageSelections.Select(x => x.MatchId).Distinct().ToList();
+            var matchIdsInt = matchIds.Select(x => (int)x).Distinct().ToList();
+
+            var rows = await (
+                from m in _read.Matches.AsNoTracking()
+                join th in _read.Teams.AsNoTracking() on m.HomeId equals th.Id
+                join ta in _read.Teams.AsNoTracking() on m.AwayId equals ta.Id
+                where matchIdsInt.Contains(m.Id)
+                select new MatchInfo
+                {
+                    MatchId = (long)m.Id,
+                    HomeName = th.Name ?? "",
+                    AwayName = ta.Name ?? "",
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo,
+                    DateUtc = m.Date,
+                    StatusShort = m.StatusShort,
+                    HomeGoal = m.HomeGoal,
+                    AwayGoal = m.AwayGoal
+                }
+            ).ToListAsync();
+
+            var map = rows.ToDictionary(x => x.MatchId, x => x);
+
+            // quota totale schedina
+            decimal? totalOdd = null;
+            var all = slip.Selections.ToList();
+            if (all.Count > 0 && all.All(x => x.Odd.HasValue))
+            {
+                decimal t = 1m;
+                foreach (var s in all) t *= s.Odd!.Value;
+                totalOdd = t;
+            }
+
+            string Esc(string? s) => System.Security.SecurityElement.Escape(s ?? "") ?? "";
+
+            string CleanMarket(string? market)
+            {
+                if (string.IsNullOrWhiteSpace(market)) return "";
+                return Regex.Replace(market.Trim(), @"\s*\(\d+\)\s*$", "");
+            }
+
+            string FormatOdd(decimal? o) => o.HasValue ? o.Value.ToString("0.00") : "—";
+
+            // ====== LAYOUT FIX (anti-sovrapposizione footer) ======
+            const int W = 1080;
+
+            const int CardX = 40;
+            const int CardY = 40;
+            const int CardW = 1000;
+
+            const int HeaderH = 260;      // area header
+            const int DividerH = 20;      // spazio sotto divider
+            const int FooterH = 140;      // area footer dedicata
+            const int BottomPad = 40;     // padding finale
+
+            const int RowRectH = 190;     // altezza card riga
+            const int RowGap = 20;        // spazio tra righe
+
+            int rowsCount = pageSelections.Count;
+            int rowsBlockH = rowsCount == 0 ? 0 : (rowsCount * RowRectH) + ((rowsCount - 1) * RowGap);
+
+            // altezza totale: card top + header + divider + righe + footer + padding + card bottom
+            int height = CardY + HeaderH + DividerH + rowsBlockH + FooterH + BottomPad;
+
+            // coordinate righe
+            int rowsTop = CardY + HeaderH + DividerH;                 // inizio area righe
+            int rowsBottom = rowsTop + rowsBlockH;                    // fine area righe
+            int footerTop = rowsBottom + 30;                          // inizio area footer (staccato)
+            int footerLineY = footerTop;                              // linea separatrice footer
+            int footerTextY = footerTop + 55;
+
+            // badge stato
+            var title = string.IsNullOrWhiteSpace(slip.Title) ? $"Schedina #{slip.Id}" : slip.Title;
+
+            string slipBadge = slip.Result switch
+            {
+                BetSlip.BetSlipResult.Win => "VINCENTE",
+                BetSlip.BetSlipResult.Loss => "PERDENTE",
+                _ => (slip.ArchivedAtUtc != null ? "ARCHIVIATA" : "DA ASSEGNARE")
+            };
+
+            string slipBadgeColor = slip.Result switch
+            {
+                BetSlip.BetSlipResult.Win => "#16a34a",
+                BetSlip.BetSlipResult.Loss => "#dc2626",
+                _ => "#94a3b8"
+            };
+
+            // logo url -> data uri
+            async Task<string?> ImgToDataUriAsync(string? url)
+            {
+                if (string.IsNullOrWhiteSpace(url)) return null;
+                try
+                {
+                    using var http = new HttpClient();
+                    var bytes = await http.GetByteArrayAsync(url);
+                    var b64 = Convert.ToBase64String(bytes);
+                    return $"data:image/png;base64,{b64}";
+                }
+                catch { return null; }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($@"<svg xmlns=""http://www.w3.org/2000/svg"" width=""{W}"" height=""{height}"" viewBox=""0 0 {W} {height}"">");
+
+            sb.AppendLine(@"
+  <defs>
+    <linearGradient id=""bg"" x1=""0"" y1=""0"" x2=""1"" y2=""1"">
+      <stop offset=""0%"" stop-color=""#070b16""/>
+      <stop offset=""100%"" stop-color=""#0b1220""/>
+    </linearGradient>
+    <filter id=""shadow"" x=""-20%"" y=""-20%"" width=""140%"" height=""140%"">
+      <feDropShadow dx=""0"" dy=""18"" stdDeviation=""22"" flood-color=""#000"" flood-opacity=""0.35""/>
+    </filter>
+  </defs>
+
+  <style>
+    .font { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    .muted { fill: #94a3b8; }
+    .white { fill: #e5e7eb; }
+    .title { font-size: 56px; font-weight: 900; }
+    .sub { font-size: 26px; font-weight: 700; }
+    .badgeText { font-size: 22px; font-weight: 900; fill: #0b1220; }
+    .pillText { font-size: 24px; font-weight: 800; fill: #0b1220; }
+    .team { font-size: 34px; font-weight: 900; fill: #e5e7eb; }
+    .date { font-size: 24px; font-weight: 800; fill: #94a3b8; }
+  </style>
+");
+
+            // background
+            sb.AppendLine($@"  <rect x=""0"" y=""0"" width=""{W}"" height=""{height}"" fill=""url(#bg)""/>");
+
+            // card container (altezza corretta)
+            sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""#0b1020"" opacity=""0.92"" filter=""url(#shadow)""/>");
+            sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""none"" stroke=""#1f2937"" stroke-width=""2""/>");
+
+            // header
+            sb.AppendLine($@"  <text x=""80"" y=""120"" class=""font title white"">{Esc(title)}</text>");
+            sb.AppendLine($@"  <text x=""80"" y=""170"" class=""font sub muted"">NextStake • {Esc(slip.Type)} • {slip.UpdatedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}</text>");
+
+            // badge stato
+            sb.AppendLine($@"  <rect x=""720"" y=""92"" width=""280"" height=""56"" rx=""28"" fill=""{slipBadgeColor}""/>");
+            sb.AppendLine($@"  <text x=""860"" y=""128"" text-anchor=""middle"" class=""font badgeText"">{Esc(slipBadge)}</text>");
+
+            // quota totale
+            var totalLabel = totalOdd.HasValue ? totalOdd.Value.ToString("0.00") : "N/D";
+            sb.AppendLine($@"  <rect x=""80"" y=""200"" width=""380"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
+            sb.AppendLine($@"  <text x=""110"" y=""238"" class=""font pillText"">Quota totale: {Esc(totalLabel)}</text>");
+
+            // page indicator
+            if (pages > 1)
+                sb.AppendLine($@"  <text x=""1000"" y=""238"" text-anchor=""end"" class=""font sub muted"">Pag. {pageNo}/{pages}</text>");
+
+            // divider
+            sb.AppendLine($@"  <line x1=""80"" y1=""280"" x2=""1000"" y2=""280"" stroke=""#1f2937"" stroke-width=""2""/>");
+
+            // rows
+            int y = rowsTop;
+            int idxStart = ((pageNo - 1) * SvgPageSize) + 1;
+            int idx = idxStart;
+
+            foreach (var sel in pageSelections)
+            {
+                map.TryGetValue(sel.MatchId, out var mi);
+
+                var home = mi?.HomeName ?? "Casa";
+                var away = mi?.AwayName ?? "Ospite";
+                var date = mi?.DateUtc?.ToLocalTime().ToString("dd/MM HH:mm") ?? "";
+                var market = CleanMarket(sel.Market);
+                var pick = sel.Pick ?? "";
+                var oddTxt = FormatOdd(sel.Odd);
+
+                sb.AppendLine($@"  <rect x=""80"" y=""{y}"" width=""920"" height=""{RowRectH}"" rx=""26"" fill=""#0f172a"" stroke=""#1f2937"" stroke-width=""2""/>");
+
+                var homeLogo = await ImgToDataUriAsync(mi?.HomeLogo);
+                var awayLogo = await ImgToDataUriAsync(mi?.AwayLogo);
+
+                int logoY = y + 18;
+                if (!string.IsNullOrWhiteSpace(homeLogo))
+                    sb.AppendLine($@"  <image href=""{homeLogo}"" x=""120"" y=""{logoY}"" width=""56"" height=""56""/>");
+                if (!string.IsNullOrWhiteSpace(awayLogo))
+                    sb.AppendLine($@"  <image href=""{awayLogo}"" x=""904"" y=""{logoY}"" width=""56"" height=""56""/>");
+
+                int teamY = y + 92;
+                int dateY = y + 122;
+                sb.AppendLine($@"  <text x=""540"" y=""{teamY}"" text-anchor=""middle"" class=""font team"">{Esc(home)}  vs  {Esc(away)}</text>");
+                if (!string.IsNullOrWhiteSpace(date))
+                    sb.AppendLine($@"  <text x=""540"" y=""{dateY}"" text-anchor=""middle"" class=""font date"">{Esc(date)}</text>");
+
+                int pillTop = y + 136;
+                int pillH = 46;
+
+                if (!string.IsNullOrWhiteSpace(market))
+                {
+                    sb.AppendLine($@"  <rect x=""120"" y=""{pillTop}"" width=""360"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                    sb.AppendLine($@"  <text x=""140"" y=""{pillTop + 31}"" class=""font pillText"">🧩 {Esc(market)}</text>");
+                }
+
+                sb.AppendLine($@"  <rect x=""500"" y=""{pillTop}"" width=""340"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                sb.AppendLine($@"  <text x=""520"" y=""{pillTop + 31}"" class=""font pillText"">Pick: {Esc(pick)}</text>");
+
+                sb.AppendLine($@"  <rect x=""860"" y=""{pillTop}"" width=""120"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                sb.AppendLine($@"  <text x=""920"" y=""{pillTop + 31}"" text-anchor=""middle"" class=""font pillText"">x {Esc(oddTxt)}</text>");
+
+                y += (RowRectH + RowGap);
+                idx++;
+            }
+
+            // ✅ footer separato (non può più sovrapporsi)
+            sb.AppendLine($@"  <line x1=""80"" y1=""{footerLineY}"" x2=""1000"" y2=""{footerLineY}"" stroke=""#1f2937"" stroke-width=""2""/>");
+            sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub muted"">nextstake.it</text>");
+            sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">Generata {DateTime.Now:dd/MM/yyyy HH:mm}</text>");
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
+
+
+        private byte[] SvgToPng(string svg, int widthPx = 1080)
+        {
+            using var svgStream = new MemoryStream(Encoding.UTF8.GetBytes(svg));
+            var skSvg = new SKSvg();
+            skSvg.Load(svgStream);
+
+            var pic = skSvg.Picture;
+            if (pic == null) return Array.Empty<byte>();
+
+            var bounds = pic.CullRect;
+            if (bounds.Width <= 0 || bounds.Height <= 0) return Array.Empty<byte>();
+
+            var scale = widthPx / bounds.Width;
+            var heightPx = (int)Math.Ceiling(bounds.Height * scale);
+
+            using var bitmap = new SKBitmap(widthPx, heightPx);
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Transparent);
+
+            canvas.Scale(scale);
+            canvas.DrawPicture(pic);
+            canvas.Flush();
+
+            using var image = SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+            return data.ToArray();
+        }
+
 
         public async Task<IActionResult> OnPostTogglePublicAsync(long id)
         {
