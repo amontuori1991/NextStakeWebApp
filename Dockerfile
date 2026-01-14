@@ -1,13 +1,19 @@
 # Base runtime (Debian)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
-# Render espone la porta in $PORT. Imposta anche un default per esecuzioni locali.
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libfontconfig1 \
+    libfreetype6 \
+    libpng16-16 \
+    libharfbuzz0b \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PORT=8080
 ENV ASPNETCORE_URLS=http://0.0.0.0:${PORT}
 ENV DOTNET_RUNNING_IN_CONTAINER=true
 EXPOSE 8080
 
-# (Opzionale ma consigliato) esegui come utente non-root
 RUN useradd -m appuser && chown -R appuser /app
 USER appuser
 
@@ -28,11 +34,9 @@ RUN dotnet publish "./NextStakeWebApp.csproj" -c $BUILD_CONFIGURATION -o /app/pu
 # Final image
 FROM base AS final
 WORKDIR /app
-# assicurati che l'utente abbia permessi sui file pubblicati
 USER root
 COPY --from=publish /app/publish ./
 RUN chown -R appuser /app
 USER appuser
 
-# (IMPORTANTE: ENV è già definita nella stage base, quindi non serve ripeterla qui)
 ENTRYPOINT ["dotnet", "NextStakeWebApp.dll"]
