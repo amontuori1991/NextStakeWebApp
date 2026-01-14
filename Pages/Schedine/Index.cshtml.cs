@@ -173,6 +173,41 @@ namespace NextStakeWebApp.Pages.Schedine
             StatusMessage = "✅ Multipla (bozza) creata.";
             return RedirectToPage();
         }
+
+        public async Task<IActionResult> OnGetSlipImagePngAsync(long slipId, int page = 1)
+        {
+            // 🔐 solo plan=1
+            if (!(User?.Identity?.IsAuthenticated ?? false) || !User.HasClaim("plan", "1"))
+                return Forbid();
+
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(userId))
+                return Forbid();
+
+            var slip = await _db.BetSlips
+                .Include(s => s.Selections)
+                .FirstOrDefaultAsync(s => s.Id == slipId && s.UserId == userId);
+
+            if (slip == null) return NotFound();
+
+            var selections = slip.Selections.OrderBy(x => x.Id).ToList();
+            var pages = CalcSvgPages(selections.Count);
+            if (page < 1) page = 1;
+            if (page > pages) page = pages;
+
+            var pageSelections = selections
+                .Skip((page - 1) * SvgPageSize)
+                .Take(SvgPageSize)
+                .ToList();
+
+            var svg = await BuildSlipSvgAsync(slip, pageSelections, page, pages);
+            var pngBytes = SvgToPng(svg, widthPx: 1080);
+
+            // ✅ iOS: meglio "image/png" così compare “Salva immagine”
+            Response.Headers["Content-Disposition"] = $@"attachment; filename=""schedina_{slip.Id}_p{page}.png""";
+            return File(pngBytes, "image/png");
+        }
+
         public async Task<IActionResult> OnGetSlipImageZipAsync(long slipId)
         {
             // 🔐 solo plan=1
@@ -331,6 +366,30 @@ namespace NextStakeWebApp.Pages.Schedine
                 }
                 catch { return null; }
             }
+            // logo locale (wwwroot) -> data uri (SVG)
+            string? LocalSvgToDataUri(string relativePathFromWwwroot)
+            {
+                try
+                {
+                    // es: "icons/favicon.svg"
+                    var env = HttpContext?.RequestServices?.GetService(typeof(IWebHostEnvironment)) as IWebHostEnvironment;
+                    if (env == null) return null;
+
+                    var fullPath = Path.Combine(
+                        env.WebRootPath,
+                        relativePathFromWwwroot.Replace("/", Path.DirectorySeparatorChar.ToString())
+                    );
+
+                    if (!System.IO.File.Exists(fullPath)) return null;
+
+                    var svgText = System.IO.File.ReadAllText(fullPath);
+
+                    // data-uri svg (URL encoded)
+                    var encoded = Uri.EscapeDataString(svgText);
+                    return $"data:image/svg+xml;utf8,{encoded}";
+                }
+                catch { return null; }
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine($@"<svg xmlns=""http://www.w3.org/2000/svg"" width=""{W}"" height=""{height}"" viewBox=""0 0 {W} {height}"">");
@@ -425,7 +484,7 @@ namespace NextStakeWebApp.Pages.Schedine
                 if (!string.IsNullOrWhiteSpace(market))
                 {
                     sb.AppendLine($@"  <rect x=""120"" y=""{pillTop}"" width=""360"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                    sb.AppendLine($@"  <text x=""140"" y=""{pillTop + 31}"" class=""font pillText"">🧩 {Esc(market)}</text>");
+                    sb.AppendLine($@"  <text x=""140"" y=""{pillTop + 31}"" class=""font pillText"">{Esc(market)}</text>");
                 }
 
                 sb.AppendLine($@"  <rect x=""500"" y=""{pillTop}"" width=""340"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
@@ -439,9 +498,29 @@ namespace NextStakeWebApp.Pages.Schedine
             }
 
             // ✅ footer separato (non può più sovrapporsi)
+            // ✅ footer separato (non può più sovrapporsi)
             sb.AppendLine($@"  <line x1=""80"" y1=""{footerLineY}"" x2=""1000"" y2=""{footerLineY}"" stroke=""#1f2937"" stroke-width=""2""/>");
-            sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub muted"">nextstake.it</text>");
+
+            // Logo + brand (sinistra)
+            var brandLogo = LocalSvgToDataUri("icons/favicon.svg"); // wwwroot/icons/favicon.svg
+            int brandIconSize = 28;
+            int brandIconX = 80;
+            int brandIconY = footerTextY - 24; // allineamento visivo con testo
+
+            if (!string.IsNullOrWhiteSpace(brandLogo))
+            {
+                sb.AppendLine($@"  <image href=""{brandLogo}"" x=""{brandIconX}"" y=""{brandIconY}"" width=""{brandIconSize}"" height=""{brandIconSize}""/>");
+                sb.AppendLine($@"  <text x=""{brandIconX + brandIconSize + 12}"" y=""{footerTextY}"" class=""font sub muted"">NextStake - Football Prediction</text>");
+            }
+            else
+            {
+                // fallback se non trova il file
+                sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub muted"">NextStake - Football Prediction</text>");
+            }
+
+            // Destra: timestamp
             sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">Generata {DateTime.Now:dd/MM/yyyy HH:mm}</text>");
+
 
             sb.AppendLine("</svg>");
             return sb.ToString();

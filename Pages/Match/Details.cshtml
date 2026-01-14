@@ -4029,7 +4029,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="modal-body">
                     <div id="addOdd_preview" class="small mb-3 text-muted"></div>
 
-                    <form method="post" asp-page-handler="AddToSlip" class="m-0">
+                    <form id="addOddToSlipForm" method="post" asp-page-handler="AddToSlip" class="m-0">
+
                         @Html.AntiForgeryToken()
 
                         @* ✅ NOMI CAMPI ALLINEATI ALLA FIRMA: id, slipId, newSlipTitle, pickText *@
@@ -4064,9 +4065,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
                                 Annulla
                             </button>
-                            <button type="submit" class="btn btn-primary">
-                                ✅ Salva
-                            </button>
+<button type="submit" class="btn btn-primary" id="addOdd_submitBtn">
+    ✅ Salva
+</button>
+
                         </div>
                     </form>
                 </div>
@@ -4308,6 +4310,13 @@ document.addEventListener("DOMContentLoaded", () => {
     modalEl.addEventListener('show.bs.modal', function (event) {
         const btn = event.relatedTarget;
         if (!btn) return;
+            // reset stato bottone submit ogni volta che apro la modale
+    const submitBtn = document.getElementById('addOdd_submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "✅ Salva";
+    }
+
 
         const matchId = btn.getAttribute('data-match-id') || '';
         const pick = btn.getAttribute('data-pick') || '';
@@ -4339,6 +4348,30 @@ document.addEventListener("DOMContentLoaded", () => {
         sel.addEventListener('change', refresh);
         refresh();
     }
+        // ✅ Overlay loading quando salvo in schedina
+    const form = document.getElementById('addOddToSlipForm');
+    const submitBtn = document.getElementById('addOdd_submitBtn');
+
+    if (form) {
+        form.addEventListener('submit', function () {
+
+            // disabilita per evitare doppi click
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = "Salvataggio…";
+            }
+
+            // riuso overlay AI già presente in pagina
+            const overlay = document.getElementById("aiLoadingOverlay");
+            const msg = document.getElementById("aiLoadingMessage");
+
+            if (overlay) {
+                if (msg) msg.textContent = "Aggiungo alla schedina…";
+                overlay.classList.remove("d-none");
+            }
+        });
+    }
+
 })();
 </script>
 

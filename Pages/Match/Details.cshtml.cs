@@ -1740,10 +1740,15 @@ TESTO DA RISCRIVERE:
             // ✅ Carico le schedine dell’utente (per dropdown)
             MySlips = await _write.BetSlips
                 .AsNoTracking()
-                .Where(x => x.UserId == userId)
+                .Where(x => x.UserId == userId && x.ArchivedAtUtc == null)  // ✅ escludi archiviate
                 .OrderByDescending(x => x.CreatedAtUtc)
-                .Select(x => new UserSlipItem { Id = x.Id, Name = (x.Title ?? $"Schedina #{x.Id}") })
+                .Select(x => new UserSlipItem
+                {
+                    Id = x.Id,
+                    Name = (x.Title ?? $"Schedina #{x.Id}")
+                })
                 .ToListAsync();
+
 
             // Carichi accessori
             var remaining = await GetRemainingMatchesAsync(dto.LeagueId, dto.Season);
@@ -2003,8 +2008,17 @@ TESTO DA RISCRIVERE:
             else
             {
                 // 2) Verifico che la schedina sia dell’utente
-                var owns = await _write.BetSlips.AnyAsync(x => x.Id == slipId.Value && x.UserId == userId);
-                if (!owns) return Forbid();
+                var ownsAndActive = await _write.BetSlips.AnyAsync(x =>
+                    x.Id == slipId.Value &&
+                    x.UserId == userId &&
+                    x.ArchivedAtUtc == null); // ✅ non archiviata
+
+                if (!ownsAndActive)
+                {
+                    TempData["StatusMessage"] = "⚠️ Questa schedina è archiviata (o non esiste). Scegline un’altra.";
+                    return RedirectToPage(new { id });
+                }
+
 
                 targetSlipId = slipId.Value;
             }
