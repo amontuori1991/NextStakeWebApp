@@ -1,16 +1,17 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.Globalization;
+using System.IO.Compression;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
+using NextStakeWebApp.Helpers;
 using NextStakeWebApp.Models;
-using static NextStakeWebApp.Models.BetSlip;
-using System.Text.RegularExpressions;
-using System.Globalization;
-using System.Text;
-using System.IO.Compression;
 using SkiaSharp;
 using Svg.Skia;
+using static NextStakeWebApp.Models.BetSlip;
 
 
 namespace NextStakeWebApp.Pages.Schedine
@@ -707,7 +708,8 @@ namespace NextStakeWebApp.Pages.Schedine
 
             // Destra: timestamp
             // Titolo schedina in basso a sinistra
-            var published = slip.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+            var published = slip.UpdatedAtUtc.ToRomeTime().ToString("dd/MM/yyyy HH:mm");
+
 
             // testo centrato
             sb.AppendLine($@"  <text x=""540"" y=""{footerTextY}"" text-anchor=""middle"" class=""font sub muted"">Pubblicata il: {Esc(published)}</text>");
