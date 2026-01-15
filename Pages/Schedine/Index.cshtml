@@ -1,6 +1,7 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Schedine.IndexModel
 @using System.Text.RegularExpressions
+@using NextStakeWebApp.Helpers
 @{
     ViewData["Title"] = "Le mie schedine";
 }
@@ -209,10 +210,11 @@
                     </div>
 
                     <div class="card-body">
-                        <div class="text-muted mb-2">
-                            Creata: @s.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                            • Aggiornata: @s.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                        </div>
+<div class="text-muted mb-2">
+    Creata: @s.CreatedAtUtc.ToRomeTime().ToString("dd/MM/yyyy HH:mm")
+    • Aggiornata: @s.UpdatedAtUtc.ToRomeTime().ToString("dd/MM/yyyy HH:mm")
+</div>
+
 
                         @if (s.Selections.Count == 0)
                         {
