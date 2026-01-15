@@ -154,9 +154,8 @@
                                 {
                                     Model.MatchMap.TryGetValue(sel.MatchId, out var mi);
 
-                                    var outcome = BetPickEvaluator.EvaluateSelectionOutcome(
-                                        sel, mi?.StatusShort, mi?.HomeGoal, mi?.AwayGoal
-                                    );
+var outcome = Model.EvaluateSelectionOutcome(sel, mi);
+
 
                                     <li class="list-group-item">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -197,31 +196,35 @@
                                                 <span class="ms-2 badge bg-light text-dark">Quota @sel.Odd.Value.ToString("0.00")</span>
                                             }
 
-                                            @if (outcome == BetPickEvaluator.SelectionOutcome.Won)
-                                            {
-                                                <span class="badge bg-success ms-2">✅ Vinta</span>
-                                            }
-                                            else if (outcome == BetPickEvaluator.SelectionOutcome.Lost)
-                                            {
-                                                <span class="badge bg-danger ms-2">❌ Persa</span>
-                                            }
-                                            else if (outcome == BetPickEvaluator.SelectionOutcome.Pending)
-                                            {
-                                                <span class="badge bg-secondary ms-2">⏳ In corso</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
-                                            }
+                                            @if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.Won)
+{
+    <span class="badge bg-success ms-2">✅ Vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.Lost)
+{
+    <span class="badge bg-danger ms-2">❌ Persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.Pending)
+{
+    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.Push)
+{
+    <span class="badge bg-info ms-2">↔️ Push</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.HalfWon)
+{
+    <span class="badge bg-success ms-2">✅½ Half Won</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Community.IndexModel.SelectionOutcome.HalfLost)
+{
+    <span class="badge bg-danger ms-2">❌½ Half Lost</span>
+}
+else
+{
+    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+}
 
-                                            @if (sel.ManualOutcome == 1)
-                                            {
-                                                <span class="badge bg-success ms-2">✅ Esito manuale: Vinta</span>
-                                            }
-                                            else if (sel.ManualOutcome == 2)
-                                            {
-                                                <span class="badge bg-danger ms-2">❌ Esito manuale: Persa</span>
-                                            }
                                         </div>
                                     </li>
                                 }

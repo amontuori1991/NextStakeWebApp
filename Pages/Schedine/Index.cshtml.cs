@@ -1019,11 +1019,13 @@ namespace NextStakeWebApp.Pages.Schedine
             // useremo FT o HT in base al mercato
             (int h, int a) = GetScoreForMarket(sel?.Market, hFT, aFT, hHT, aHT);
             int tot = h + a;
-            // ✅ NUOVA VIA: validazione basata su (Market=description, Pick=value) in inglese
-            // Se riconosco il mercato inglese, valuto direttamente e NON passo dal parsing legacy.
-            var marketOutcome = TryEvaluateOddsApiMarket(sel, h, a);
+
+            // ✅ VIA INGLESE: passiamo anche lo score "corrente" (h,a) già scelto da GetScoreForMarket
+            var marketOutcome = TryEvaluateOddsApiMarket(sel, hFT, aFT, hHT, aHT, h, a);
+
             if (marketOutcome != null)
                 return marketOutcome.Value;
+
 
             // Normalizzo pick
             string raw = (sel.Pick ?? "").Trim();
@@ -1267,7 +1269,7 @@ namespace NextStakeWebApp.Pages.Schedine
             if (x.StartsWith("MGTOT")) { scope = "TOTAL"; x = x.Substring(5); }       // "MGTOT"
             else if (x.StartsWith("MGTOTALE")) { scope = "TOTAL"; x = x.Substring(8); } // "MGTOTALE"
             else if (x.StartsWith("MGCASA")) { scope = "HOME"; x = x.Substring(6); }  // "MGCASA"
-            else if (x.StartsWith("MGHOME")) { scope = "HOME"; x = x.Substring(6); } // "MGHOME"
+            else if (x.StartsWith("MGHOME")) { scope = "HOME"; x = x.Substring(6); } // "MGHOME"EvaluateLeg
             else if (x.StartsWith("MGOSPITE")) { scope = "AWAY"; x = x.Substring(8); } // "MGOSPITE"
             else if (x.StartsWith("MGAWAY")) { scope = "AWAY"; x = x.Substring(6); }  // "MGAWAY"
             else
@@ -1280,7 +1282,7 @@ namespace NextStakeWebApp.Pages.Schedine
             var m = Regex.Match(x, @"^(\d+)\-(\d+)$");
             if (!m.Success) return null;
 
-            int min = int.Parse(m.Groups[1].Value);
+            int min = int.Parse(m.Groups[1].Value); 
             int max = int.Parse(m.Groups[2].Value);
             if (min > max) (min, max) = (max, min);
 
@@ -1368,20 +1370,24 @@ namespace NextStakeWebApp.Pages.Schedine
             return "DRAW";
         }
 
-        private SelectionOutcome? TryEvaluateOddsApiMarket(BetSelection sel, int h, int a)
+        private SelectionOutcome? TryEvaluateOddsApiMarket(
+    BetSelection sel,
+    int hFT, int aFT,
+    int? hHT, int? aHT,
+    int hScoped, int aScoped
+)
+
         {
             if (sel == null) return null;
 
             var market = (sel.Market ?? "").Trim();
-            var value = (sel.Pick ?? "").Trim();   // ⚠️ qui Pick contiene il "value" inglese (Home/Draw/Away ecc.)
+            var value = (sel.Pick ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(market) || string.IsNullOrWhiteSpace(value))
                 return null;
 
-            // ✅ Guardia: se sembra legacy, NON usare la via inglese
             if (LooksLegacyPick(value)) return null;
 
-            // ✅ Se non sembra proprio inglese, evita valutazioni strane
             if (!LooksEnglishPick(value) && !market.ToUpperInvariant().Contains("GOAL LINE")
                                          && !market.ToUpperInvariant().Contains("ASIAN")
                                          && !market.ToUpperInvariant().Contains("HANDICAP")
@@ -1390,16 +1396,35 @@ namespace NextStakeWebApp.Pages.Schedine
                                          && !market.ToUpperInvariant().Contains("BOTH TEAMS")
                                          && !market.ToUpperInvariant().Contains("CORRECT SCORE")
                                          && !market.ToUpperInvariant().Contains("RESULT/TOTAL")
-                                         && !market.ToUpperInvariant().Contains("TEAM TO SCORE"))
+                                         && !market.ToUpperInvariant().Contains("TEAM TO SCORE")
+                                         && !market.ToUpperInvariant().Contains("DRAW NO BET")
+                                         && !market.ToUpperInvariant().Contains("TOTAL GOALS/BOTH TEAMS")
+                                         && !market.ToUpperInvariant().Contains("RESULT/BOTH TEAMS"))
             {
                 return null;
             }
 
-
-            // Normalizzo: tolgo (n) e rendo uppercase
             market = Regex.Replace(market, @"\s*\(\d+\)\s*$", "").Trim();
             var m = market.ToUpperInvariant();
             var v = value.Trim();
+
+            // ✅ score di default = FT
+            // ✅ score già scelto a monte (FT o HT) tramite GetScoreForMarket
+            int h = hScoped;
+            int a = aScoped;
+
+            // mercato 1H? (serve solo per logiche specifiche, NON per cambiare h/a qui)
+            bool isFirstHalfMarket =
+                m.Contains("1ST HALF") ||
+                m.Contains("FIRST HALF") ||
+                m.Contains("1H") ||
+                m.Contains("HT") ||
+                m.Contains("HALF TIME") ||
+                m.Contains("HALFTIME");
+
+
+
+
 
             // =========================
             // MATCH WINNER (1X2)
@@ -1414,6 +1439,40 @@ namespace NextStakeWebApp.Pages.Schedine
                 if (vv is "DRAW" or "X") return esito == "DRAW" ? SelectionOutcome.Won : SelectionOutcome.Lost;
 
                 return SelectionOutcome.Unknown;
+            }
+
+            // =========================
+            // FIRST HALF WINNER
+            // value: HOME / AWAY / DRAW
+            // =========================
+            if (m.Contains("FIRST HALF WINNER"))
+            {
+                if (!hHT.HasValue || !aHT.HasValue) return SelectionOutcome.Unknown;
+
+                var vv = NormalizeEnglishPick(v);
+                var esito = GetResultHAD(hHT.Value, aHT.Value);
+
+                if (vv is "HOME" or "AWAY" or "DRAW")
+                    return (esito == vv) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+
+            // =========================
+            // DRAW NO BET (DNB)
+            // value: "HOME" / "AWAY"
+            // DRAW => Push
+            // =========================
+            if (m.Contains("DRAW NO BET"))
+            {
+                var vv = NormalizeEnglishPick(v);
+                if (vv != "HOME" && vv != "AWAY") return SelectionOutcome.Unknown;
+
+                var esito = GetResultHAD(h, a);
+
+                if (esito == "DRAW") return SelectionOutcome.Push;
+
+                return (esito == vv) ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
 
             // =========================
@@ -1462,6 +1521,238 @@ namespace NextStakeWebApp.Pages.Schedine
 
                 return (h == eh && a == ea) ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
+            // =========================
+            // EXACT GOALS NUMBER (Total/Home/Away)
+            // value: "0" "1" "2" ... "4+"
+            // =========================
+            if (m.Contains("EXACT GOALS NUMBER"))
+            {
+                var parsed = ParseExactGoalsValue(v);
+                if (parsed == null) return SelectionOutcome.Unknown;
+
+                var (mode, n) = parsed.Value;
+                int tot = h + a;
+
+
+                if (mode == "PLUS" && n.HasValue)
+                    return (tot >= n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                if (mode == "EQ" && n.HasValue)
+                    return (tot == n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+            // =========================
+            // ODD/EVEN (Total + Home/Away)
+            // =========================
+            if (m.Equals("ODD/EVEN") || (m.Contains("ODD/EVEN") && !m.Contains("HOME") && !m.Contains("AWAY")))
+            {
+                var wantOdd = ParseOddEvenValue(v);
+                if (wantOdd == null) return SelectionOutcome.Unknown;
+
+                int tot = h + a;
+
+                bool isOdd = (tot % 2) == 1;
+                return (isOdd == wantOdd.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            if (m.Contains("HOME ODD/EVEN"))
+            {
+                var wantOdd = ParseOddEvenValue(v);
+                if (wantOdd == null) return SelectionOutcome.Unknown;
+
+                bool isOdd = (h % 2) == 1;
+
+                return (isOdd == wantOdd.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            if (m.Contains("AWAY ODD/EVEN"))
+            {
+                var wantOdd = ParseOddEvenValue(v);
+                if (wantOdd == null) return SelectionOutcome.Unknown;
+
+                bool isOdd = (a % 2) == 1;
+
+                return (isOdd == wantOdd.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            if (m.Contains("HOME TEAM EXACT GOALS NUMBER"))
+            {
+                var parsed = ParseExactGoalsValue(v);
+                if (parsed == null) return SelectionOutcome.Unknown;
+
+                var (mode, n) = parsed.Value;
+                int goals = hFT;
+
+                if (mode == "PLUS" && n.HasValue)
+                    return (goals >= n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                if (mode == "EQ" && n.HasValue)
+                    return (goals == n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+
+            if (m.Contains("AWAY TEAM EXACT GOALS NUMBER"))
+            {
+                var parsed = ParseExactGoalsValue(v);
+                if (parsed == null) return SelectionOutcome.Unknown;
+
+                var (mode, n) = parsed.Value;
+                int goals = aFT;
+
+                if (mode == "PLUS" && n.HasValue)
+                    return (goals >= n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                if (mode == "EQ" && n.HasValue)
+                    return (goals == n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+            // =========================
+            // SECOND HALF (derivato da FT - HT)
+            // =========================
+            bool isSecondHalfMarket =
+                m.Contains("SECOND HALF") ||
+                m.Contains("2ND HALF") ||
+                m.Contains("HALF - SECOND");
+
+            if (isSecondHalfMarket)
+            {
+                if (!TryGetSecondHalfGoals(hFT, aFT, hHT, aHT, out var h2, out var a2))
+                    return SelectionOutcome.Unknown;
+
+                int tot2 = h2 + a2;
+                var vv = v.Trim().ToUpperInvariant().Replace(" ", "");
+
+                // Second Half Winner
+                if (m.Contains("SECOND HALF WINNER"))
+                {
+                    var pick = NormalizeEnglishPick(v);
+                    var esito2 = GetResultHAD(h2, a2);
+                    if (pick is "HOME" or "AWAY" or "DRAW")
+                        return (esito2 == pick) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                    return SelectionOutcome.Unknown;
+                }
+
+                // Goals O/U - Second Half
+                if (m.Contains("GOALS OVER/UNDER") && m.Contains("SECOND HALF"))
+                {
+                    var ou = ParseOverUnderFromValue(v);
+                    if (ou == null) return SelectionOutcome.Unknown;
+
+                    var (isOver, line) = ou.Value;
+                    bool ok = isOver ? (tot2 > line) : (tot2 < line);
+                    return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                }
+
+                // BTS - Second Half
+                if ((m.Contains("BOTH TEAMS") && m.Contains("SCORE")) && m.Contains("SECOND HALF"))
+                {
+                    bool gg2 = (h2 > 0 && a2 > 0);
+                    if (vv is "YES" or "Y") return gg2 ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                    if (vv is "NO" or "N") return !gg2 ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                    return SelectionOutcome.Unknown;
+                }
+
+                // Second Half Exact Goals Number
+                if (m.Contains("SECOND HALF EXACT GOALS NUMBER"))
+                {
+                    var parsed = ParseExactGoalsValue(v);
+                    if (parsed == null) return SelectionOutcome.Unknown;
+
+                    var (mode, n) = parsed.Value;
+
+                    if (mode == "PLUS" && n.HasValue)
+                        return (tot2 >= n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                    if (mode == "EQ" && n.HasValue)
+                        return (tot2 == n.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                    return SelectionOutcome.Unknown;
+                }
+
+                // Odd/Even - Second Half
+                if (m.Contains("ODD/EVEN") && m.Contains("SECOND HALF"))
+                {
+                    var wantOdd = ParseOddEvenValue(v);
+                    if (wantOdd == null) return SelectionOutcome.Unknown;
+
+                    bool isOdd = (tot2 % 2) == 1;
+                    return (isOdd == wantOdd.Value) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                }
+
+                // To Score In Both Halves By Teams (Home/Away)
+                if (m.Contains("TO SCORE IN BOTH HALVES"))
+                {
+                    // value atteso: HOME / AWAY
+                    var side = NormalizeEnglishPick(v);
+                    if (side != "HOME" && side != "AWAY") return SelectionOutcome.Unknown;
+
+                    if (!hHT.HasValue || !aHT.HasValue) return SelectionOutcome.Unknown;
+
+                    bool homeScored1H = hHT.Value > 0;
+                    bool awayScored1H = aHT.Value > 0;
+
+                    bool homeScored2H = h2 > 0;
+                    bool awayScored2H = a2 > 0;
+
+                    bool ok = side == "HOME"
+                        ? (homeScored1H && homeScored2H)
+                        : (awayScored1H && awayScored2H);
+
+                    return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                }
+
+                // Win Both Halves (Home/Away)
+                if (m.Contains("WIN BOTH HALVES"))
+                {
+                    var side = NormalizeEnglishPick(v);
+                    if (side != "HOME" && side != "AWAY") return SelectionOutcome.Unknown;
+                    if (!hHT.HasValue || !aHT.HasValue) return SelectionOutcome.Unknown;
+
+                    string firstHalfWinner = GetResultHAD(hHT.Value, aHT.Value);
+                    string secondHalfWinner = GetResultHAD(h2, a2);
+
+                    bool ok = (firstHalfWinner == side) && (secondHalfWinner == side);
+                    return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                }
+
+                // To Win Either Half (Home/Away)
+                if (m.Contains("TO WIN EITHER HALF"))
+                {
+                    var side = NormalizeEnglishPick(v);
+                    if (side != "HOME" && side != "AWAY") return SelectionOutcome.Unknown;
+                    if (!hHT.HasValue || !aHT.HasValue) return SelectionOutcome.Unknown;
+
+                    string firstHalfWinner = GetResultHAD(hHT.Value, aHT.Value);
+                    string secondHalfWinner = GetResultHAD(h2, a2);
+
+                    bool ok = (firstHalfWinner == side) || (secondHalfWinner == side);
+                    return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                }
+
+                // Highest Scoring Half (First/Second/Equal)
+                if (m.Contains("HIGHEST SCORING HALF"))
+                {
+                    if (!hHT.HasValue || !aHT.HasValue) return SelectionOutcome.Unknown;
+
+                    int tot1 = hHT.Value + aHT.Value;
+                    int totSecond = tot2;
+
+                    string result =
+                        (tot1 > totSecond) ? "FIRST" :
+                        (totSecond > tot1) ? "SECOND" : "EQUAL";
+
+                    // value può essere: "FIRST HALF" / "SECOND HALF" / "EQUAL"
+                    if (vv.Contains("FIRST")) return result == "FIRST" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                    if (vv.Contains("SECOND")) return result == "SECOND" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                    if (vv.Contains("EQUAL") || vv.Contains("DRAW")) return result == "EQUAL" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                    return SelectionOutcome.Unknown;
+                }
+            }
 
             // =========================
             // OVER/UNDER TOTAL GOALS
@@ -1478,6 +1769,21 @@ namespace NextStakeWebApp.Pages.Schedine
                 bool ok = isOver ? (tot > line) : (tot < line);
                 return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
+            // =========================
+            // GOAL LINE (Asian Total Goals)  e GOAL LINE (1st Half)
+            // value: "Over 2.25" / "Under 2.75" ecc.
+            // =========================
+            if (m.Contains("GOAL LINE"))
+            {
+                var ou = ParseOverUnderFromValue(v);
+                if (ou == null) return SelectionOutcome.Unknown;
+
+                var (isOver, line) = ou.Value;
+                var tot = h + a;
+
+                return EvaluateAsianTotal(isOver, line, tot);
+            }
+
 
             // =========================
             // ASIAN HANDICAP (FT o 1st half già gestito da GetScoreForMarket)
@@ -1494,20 +1800,7 @@ namespace NextStakeWebApp.Pages.Schedine
 
             // mercati non gestiti qui -> fallback legacy
 
-            // =========================
-            // GOAL LINE (Asian Total Goals)  e GOAL LINE (1st Half)
-            // value: "Over 2.25" / "Under 2.75" ecc.
-            // =========================
-            if (m.Contains("GOAL LINE"))
-            {
-                var ou = ParseOverUnderFromValue(v);
-                if (ou == null) return SelectionOutcome.Unknown;
 
-                var (isOver, line) = ou.Value;
-                var tot = h + a;
-
-                return EvaluateAsianTotal(isOver, line, tot);
-            }
             // =========================
             // HANDICAP RESULT (European handicap 3-way)
             // value: "Home -1" / "Draw -1" / "Away -1"  ecc.
@@ -1540,6 +1833,45 @@ namespace NextStakeWebApp.Pages.Schedine
                 var esitoAdj = (hAdj > aAdj) ? "HOME" : (hAdj < aAdj) ? "AWAY" : "DRAW";
                 return (esitoAdj == outcomeWanted) ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
+            // =========================
+            // RESULT/BOTH TEAMS TO SCORE
+            // value: "HOME/YES" / "DRAW/NO" / "AWAY/YES"
+            // =========================
+            if (m.Contains("RESULT/BOTH TEAMS") || (m.Contains("RESULT") && m.Contains("BOTH TEAMS")))
+            {
+                var vv = v.ToUpperInvariant().Replace(" ", "");
+                vv = vv.Replace("-", "/");
+
+                var parts = vv.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2) return SelectionOutcome.Unknown;
+
+                var resultPart = parts[0];  // HOME/DRAW/AWAY (a volte 1/X/2)
+                var ynPart = parts[1];      // YES/NO
+
+                // normalizzo eventuali 1/X/2
+                resultPart = resultPart switch
+                {
+                    "1" => "HOME",
+                    "2" => "AWAY",
+                    "X" => "DRAW",
+                    _ => resultPart
+                };
+
+                if (resultPart is not ("HOME" or "AWAY" or "DRAW")) return SelectionOutcome.Unknown;
+
+                bool gg = (h > 0 && a > 0);
+                bool wantYes = ynPart is "YES" or "Y";
+                bool wantNo = ynPart is "NO" or "N";
+                if (!wantYes && !wantNo) return SelectionOutcome.Unknown;
+
+                // esito 1X2 reale
+                var esito = (h > a) ? "HOME" : (h < a) ? "AWAY" : "DRAW";
+                bool ok1 = (esito == resultPart);
+
+                bool ok2 = wantYes ? gg : !gg;
+
+                return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
 
             if (m.Contains("RESULT/TOTAL GOALS"))
             {
@@ -1565,26 +1897,59 @@ namespace NextStakeWebApp.Pages.Schedine
 
                 return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
+
             // =========================
-            // RESULT/BOTH TEAMS TO SCORE
-            // value: "HOME/YES" , "DRAW/NO", "AWAY/YES"
+            // TOTAL GOALS / BOTH TEAMS TO SCORE
+            // Market: "Total Goals/Both Teams To Score"
+            // value: "OVER2.5/YES"  oppure "YES/OVER2.5"
             // =========================
-            if (m.Contains("RESULT/BOTH TEAMS") || (m.Contains("RESULT") && m.Contains("BOTH TEAMS")))
+            if (m.Contains("TOTAL GOALS") && m.Contains("BOTH TEAMS"))
             {
-                var vv = NormalizeEnglishPick(v); // es: HOME/YES
+                var vv = v.ToUpperInvariant().Replace(" ", "");
+                vv = vv.Replace("-", "/");
+
                 var parts = vv.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length != 2) return SelectionOutcome.Unknown;
 
-                var resultPart = parts[0]; // HOME/DRAW/AWAY
-                var btsPart = parts[1];    // YES/NO
+                // accetta entrambe le direzioni
+                string p1 = parts[0];
+                string p2 = parts[1];
 
-                var esito = GetResultHAD(h, a);
-                bool ok1 = esito == resultPart;
+                // Normalizzo: identifico quale è OU e quale è BTS
+                string? ouPart = null;
+                string? btsPart = null;
 
+                bool IsBts(string s) => s is "YES" or "Y" or "NO" or "N";
+                bool IsOu(string s) => s.StartsWith("OVER") || s.StartsWith("UNDER") || s.StartsWith("OV") || s.StartsWith("UN");
+
+                if (IsBts(p1) && IsOu(p2)) { btsPart = p1; ouPart = p2; }
+                else if (IsOu(p1) && IsBts(p2)) { ouPart = p1; btsPart = p2; }
+                else
+                {
+                    // fallback: prova a parsare OU con regex anche se non ha prefisso perfetto
+                    var ouTry1 = ParseOverUnderFromValue(p1);
+                    var ouTry2 = ParseOverUnderFromValue(p2);
+                    if (ouTry1 != null && IsBts(p2)) { ouPart = p1; btsPart = p2; }
+                    else if (ouTry2 != null && IsBts(p1)) { ouPart = p2; btsPart = p1; }
+                    else return SelectionOutcome.Unknown;
+                }
+
+                // BTS
                 bool gg = (h > 0 && a > 0);
-                bool ok2 = (btsPart == "YES") ? gg : (btsPart == "NO") ? !gg : false;
+                bool wantYes = btsPart is "YES" or "Y";
+                bool wantNo = btsPart is "NO" or "N";
+                if (!wantYes && !wantNo) return SelectionOutcome.Unknown;
+                bool okBts = wantYes ? gg : !gg;
 
-                return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                // OU
+                var ou = ParseOverUnderFromValue(ouPart);
+                if (ou == null) return SelectionOutcome.Unknown;
+
+                var (isOver, line) = ou.Value;
+                var tot = h + a;
+                bool okOu = isOver ? (tot > line) : (tot < line);
+
+                return (okBts && okOu) ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
 
             // =========================
@@ -1651,27 +2016,11 @@ namespace NextStakeWebApp.Pages.Schedine
                 bool ok = wantYes ? (goals > 0) : (goals == 0);
                 return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
             }
-
-            // =========================
-            // BOTH TEAMS TO SCORE - 1ST HALF / 2ND HALF (se ti arriva)
-            // Nota: qui stai già usando (h,a) da GetScoreForMarket,
-            // quindi se Market contiene "1ST HALF" valuti su HT.
-            // =========================
-            if (m.Contains("BOTH TEAMS") && m.Contains("SCORE") && (m.Contains("1ST HALF") || m.Contains("FIRST HALF") || m.Contains("2ND HALF") || m.Contains("SECOND HALF")))
-            {
-                var vv = v.ToUpperInvariant().Trim();
-                bool gg = (h > 0 && a > 0);
-
-                if (vv is "YES" or "Y") return gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
-                if (vv is "NO" or "N") return !gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
-
-                return SelectionOutcome.Unknown;
-            }
-
             return null;
         }
-        
-        
+
+
+
         private (string target, int handicap, string outcomeWanted)? ParseHandicapResultValueWithTarget(string value)
         {
             var x = (value ?? "").Trim().ToUpperInvariant().Replace(",", ".");
@@ -1692,6 +2041,54 @@ namespace NextStakeWebApp.Pages.Schedine
             string target = (outcomeWanted == "AWAY") ? "AWAY" : "HOME";
 
             return (target, handicap, outcomeWanted);
+        }
+        private static bool TryGetSecondHalfGoals(int hFT, int aFT, int? hHT, int? aHT, out int h2, out int a2)
+        {
+            h2 = a2 = 0;
+            if (!hHT.HasValue || !aHT.HasValue) return false;
+
+            h2 = hFT - hHT.Value;
+            a2 = aFT - aHT.Value;
+
+            // safety: se dati incoerenti, non valutare
+            if (h2 < 0 || a2 < 0) return false;
+            return true;
+        }
+
+        private static (string part, int? n)? ParseExactGoalsValue(string value)
+        {
+            // Supporta:
+            // "0" "1" "2" "3" ...
+            // "4+" "5+" (se ti capita)
+            // "OVER 2.5" ecc NON qui
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            var v = value.Trim().ToUpperInvariant().Replace(" ", "");
+            if (v.EndsWith("+"))
+            {
+                var num = v.TrimEnd('+');
+                if (int.TryParse(num, out var nPlus))
+                    return ("PLUS", nPlus);
+                return null;
+            }
+
+            if (int.TryParse(v, out var n))
+                return ("EQ", n);
+
+            return null;
+        }
+
+        private static bool? ParseOddEvenValue(string value)
+        {
+            // supporta: "ODD" / "EVEN" / "YES(ODD)" ecc se arrivano strani
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            var v = value.Trim().ToUpperInvariant().Replace(" ", "");
+
+            if (v.Contains("ODD")) return true;
+            if (v.Contains("EVEN")) return false;
+
+            // alcune API usano "YES"=ODD "NO"=EVEN (raro) -> non assumo
+            return null;
         }
 
         private (bool isOver, double line)? ParseOverUnderFromValue(string value)
