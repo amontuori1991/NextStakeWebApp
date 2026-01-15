@@ -1347,6 +1347,26 @@ namespace NextStakeWebApp.Pages.Schedine
 
             return false;
         }
+        private static string NormalizeEnglishPick(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            return s.Trim().ToUpperInvariant().Replace(" ", "");
+        }
+
+        private static string NormalizeEnglishMarket(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            s = Regex.Replace(s.Trim(), @"\s*\(\d+\)\s*$", "");
+            return s.ToUpperInvariant();
+        }
+
+        // esito 1X2 in inglese: HOME/AWAY/DRAW
+        private static string GetResultHAD(int h, int a)
+        {
+            if (h > a) return "HOME";
+            if (h < a) return "AWAY";
+            return "DRAW";
+        }
 
         private SelectionOutcome? TryEvaluateOddsApiMarket(BetSelection sel, int h, int a)
         {
@@ -1369,7 +1389,8 @@ namespace NextStakeWebApp.Pages.Schedine
                                          && !market.ToUpperInvariant().Contains("DOUBLE CHANCE")
                                          && !market.ToUpperInvariant().Contains("BOTH TEAMS")
                                          && !market.ToUpperInvariant().Contains("CORRECT SCORE")
-                                         && !market.ToUpperInvariant().Contains("RESULT/TOTAL"))
+                                         && !market.ToUpperInvariant().Contains("RESULT/TOTAL")
+                                         && !market.ToUpperInvariant().Contains("TEAM TO SCORE"))
             {
                 return null;
             }
@@ -1543,6 +1564,108 @@ namespace NextStakeWebApp.Pages.Schedine
                 bool ok2 = isOver ? (tot > line) : (tot < line);
 
                 return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+            // =========================
+            // RESULT/BOTH TEAMS TO SCORE
+            // value: "HOME/YES" , "DRAW/NO", "AWAY/YES"
+            // =========================
+            if (m.Contains("RESULT/BOTH TEAMS") || (m.Contains("RESULT") && m.Contains("BOTH TEAMS")))
+            {
+                var vv = NormalizeEnglishPick(v); // es: HOME/YES
+                var parts = vv.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2) return SelectionOutcome.Unknown;
+
+                var resultPart = parts[0]; // HOME/DRAW/AWAY
+                var btsPart = parts[1];    // YES/NO
+
+                var esito = GetResultHAD(h, a);
+                bool ok1 = esito == resultPart;
+
+                bool gg = (h > 0 && a > 0);
+                bool ok2 = (btsPart == "YES") ? gg : (btsPart == "NO") ? !gg : false;
+
+                return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // WIN TO NIL (Home/Away)
+            // value: "HOME" / "AWAY"
+            // =========================
+            if (m.Contains("WIN TO NIL"))
+            {
+                var vv = NormalizeEnglishPick(v); // HOME/AWAY
+                if (vv != "HOME" && vv != "AWAY") return SelectionOutcome.Unknown;
+
+                bool homeWinToNil = (h > a) && (a == 0);
+                bool awayWinToNil = (a > h) && (h == 0);
+
+                bool ok = (vv == "HOME") ? homeWinToNil : awayWinToNil;
+                return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // CLEAN SHEET (Home/Away)
+            // value: "HOME" / "AWAY"
+            // (significa: squadra non subisce gol)
+            // =========================
+            if (m.Contains("CLEAN SHEET"))
+            {
+                var vv = NormalizeEnglishPick(v); // HOME/AWAY
+                if (vv != "HOME" && vv != "AWAY") return SelectionOutcome.Unknown;
+
+                bool homeClean = (a == 0);
+                bool awayClean = (h == 0);
+
+                bool ok = (vv == "HOME") ? homeClean : awayClean;
+                return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // TEAM TO SCORE (Home/Away)
+            // value: "HOME YES" / "AWAY NO" / "HOME/YES"
+            // =========================
+            if (m.Contains("TEAM TO SCORE") || (m.Contains("TEAM") && m.Contains("TO SCORE")))
+            {
+                var vv = v.Trim().ToUpperInvariant().Replace(" ", "");
+                vv = vv.Replace("-", "/");
+                // normalizzo in forma HOME/YES o AWAY/NO
+                if (!vv.Contains("/"))
+                {
+                    // tentativo: "HOMEYES"
+                    if (vv.StartsWith("HOME")) vv = "HOME/" + vv.Substring(4);
+                    else if (vv.StartsWith("AWAY")) vv = "AWAY/" + vv.Substring(4);
+                }
+
+                var parts = vv.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2) return SelectionOutcome.Unknown;
+
+                var side = parts[0]; // HOME/AWAY
+                var yn = parts[1];   // YES/NO
+
+                if (side != "HOME" && side != "AWAY") return SelectionOutcome.Unknown;
+                if (yn != "YES" && yn != "NO" && yn != "Y" && yn != "N") return SelectionOutcome.Unknown;
+
+                bool wantYes = (yn == "YES" || yn == "Y");
+                int goals = (side == "HOME") ? h : a;
+
+                bool ok = wantYes ? (goals > 0) : (goals == 0);
+                return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // BOTH TEAMS TO SCORE - 1ST HALF / 2ND HALF (se ti arriva)
+            // Nota: qui stai già usando (h,a) da GetScoreForMarket,
+            // quindi se Market contiene "1ST HALF" valuti su HT.
+            // =========================
+            if (m.Contains("BOTH TEAMS") && m.Contains("SCORE") && (m.Contains("1ST HALF") || m.Contains("FIRST HALF") || m.Contains("2ND HALF") || m.Contains("SECOND HALF")))
+            {
+                var vv = v.ToUpperInvariant().Trim();
+                bool gg = (h > 0 && a > 0);
+
+                if (vv is "YES" or "Y") return gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                if (vv is "NO" or "N") return !gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
             }
 
             return null;
