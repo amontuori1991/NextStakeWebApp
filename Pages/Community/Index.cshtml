@@ -181,6 +181,12 @@ var outcome = Model.EvaluateSelectionOutcome(sel, mi);
                                                     @mi.HomeGoal - @mi.AwayGoal
                                                 </span>
                                             }
+                                            @if (mi?.DateUtc != null)
+{
+    <span class="text-muted ms-2" style="font-size:0.9em;">
+        @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
+    </span>
+}
 
                                             @* ✅ ORDINE: Mercato -> Pick -> Quota -> Stato *@
                                             @if (!string.IsNullOrWhiteSpace(sel.Market))

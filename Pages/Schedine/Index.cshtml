@@ -248,9 +248,10 @@
 @if (mi?.DateUtc != null)
 {
     <span class="text-muted ms-2" style="font-size:0.9em;">
-        @mi.DateUtc.Value.ToRomeTime().ToString("dd/MM HH:mm")
+        @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
     </span>
 }
+
 
 
                                                 @* ✅ ORDINE: Mercato -> Pick -> Quota -> Stato *@
@@ -482,12 +483,12 @@ else
                                                 <img src="@mi.AwayLogo" alt="@mi.AwayName" style="width:22px;height:22px;object-fit:contain;" />
                                             }
 
-                                            @if (mi?.DateUtc != null)
-                                            {
-                                                <span class="text-muted ms-2" style="font-size:0.9em;">
-                                                    @mi.DateUtc.Value.ToRomeTime().ToString("dd/MM HH:mm")
-                                                </span>
-                                            }
+@if (mi?.DateUtc != null)
+{
+    <span class="text-muted ms-2" style="font-size:0.9em;">
+        @mi.DateUtc.Value.ToLocalTime().ToString("dd/MM HH:mm")
+    </span>
+}
 
                                             @if (mi?.StatusShort is "FT" or "AET" or "PEN")
                                             {
