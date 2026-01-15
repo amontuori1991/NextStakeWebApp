@@ -300,6 +300,74 @@ namespace NextStakeWebApp.Pages.Schedine
 
             string Esc(string? s) => System.Security.SecurityElement.Escape(s ?? "") ?? "";
 
+            List<string> WrapByWords(string text, int maxCharsPerLine = 18, int maxLines = 2)
+            {
+                if (string.IsNullOrWhiteSpace(text)) return new List<string> { "" };
+
+                text = text.Trim();
+                var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+                // Se una singola "parola" è lunghissima, la spezzo in 2 (fallback)
+                for (int i = 0; i < words.Count; i++)
+                {
+                    var w = words[i];
+                    if (w.Length > maxCharsPerLine * 2)
+                    {
+                        words[i] = w.Substring(0, maxCharsPerLine);
+                        words.Insert(i + 1, w.Substring(maxCharsPerLine));
+                        i++;
+                    }
+                    else if (w.Length > maxCharsPerLine)
+                    {
+                        // prova a spezzare comunque in 2 parti
+                        int cut = maxCharsPerLine;
+                        words[i] = w.Substring(0, cut);
+                        words.Insert(i + 1, w.Substring(cut));
+                        i++;
+                    }
+                }
+
+                var lines = new List<string>();
+                var current = "";
+
+                foreach (var w in words)
+                {
+                    if (current.Length == 0)
+                    {
+                        current = w;
+                        continue;
+                    }
+
+                    if ((current.Length + 1 + w.Length) <= maxCharsPerLine)
+                    {
+                        current += " " + w;
+                    }
+                    else
+                    {
+                        lines.Add(current);
+                        current = w;
+                        if (lines.Count == maxLines - 1) break; // lasciamo l'ultima riga per il resto
+                    }
+                }
+
+                if (current.Length > 0)
+                {
+                    if (lines.Count < maxLines)
+                        lines.Add(current);
+                    else
+                        lines[lines.Count - 1] += " " + current; // non tronco: accumulo sull'ultima
+                }
+
+                // Se avanzano parole non inserite e ho maxLines, le appendo all'ultima riga
+                if (words.Count > 0 && lines.Count == maxLines)
+                {
+                    // niente: già gestito sopra con append
+                }
+
+                return lines;
+            }
+
+
             string CleanMarket(string? market)
             {
                 if (string.IsNullOrWhiteSpace(market)) return "";
@@ -315,7 +383,8 @@ namespace NextStakeWebApp.Pages.Schedine
             const int CardY = 40;
             const int CardW = 1000;
 
-            const int HeaderH = 260;      // area header
+            const int HeaderH = 310;   // più spazio per logo + pills sotto
+
             const int DividerH = 20;      // spazio sotto divider
             const int FooterH = 140;      // area footer dedicata
             const int BottomPad = 40;     // padding finale
@@ -425,18 +494,22 @@ namespace NextStakeWebApp.Pages.Schedine
 
             var sb = new StringBuilder();
             sb.AppendLine($@"<svg xmlns=""http://www.w3.org/2000/svg"" width=""{W}"" height=""{height}"" viewBox=""0 0 {W} {height}"">");
-
             sb.AppendLine(@"
   <defs>
-    <linearGradient id=""bg"" x1=""0"" y1=""0"" x2=""1"" y2=""1"">
-      <stop offset=""0%"" stop-color=""#070b16""/>
-      <stop offset=""100%"" stop-color=""#0b1220""/>
+    <!-- ✅ Sfondo globale (più elegante del nero) -->
+    <linearGradient id=""bg"" x1=""0"" y1=""0"" x2=""0"" y2=""1"">
+      <stop offset=""0%"" stop-color=""#1e232b""/>
+      <stop offset=""100%"" stop-color=""#151a21""/>
     </linearGradient>
+
+    <!-- ✅ Ombra card -->
     <filter id=""shadow"" x=""-20%"" y=""-20%"" width=""140%"" height=""140%"">
       <feDropShadow dx=""0"" dy=""18"" stdDeviation=""22"" flood-color=""#000"" flood-opacity=""0.35""/>
     </filter>
   </defs>
+");
 
+            sb.AppendLine(@"
   <style>
     .font { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
     .muted { fill: #94a3b8; }
@@ -444,9 +517,12 @@ namespace NextStakeWebApp.Pages.Schedine
     .title { font-size: 56px; font-weight: 900; }
     .sub { font-size: 26px; font-weight: 700; }
     .badgeText { font-size: 22px; font-weight: 900; fill: #0b1220; }
-    .pillText { font-size: 24px; font-weight: 800; fill: #0b1220; }
+    .pillText { font-size: 22px; font-weight: 800; fill: #0b1220; }
     .team { font-size: 34px; font-weight: 900; fill: #e5e7eb; }
     .date { font-size: 24px; font-weight: 800; fill: #94a3b8; }
+
+    /* ✅ VS sempre azzurro (forza priorità) */
+    .vs { fill: #60a5fa !important; }
   </style>
 ");
 
@@ -454,7 +530,7 @@ namespace NextStakeWebApp.Pages.Schedine
             sb.AppendLine($@"  <rect x=""0"" y=""0"" width=""{W}"" height=""{height}"" fill=""url(#bg)""/>");
 
             // card container (altezza corretta)
-            sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""#0b1020"" opacity=""0.92"" filter=""url(#shadow)""/>");
+            sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""#0b1020"" opacity=""0.96"" filter=""url(#shadow)""/>");
             sb.AppendLine($@"  <rect x=""{CardX}"" y=""{CardY}"" width=""{CardW}"" height=""{height - (CardY * 2)}"" rx=""34"" fill=""none"" stroke=""#1f2937"" stroke-width=""2""/>");
 
             // header
@@ -462,24 +538,38 @@ namespace NextStakeWebApp.Pages.Schedine
             var headerLogo = LocalImageToDataUri("icons/android-chrome-512x512.png");
             if (!string.IsNullOrWhiteSpace(headerLogo))
             {
-                sb.AppendLine($@"  <image href=""{headerLogo}"" x=""465"" y=""78"" width=""180"" height=""180""/>");
+                int logoW = 180;           // 🔥 più grande
+                int logoH = 180;
+                int logoX = (W / 2) - (logoW / 2);   // centro perfetto
+                int logoY = 60;            // leggermente più su, così i box sotto respirano
 
+                sb.AppendLine($@"  <image href=""{headerLogo}"" x=""{logoX}"" y=""{logoY}"" width=""{logoW}"" height=""{logoH}""/>");
             }
 
-            // badge stato
-            // badge stato (stile uguale alla pill "Quota totale")
-            // pill stato (stessa dimensione della quota)
-            sb.AppendLine($@"  <rect x=""640"" y=""200"" width=""360"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
-            sb.AppendLine($@"  <text x=""820"" y=""238"" text-anchor=""middle"" class=""font pillText"">{Esc(slipBadge)}</text>");
 
 
-
-
-            // quota totale
             var totalLabel = totalOdd.HasValue ? totalOdd.Value.ToString("0.00") : "N/D";
-            // pill quota totale (larghezza uniforme)
-            sb.AppendLine($@"  <rect x=""80"" y=""200"" width=""360"" height=""56"" rx=""22"" fill=""#e5e7eb""/>");
-            sb.AppendLine($@"  <text x=""260"" y=""238"" text-anchor=""middle"" class=""font pillText"">Quota totale: {Esc(totalLabel)}</text>");
+
+            // --- pills sotto logo ---
+            int pillW = 320;         // 🔽 leggermente più strette
+            int pillH = 50;          // 🔽 un filo più basse
+            int pillRx = 20;
+
+            int centerX = W / 2;
+            int gap = 40;            // spazio tra le pill
+            int pillsY = 250;        // ✅ sotto il logo
+
+            int leftX = centerX - gap / 2 - pillW;
+            int rightX = centerX + gap / 2;
+
+            // pill sinistra (quota)
+            sb.AppendLine($@"  <rect x=""{leftX}"" y=""{pillsY}"" width=""{pillW}"" height=""{pillH}"" rx=""{pillRx}"" fill=""#e5e7eb""/>");
+            sb.AppendLine($@"  <text x=""{leftX + pillW / 2}"" y=""{pillsY + 33}"" text-anchor=""middle"" class=""font pillText"">QUOTA TOTALE: {Esc(totalLabel)}</text>");
+
+            // pill destra (stato) - stessa grafica della quota
+            sb.AppendLine($@"  <rect x=""{rightX}"" y=""{pillsY}"" width=""{pillW}"" height=""{pillH}"" rx=""{pillRx}"" fill=""#e5e7eb""/>");
+            sb.AppendLine($@"  <text x=""{rightX + pillW / 2}"" y=""{pillsY + 33}"" text-anchor=""middle"" class=""font pillText"">{Esc(slipBadge)}</text>");
+
 
 
             // page indicator
@@ -487,7 +577,8 @@ namespace NextStakeWebApp.Pages.Schedine
                 sb.AppendLine($@"  <text x=""1000"" y=""238"" text-anchor=""end"" class=""font sub muted"">Pag. {pageNo}/{pages}</text>");
 
             // divider
-            sb.AppendLine($@"  <line x1=""80"" y1=""280"" x2=""1000"" y2=""280"" stroke=""#1f2937"" stroke-width=""2""/>");
+            sb.AppendLine($@"  <line x1=""80"" y1=""330"" x2=""1000"" y2=""330"" stroke=""#1f2937"" stroke-width=""2""/>");
+
 
             // rows
             int y = rowsTop;
@@ -510,32 +601,85 @@ namespace NextStakeWebApp.Pages.Schedine
                 var homeLogo = await ImgToDataUriAsync(mi?.HomeLogo);
                 var awayLogo = await ImgToDataUriAsync(mi?.AwayLogo);
 
-                int logoY = y + 18;
-                if (!string.IsNullOrWhiteSpace(homeLogo))
-                    sb.AppendLine($@"  <image href=""{homeLogo}"" x=""120"" y=""{logoY}"" width=""56"" height=""56""/>");
-                if (!string.IsNullOrWhiteSpace(awayLogo))
-                    sb.AppendLine($@"  <image href=""{awayLogo}"" x=""904"" y=""{logoY}"" width=""56"" height=""56""/>");
+                int logoSize = 56;
+                int logoYOffset = -10;          // 🔼 alza i loghi (prova -8 / -10 / -12)
+                int logoY = y + 18 + logoYOffset;
 
-                int teamY = y + 92;
-                int dateY = y + 122;
-                sb.AppendLine($@"  <text x=""540"" y=""{teamY}"" text-anchor=""middle"" class=""font team"">{Esc(home)}  vs  {Esc(away)}</text>");
+                if (!string.IsNullOrWhiteSpace(homeLogo))
+                    sb.AppendLine($@"  <image href=""{homeLogo}"" x=""120"" y=""{logoY}"" width=""{logoSize}"" height=""{logoSize}""/>");
+                if (!string.IsNullOrWhiteSpace(awayLogo))
+                    sb.AppendLine($@"  <image href=""{awayLogo}"" x=""904"" y=""{logoY}"" width=""{logoSize}"" height=""{logoSize}""/>");
+
+
+                int teamYBase = y + 92;
+
+                // wrap in 1–2 righe (senza troncare)
+                var homeLines = WrapByWords(home, maxCharsPerLine: 18, maxLines: 2);
+                var awayLines = WrapByWords(away, maxCharsPerLine: 18, maxLines: 2);
+
+                int maxLinesUsed = Math.Max(homeLines.Count, awayLines.Count);
+                int lineGap = 34; // distanza tra righe
+
+                // calcolo Y di partenza per centrare verticalmente attorno a teamYBase
+                int homeStartY = teamYBase - ((homeLines.Count - 1) * lineGap / 2);
+                int awayStartY = teamYBase - ((awayLines.Count - 1) * lineGap / 2);
+
+                // ancoraggi
+                int centerXTeam = 540;
+                int vsGap = 22;
+                int vsHalf = 18;
+
+                int leftEndX = centerXTeam - (vsHalf + vsGap);
+                int rightStartX = centerXTeam + (vsHalf + vsGap);
+
+                // HOME (multi-line, ancorato a destra)
+                sb.AppendLine($@"  <text x=""{leftEndX}"" y=""{homeStartY}"" text-anchor=""end"" class=""font team"">");
+                for (int i = 0; i < homeLines.Count; i++)
+                {
+                    var dy = (i == 0) ? 0 : lineGap;
+                    sb.AppendLine($@"    <tspan x=""{leftEndX}"" dy=""{dy}"">{Esc(homeLines[i])}</tspan>");
+                }
+                sb.AppendLine(@"  </text>");
+
+                // VS sempre al centro e azzurro
+                sb.AppendLine($@"  <text x=""{centerXTeam}"" y=""{teamYBase}"" text-anchor=""middle"" class=""font team vs"">VS</text>");
+
+                // AWAY (multi-line, ancorato a sinistra)
+                sb.AppendLine($@"  <text x=""{rightStartX}"" y=""{awayStartY}"" text-anchor=""start"" class=""font team"">");
+                for (int i = 0; i < awayLines.Count; i++)
+                {
+                    var dy = (i == 0) ? 0 : lineGap;
+                    sb.AppendLine($@"    <tspan x=""{rightStartX}"" dy=""{dy}"">{Esc(awayLines[i])}</tspan>");
+                }
+                sb.AppendLine(@"  </text>");
+
+                // Data: se ci sono 2 righe, la abbasso un po’
+                // Se uso 2 righe per i nomi, devo spostare giù anche data + pills
+                int extraDown = (maxLinesUsed > 1) ? 22 : 0;   // 🔧 regola: 18/20/24 se vuoi più/meno spazio
+
+                int dateY = (y + 122) + extraDown;
+
                 if (!string.IsNullOrWhiteSpace(date))
                     sb.AppendLine($@"  <text x=""540"" y=""{dateY}"" text-anchor=""middle"" class=""font date"">{Esc(date)}</text>");
 
-                int pillTop = y + 136;
-                int pillH = 46;
+                // Pills spostate giù insieme alla data
+                int rowPillTop = (y + 136) + extraDown;
+                int rowPillH = 46;
+
 
                 if (!string.IsNullOrWhiteSpace(market))
                 {
-                    sb.AppendLine($@"  <rect x=""120"" y=""{pillTop}"" width=""360"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                    sb.AppendLine($@"  <text x=""140"" y=""{pillTop + 31}"" class=""font pillText"">{Esc(market)}</text>");
+                    sb.AppendLine($@"  <rect x=""120"" y=""{rowPillTop}"" width=""360"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                    sb.AppendLine($@"  <text x=""140"" y=""{rowPillTop + 31}"" class=""font pillText"">{Esc(market)}</text>");
+
                 }
 
-                sb.AppendLine($@"  <rect x=""500"" y=""{pillTop}"" width=""340"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                sb.AppendLine($@"  <text x=""520"" y=""{pillTop + 31}"" class=""font pillText"">Pick: {Esc(pick)}</text>");
+                sb.AppendLine($@"  <rect x=""500"" y=""{rowPillTop}"" width=""340"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                sb.AppendLine($@"  <text x=""520"" y=""{rowPillTop + 31}"" class=""font pillText"">Pick: {Esc(pick)}</text>");
 
-                sb.AppendLine($@"  <rect x=""860"" y=""{pillTop}"" width=""120"" height=""{pillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                sb.AppendLine($@"  <text x=""920"" y=""{pillTop + 31}"" text-anchor=""middle"" class=""font pillText"">x {Esc(oddTxt)}</text>");
+
+                sb.AppendLine($@"  <rect x=""860"" y=""{rowPillTop}"" width=""120"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                sb.AppendLine($@"  <text x=""920"" y=""{rowPillTop + 31}"" text-anchor=""middle"" class=""font pillText"">x {Esc(oddTxt)}</text>");
 
                 y += (RowRectH + RowGap);
                 idx++;
@@ -551,9 +695,11 @@ namespace NextStakeWebApp.Pages.Schedine
 
             // Destra: timestamp
             // Titolo schedina in basso a sinistra
-            sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" class=""font sub white"">{Esc(title)}</text>");
+            var published = slip.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
 
-            sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">{slip.UpdatedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}</text>");
+            // testo centrato
+            sb.AppendLine($@"  <text x=""540"" y=""{footerTextY}"" text-anchor=""middle"" class=""font sub muted"">Pubblicata il: {Esc(published)}</text>");
+
 
 
 
