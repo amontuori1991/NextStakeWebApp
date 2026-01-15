@@ -1960,12 +1960,13 @@ TESTO DA RISCRIVERE:
         }
 
         public async Task<IActionResult> OnPostAddToSlipAsync(
-            long id,
-            long? slipId,
-            string? newSlipTitle,
-            string? pickText,
-            decimal? odd,
-    string? market)
+    long id,
+    long? slipId,
+    string? newSlipTitle,
+    string? pickText,
+    decimal? odd,
+    string? market,
+    string? oddManual)
         {
             if (User?.Identity?.IsAuthenticated != true)
                 return Unauthorized();
@@ -1979,6 +1980,31 @@ TESTO DA RISCRIVERE:
             {
                 TempData["StatusMessage"] = "⚠️ Inserisci un pronostico prima di salvare.";
                 return RedirectToPage(new { id });
+            }
+            // ✅ Quota manuale SOLO per pronostico libero (quando odd arriva null)
+            // - supporta "1,85" e "1.85"
+            // - se compilata ma non valida -> errore
+            if (!odd.HasValue && !string.IsNullOrWhiteSpace(oddManual))
+            {
+                var raw = oddManual.Trim();
+
+                // normalizzo virgola -> punto
+                raw = raw.Replace(",", ".");
+
+                if (!decimal.TryParse(raw, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsedOdd))
+                {
+                    TempData["StatusMessage"] = "⚠️ Quota non valida. Usa un numero tipo 1.85";
+                    return RedirectToPage(new { id });
+                }
+
+                // opzionale: blocco valori strani
+                if (parsedOdd <= 1.0m || parsedOdd > 1000m)
+                {
+                    TempData["StatusMessage"] = "⚠️ Quota fuori range. Inserisci un valore valido (es. 1.85).";
+                    return RedirectToPage(new { id });
+                }
+
+                odd = parsedOdd;
             }
 
             // 1) Se non scelgo slipId → creo una nuova schedina (multipla)
