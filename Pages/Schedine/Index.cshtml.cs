@@ -65,6 +65,10 @@ namespace NextStakeWebApp.Pages.Schedine
             public string? StatusShort { get; set; }
             public int? HomeGoal { get; set; }
             public int? AwayGoal { get; set; }
+
+            public int? HomeHalfTimeGoal { get; set; }
+            public int? AwayHalfTimeGoal { get; set; }
+
         }
 
 
@@ -132,16 +136,20 @@ namespace NextStakeWebApp.Pages.Schedine
                     where matchIdsInt.Contains(m.Id)
                     select new MatchInfo
                     {
-                        MatchId = (long)m.Id,          // ✅ cast a long
+                        MatchId = (long)m.Id,
                         HomeName = th.Name ?? "",
                         AwayName = ta.Name ?? "",
                         HomeLogo = th.Logo,
                         AwayLogo = ta.Logo,
-                        DateUtc = m.Date,               // ok anche se DateTime
+                        DateUtc = m.Date,
                         StatusShort = m.StatusShort,
                         HomeGoal = m.HomeGoal,
-                        AwayGoal = m.AwayGoal
+                        AwayGoal = m.AwayGoal,
+                        HomeHalfTimeGoal = m.HomeHalftimeGoal,
+                        AwayHalfTimeGoal = m.AwayHalftimeGoal
+
                     }
+
                 ).ToListAsync();
 
                 MatchMap = rows.ToDictionary(x => x.MatchId, x => x);
@@ -282,8 +290,12 @@ namespace NextStakeWebApp.Pages.Schedine
                     DateUtc = m.Date,
                     StatusShort = m.StatusShort,
                     HomeGoal = m.HomeGoal,
-                    AwayGoal = m.AwayGoal
+                    AwayGoal = m.AwayGoal,
+                    HomeHalfTimeGoal = m.HomeHalftimeGoal,
+                    AwayHalfTimeGoal = m.AwayHalftimeGoal
+
                 }
+
             ).ToListAsync();
 
             var map = rows.ToDictionary(x => x.MatchId, x => x);
@@ -970,8 +982,14 @@ namespace NextStakeWebApp.Pages.Schedine
             Pending,   // match non finito
             Won,
             Lost,
+
+            Push,      // rimborso (quota 1.00)
+            HalfWon,   // metà vinta + metà push
+            HalfLost,  // metà persa + metà push
+
             Unknown    // pick non riconosciuto / dati incompleti
         }
+
 
         public SelectionOutcome EvaluateSelectionOutcome(BetSelection sel, MatchInfo? mi)
         {
@@ -990,9 +1008,22 @@ namespace NextStakeWebApp.Pages.Schedine
             // Se finita ma senza goal -> non valutabile
             if (!mi.HomeGoal.HasValue || !mi.AwayGoal.HasValue) return SelectionOutcome.Unknown;
 
-            int h = mi.HomeGoal.Value;
-            int a = mi.AwayGoal.Value;
+            // ✅ Score FT di default
+            int hFT = mi.HomeGoal.Value;
+            int aFT = mi.AwayGoal.Value;
+
+            // ✅ Score HT disponibile
+            int? hHT = mi.HomeHalfTimeGoal;
+            int? aHT = mi.AwayHalfTimeGoal;
+
+            // useremo FT o HT in base al mercato
+            (int h, int a) = GetScoreForMarket(sel?.Market, hFT, aFT, hHT, aHT);
             int tot = h + a;
+            // ✅ NUOVA VIA: validazione basata su (Market=description, Pick=value) in inglese
+            // Se riconosco il mercato inglese, valuto direttamente e NON passo dal parsing legacy.
+            var marketOutcome = TryEvaluateOddsApiMarket(sel, h, a);
+            if (marketOutcome != null)
+                return marketOutcome.Value;
 
             // Normalizzo pick
             string raw = (sel.Pick ?? "").Trim();
@@ -1028,9 +1059,69 @@ namespace NextStakeWebApp.Pages.Schedine
             // - altrimenti se una è unknown => unknown
             // - altrimenti vinta (a match finito)
             if (legOutcomes.Any(x => x == SelectionOutcome.Lost)) return SelectionOutcome.Lost;
+            if (legOutcomes.Any(x => x == SelectionOutcome.HalfLost)) return SelectionOutcome.HalfLost;
             if (legOutcomes.Any(x => x == SelectionOutcome.Unknown)) return SelectionOutcome.Unknown;
-            if (legOutcomes.Any(x => x == SelectionOutcome.Pending)) return SelectionOutcome.Pending; // safety
-            return SelectionOutcome.Won;
+            if (legOutcomes.Any(x => x == SelectionOutcome.Pending)) return SelectionOutcome.Pending;
+
+            if (legOutcomes.Any(x => x == SelectionOutcome.HalfWon)) return SelectionOutcome.HalfWon;
+
+            // se tutte Push -> Push, altrimenti Won
+            return legOutcomes.All(x => x == SelectionOutcome.Push)
+                ? SelectionOutcome.Push
+                : SelectionOutcome.Won;
+
+        }
+        private SelectionOutcome EvaluateAsianTotal(bool isOver, double line, int tot)
+        {
+            // linee .25 e .75 => split in due (come AH)
+            bool isQuarter = Math.Abs(line * 4 - Math.Round(line * 4)) < 1e-9 && (Math.Abs(line % 0.5) > 1e-9);
+            if (!isQuarter)
+                return EvaluateAsianTotalSingle(isOver, line, tot);
+
+            double lower, upper;
+
+            if (line > 0)
+            {
+                lower = Math.Floor(line * 2) / 2.0;
+                upper = lower + 0.5;
+            }
+            else
+            {
+                // non dovrebbe arrivare mai per goal line, ma per sicurezza:
+                upper = Math.Ceiling(line * 2) / 2.0;
+                lower = upper - 0.5;
+            }
+
+            var r1 = EvaluateAsianTotalSingle(isOver, lower, tot);
+            var r2 = EvaluateAsianTotalSingle(isOver, upper, tot);
+            return CombineTwoAsianResults(r1, r2); // ✅ già ce l’hai
+        }
+
+        private SelectionOutcome EvaluateAsianTotalSingle(bool isOver, double line, int tot)
+        {
+            // Totale vs linea: Over vince se tot > line, Push se tot == line, Lost se tot < line
+            if (tot > line) return isOver ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            if (tot < line) return isOver ? SelectionOutcome.Lost : SelectionOutcome.Won;
+            return SelectionOutcome.Push;
+        }
+        private (string wanted, double line)? ParseHandicapResultValue(string value)
+        {
+            var x = (value ?? "").Trim().ToUpperInvariant().Replace(",", ".");
+            // esempio: "AWAY +1" / "DRAW -1" / "HOME -2"
+            string? wanted = null;
+            if (x.StartsWith("HOME")) wanted = "HOME";
+            else if (x.StartsWith("AWAY")) wanted = "AWAY";
+            else if (x.StartsWith("DRAW")) wanted = "DRAW";
+            if (wanted == null) return null;
+
+            var num = Regex.Match(x, @"([+\-]?\d+(\.\d+)?)");
+            if (!num.Success) return null;
+
+            if (!double.TryParse(num.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var line))
+                return null;
+
+            // qui ci aspettiamo interi (±1, ±2)
+            return (wanted, line);
         }
 
         private SelectionOutcome EvaluateLeg(string leg, int h, int a, int tot)
@@ -1195,7 +1286,415 @@ namespace NextStakeWebApp.Pages.Schedine
 
             return (scope, min, max);
         }
+        private static (int h, int a) GetScoreForMarket(string? market, int hFT, int aFT, int? hHT, int? aHT)
+        {
+            var m = (market ?? "").Trim().ToUpperInvariant();
+
+            // Se il mercato è 1st half / first half -> usa HT
+            bool isFirstHalf =
+                m.Contains("1ST HALF") ||
+                m.Contains("FIRST HALF") ||
+                m.Contains("1H") ||
+                m.Contains("HT") ||
+                m.Contains("HALF TIME") ||
+    m.Contains("HALFTIME"); ;
+
+            if (isFirstHalf && hHT.HasValue && aHT.HasValue)
+                return (hHT.Value, aHT.Value);
+
+            return (hFT, aFT);
+        }
+        private static bool LooksLegacyPick(string v)
+        {
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            var x = v.Trim().ToUpperInvariant().Replace(" ", "");
+
+            // tipici token legacy
+            if (x is "1" or "2" or "X" or "1X" or "X2" or "12" or "GG" or "NG") return true;
+
+            // Over/Under legacy: O2.5, U2.5, OV25, UN15 ecc.
+            if (Regex.IsMatch(x, @"^(O|U|OV|UN|OVER|UNDER)\d")) return true;
+
+            // Multigol legacy: MG2-4, MGCASA1-2 ecc.
+            if (x.StartsWith("MG")) return true;
+
+            // Correct score legacy: "2-1" senza prefissi e senza contesto inglese
+            // (se vuoi tenerlo legacy, altrimenti puoi farlo gestire anche all'inglese)
+            if (Regex.IsMatch(x, @"^\d+\-\d+$")) return true;
+
+            return false;
+        }
+
+        private static bool LooksEnglishPick(string v)
+        {
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            var x = v.Trim().ToUpperInvariant();
+
+            // classici inglesi
+            if (x is "HOME" or "AWAY" or "DRAW" or "YES" or "NO" or "Y" or "N") return true;
+
+            // combo tipo AWAY/OVER2.5 ecc.
+            if (x.Contains("/")) return true;
+
+            // "Over 2.5" / "Under 1.5"
+            if (x.StartsWith("OVER") || x.StartsWith("UNDER")) return true;
+
+            // "Home -0.25" / "Away +0.75"
+            if ((x.Contains("HOME") || x.Contains("AWAY")) && Regex.IsMatch(x, @"[+\-]\d")) return true;
+
+            // "1:0" / "0:0" tipico correct score API
+            if (Regex.IsMatch(x, @"\d+\s*[:\-]\s*\d+")) return true;
+
+            return false;
+        }
+
+        private SelectionOutcome? TryEvaluateOddsApiMarket(BetSelection sel, int h, int a)
+        {
+            if (sel == null) return null;
+
+            var market = (sel.Market ?? "").Trim();
+            var value = (sel.Pick ?? "").Trim();   // ⚠️ qui Pick contiene il "value" inglese (Home/Draw/Away ecc.)
+
+            if (string.IsNullOrWhiteSpace(market) || string.IsNullOrWhiteSpace(value))
+                return null;
+
+            // ✅ Guardia: se sembra legacy, NON usare la via inglese
+            if (LooksLegacyPick(value)) return null;
+
+            // ✅ Se non sembra proprio inglese, evita valutazioni strane
+            if (!LooksEnglishPick(value) && !market.ToUpperInvariant().Contains("GOAL LINE")
+                                         && !market.ToUpperInvariant().Contains("ASIAN")
+                                         && !market.ToUpperInvariant().Contains("HANDICAP")
+                                         && !market.ToUpperInvariant().Contains("MATCH WINNER")
+                                         && !market.ToUpperInvariant().Contains("DOUBLE CHANCE")
+                                         && !market.ToUpperInvariant().Contains("BOTH TEAMS")
+                                         && !market.ToUpperInvariant().Contains("CORRECT SCORE")
+                                         && !market.ToUpperInvariant().Contains("RESULT/TOTAL"))
+            {
+                return null;
+            }
+
+
+            // Normalizzo: tolgo (n) e rendo uppercase
+            market = Regex.Replace(market, @"\s*\(\d+\)\s*$", "").Trim();
+            var m = market.ToUpperInvariant();
+            var v = value.Trim();
+
+            // =========================
+            // MATCH WINNER (1X2)
+            // =========================
+            if (m.Contains("MATCH WINNER"))
+            {
+                var vv = v.ToUpperInvariant();
+                var esito = (h > a) ? "HOME" : (h < a) ? "AWAY" : "DRAW";
+
+                if (vv is "HOME" or "1") return esito == "HOME" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                if (vv is "AWAY" or "2") return esito == "AWAY" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                if (vv is "DRAW" or "X") return esito == "DRAW" ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+
+            // =========================
+            // DOUBLE CHANCE (Home/Draw, Draw/Away, Home/Away)
+            // =========================
+            if (m.Contains("DOUBLE CHANCE"))
+            {
+                var vv = v.ToUpperInvariant().Replace(" ", "");
+                // accetto varianti: "HOME/DRAW", "DRAW/AWAY", "HOME/AWAY"
+                var esito = (h > a) ? "HOME" : (h < a) ? "AWAY" : "DRAW";
+
+                bool ok =
+                    (vv.Contains("HOME") && esito == "HOME") ||
+                    (vv.Contains("AWAY") && esito == "AWAY") ||
+                    (vv.Contains("DRAW") && esito == "DRAW");
+
+                return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // BOTH TEAMS SCORE (GG/NG)
+            // =========================
+            if (m.Contains("BOTH TEAMS") && m.Contains("SCORE"))
+            {
+                var vv = v.ToUpperInvariant().Trim();
+                bool gg = (h > 0 && a > 0);
+
+                if (vv is "YES" or "Y") return gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
+                if (vv is "NO" or "N") return !gg ? SelectionOutcome.Won : SelectionOutcome.Lost;
+
+                return SelectionOutcome.Unknown;
+            }
+
+            // =========================
+            // CORRECT SCORE / EXACT SCORE
+            // value: "1:0" / "2-1" / "0:0"
+            // =========================
+            if (m.Contains("CORRECT SCORE") || m.Contains("EXACT SCORE"))
+            {
+                var vv = v.Trim();
+                var mx = Regex.Match(vv, @"(\d+)\s*[:\-]\s*(\d+)");
+                if (!mx.Success) return SelectionOutcome.Unknown;
+
+                int eh = int.Parse(mx.Groups[1].Value);
+                int ea = int.Parse(mx.Groups[2].Value);
+
+                return (h == eh && a == ea) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // OVER/UNDER TOTAL GOALS
+            // value: "Over 2.5" / "Under 1.5" / "Over2.5"
+            // =========================
+            if (m.Contains("OVER/UNDER") || m.Contains("GOALS OVER/UNDER") || (m.Contains("TOTAL") && m.Contains("GOALS")))
+            {
+                var ou = ParseOverUnderFromValue(v);
+                if (ou == null) return SelectionOutcome.Unknown;
+
+                var (isOver, line) = ou.Value;
+                var tot = h + a;
+
+                bool ok = isOver ? (tot > line) : (tot < line);
+                return ok ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            // =========================
+            // ASIAN HANDICAP (FT o 1st half già gestito da GetScoreForMarket)
+            // value: "Home -0.25" / "Away +0.75" / "Home -1"
+            // =========================
+            if (m.Contains("ASIAN HANDICAP"))
+            {
+                var ah = ParseAsianHandicapValue(market, v);
+                if (ah == null) return SelectionOutcome.Unknown;
+
+                var (side, line) = ah.Value; // side: HOME/AWAY
+                return EvaluateAsianHandicap(side, line, h, a);
+            }
+
+            // mercati non gestiti qui -> fallback legacy
+
+            // =========================
+            // GOAL LINE (Asian Total Goals)  e GOAL LINE (1st Half)
+            // value: "Over 2.25" / "Under 2.75" ecc.
+            // =========================
+            if (m.Contains("GOAL LINE"))
+            {
+                var ou = ParseOverUnderFromValue(v);
+                if (ou == null) return SelectionOutcome.Unknown;
+
+                var (isOver, line) = ou.Value;
+                var tot = h + a;
+
+                return EvaluateAsianTotal(isOver, line, tot);
+            }
+            // =========================
+            // HANDICAP RESULT (European handicap 3-way)
+            // value: "Home -1" / "Draw -1" / "Away -1"  ecc.
+            // Assumo handicap applicato al HOME (standard più comune)
+            // =========================
+            if (m.Contains("HANDICAP RESULT"))
+            {
+                var parsed = ParseHandicapResultValue(v);
+                if (parsed == null) return SelectionOutcome.Unknown;
+
+                var (wanted, line) = parsed.Value; // wanted=HOME/DRAW/AWAY, line = +1 / -1 / +2 / -2
+
+                // Handicap applicato alla AWAY se wanted è AWAY, alla HOME se wanted è HOME, altrimenti (DRAW) va applicato comunque al match,
+                // quindi prendiamo l'handicap dal value ma lo applichiamo a chi è indicato nel value.
+                // Però nei tuoi esempi "Draw -1" esiste: qui l'handicap è del match (tipicamente HOME -1 / AWAY +1).
+                // Regola più robusta: applica handicap alla HOME (come mercato standard) MA inverti il segno quando la pick è AWAY.
+                // --> ancora meglio: PARSA anche il "target" dal value: "Away -1" dice target=AWAY, handicap=-1.
+
+                var parsed2 = ParseHandicapResultValueWithTarget(v);
+                if (parsed2 == null) return SelectionOutcome.Unknown;
+
+                var (target, handicap, outcomeWanted) = parsed2.Value; // target=HOME/AWAY, handicap=-1/+1, outcomeWanted=HOME/DRAW/AWAY
+
+                int hAdj = h;
+                int aAdj = a;
+
+                if (target == "HOME") hAdj = h + handicap;
+                else aAdj = a + handicap;
+
+                var esitoAdj = (hAdj > aAdj) ? "HOME" : (hAdj < aAdj) ? "AWAY" : "DRAW";
+                return (esitoAdj == outcomeWanted) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            if (m.Contains("RESULT/TOTAL GOALS"))
+            {
+                var vv = v.ToUpperInvariant().Replace(" ", "");
+                // esempi: "AWAY/OVER2.5"
+                var parts = vv.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2) return SelectionOutcome.Unknown;
+
+                var resultPart = parts[0];   // HOME/DRAW/AWAY
+                var ouPart = parts[1];       // OVER2.5 / UNDER2.5
+
+                // 1X2
+                var esito = (h > a) ? "HOME" : (h < a) ? "AWAY" : "DRAW";
+                bool ok1 = esito == resultPart;
+
+                // OU
+                var ou = ParseOverUnderFromValue(ouPart);
+                if (ou == null) return SelectionOutcome.Unknown;
+
+                var (isOver, line) = ou.Value;
+                var tot = h + a;
+                bool ok2 = isOver ? (tot > line) : (tot < line);
+
+                return (ok1 && ok2) ? SelectionOutcome.Won : SelectionOutcome.Lost;
+            }
+
+            return null;
+        }
+        
+        
+        private (string target, int handicap, string outcomeWanted)? ParseHandicapResultValueWithTarget(string value)
+        {
+            var x = (value ?? "").Trim().ToUpperInvariant().Replace(",", ".");
+            // "AWAY -1" / "DRAW +1" / "HOME +2"
+            string? outcomeWanted = null;
+            if (x.StartsWith("HOME")) outcomeWanted = "HOME";
+            else if (x.StartsWith("AWAY")) outcomeWanted = "AWAY";
+            else if (x.StartsWith("DRAW")) outcomeWanted = "DRAW";
+            if (outcomeWanted == null) return null;
+
+            var num = Regex.Match(x, @"([+\-]?\d+)");
+            if (!num.Success) return null;
+            int handicap = int.Parse(num.Groups[1].Value);
+
+            // target handicap: se outcomeWanted è HOME o AWAY => target coincide
+            // se è DRAW, target non è esplicito nel value: in pratica è un 3-way handicap del match.
+            // per gestirlo senza impazzire: assumo target = HOME (standard mercato), così "DRAW -1" = pareggio dopo HOME-1 (cioè HOME vince di 1).
+            string target = (outcomeWanted == "AWAY") ? "AWAY" : "HOME";
+
+            return (target, handicap, outcomeWanted);
+        }
+
+        private (bool isOver, double line)? ParseOverUnderFromValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            var x = value.Trim().ToUpperInvariant();
+            x = x.Replace(",", "."); // sicurezza
+
+            bool? isOver = null;
+            if (x.StartsWith("OVER")) { isOver = true; x = x.Substring(4).Trim(); }
+            else if (x.StartsWith("UNDER")) { isOver = false; x = x.Substring(5).Trim(); }
+            else if (x.StartsWith("OV")) { isOver = true; x = x.Substring(2).Trim(); }
+            else if (x.StartsWith("UN")) { isOver = false; x = x.Substring(2).Trim(); }
+
+            if (isOver == null) return null;
+
+            // cerco la prima cifra tipo 2.5
+            var m = Regex.Match(x, @"(\d+(\.\d+)?)");
+            if (!m.Success) return null;
+
+            if (!double.TryParse(m.Groups[1].Value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var line))
+                return null;
+
+            return (isOver.Value, line);
+        }
+
+        private (string side, double line)? ParseAsianHandicapValue(string market, string value)
+        {
+            // Side: prova dal value ("Home -0.25")
+            var v = (value ?? "").Trim().ToUpperInvariant();
+            v = v.Replace(",", ".");
+
+            string? side = null;
+
+            if (v.Contains("HOME")) side = "HOME";
+            else if (v.Contains("AWAY")) side = "AWAY";
+
+            // se side non è nel value, provo dal market
+            if (side == null)
+            {
+                var m = (market ?? "").ToUpperInvariant();
+                if (m.Contains("HOME")) side = "HOME";
+                else if (m.Contains("AWAY")) side = "AWAY";
+            }
+
+            if (side == null) return null;
+
+            // estraggo numero con segno
+            var num = Regex.Match(v, @"([+\-]?\d+(\.\d+)?)");
+            if (!num.Success) return null;
+
+            if (!double.TryParse(num.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var line))
+                return null;
+
+            return (side, line);
+        }
+
+        private SelectionOutcome EvaluateAsianHandicap(string side, double line, int h, int a)
+        {
+            // gestisco linee .25 e .75 spezzandole
+            bool isQuarter = Math.Abs(line * 4 - Math.Round(line * 4)) < 1e-9 && (Math.Abs(line % 0.5) > 1e-9);
+            // sopra: valori tipo x.25 / x.75
+
+            if (!isQuarter)
+                return EvaluateAsianHandicapSingle(side, line, h, a);
+
+            // split:
+            // +0.25 => (0.0, +0.5) ; -0.25 => (0.0, -0.5)
+            // +0.75 => (+0.5, +1.0); -0.75 => (-0.5, -1.0)
+            double lower = Math.Floor(line * 2) / 2.0;     // arrotondo a step 0.5 verso -inf
+            double upper = lower + 0.5;
+
+            // Per i negativi funziona correttamente perché floor va verso -inf:
+            // -0.25 => floor(-0.5)=-0.5, upper=0.0 -> invertiamo per ottenere (0.0, -0.5)?
+            // meglio costruire esplicitamente:
+            if (line > 0)
+            {
+                lower = Math.Floor(line * 2) / 2.0;  // es 0.25 -> 0.0; 0.75 -> 0.5
+                upper = lower + 0.5;
+            }
+            else
+            {
+                upper = Math.Ceiling(line * 2) / 2.0; // es -0.25 -> 0.0; -0.75 -> -0.5
+                lower = upper - 0.5;                  // -> -0.5 / -1.0
+            }
+
+            var r1 = EvaluateAsianHandicapSingle(side, lower, h, a);
+            var r2 = EvaluateAsianHandicapSingle(side, upper, h, a);
+
+            return CombineTwoAsianResults(r1, r2);
+        }
+
+        private SelectionOutcome EvaluateAsianHandicapSingle(string side, double line, int h, int a)
+        {
+            // confronto handicap-adjusted
+            double left = (side == "HOME") ? (h + line) : (a + line);
+            double right = (side == "HOME") ? a : h;
+
+            if (left > right) return SelectionOutcome.Won;
+            if (left < right) return SelectionOutcome.Lost;
+            return SelectionOutcome.Push;
+        }
+
+        private SelectionOutcome CombineTwoAsianResults(SelectionOutcome r1, SelectionOutcome r2)
+        {
+            // due gambe: Won/Push/Lost
+            if (r1 == SelectionOutcome.Won && r2 == SelectionOutcome.Won) return SelectionOutcome.Won;
+            if (r1 == SelectionOutcome.Lost && r2 == SelectionOutcome.Lost) return SelectionOutcome.Lost;
+
+            if ((r1 == SelectionOutcome.Won && r2 == SelectionOutcome.Push) ||
+                (r2 == SelectionOutcome.Won && r1 == SelectionOutcome.Push))
+                return SelectionOutcome.HalfWon;
+
+            if ((r1 == SelectionOutcome.Lost && r2 == SelectionOutcome.Push) ||
+                (r2 == SelectionOutcome.Lost && r1 == SelectionOutcome.Push))
+                return SelectionOutcome.HalfLost;
+
+            // Push+Push
+            if (r1 == SelectionOutcome.Push && r2 == SelectionOutcome.Push) return SelectionOutcome.Push;
+
+            // casi strani (Won+Lost non dovrebbe succedere con split corretto)
+            return SelectionOutcome.Unknown;
+        }
 
 
     }
+
 }

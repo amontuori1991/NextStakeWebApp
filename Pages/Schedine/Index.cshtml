@@ -266,20 +266,32 @@
                                                 }
 
                                                 @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
-                                                {
-                                                    <span class="badge bg-success ms-2">✅ Vinta</span>
-                                                }
-                                                else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
-                                                {
-                                                    <span class="badge bg-danger ms-2">❌ Persa</span>
-                                                }
-                                                else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
-                                                {
-                                                    <span class="badge bg-secondary ms-2">⏳ In corso</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+{
+    <span class="badge bg-success ms-2">✅ Vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+{
+    <span class="badge bg-danger ms-2">❌ Persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Push)
+{
+    <span class="badge bg-info ms-2">↩️ Rimborso</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.HalfWon)
+{
+    <span class="badge bg-success ms-2">🟩 Mezza vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.HalfLost)
+{
+    <span class="badge bg-warning text-dark ms-2">🟧 Mezza persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+{
+    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+}
+else
+{
+    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
 
                                                     <span class="ms-2 d-inline-flex gap-1">
                                                         <form method="post" asp-page-handler="SetSelectionOutcome" class="m-0">
@@ -499,20 +511,32 @@
                                             }
 
                                             @if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Won)
-                                            {
-                                                <span class="badge bg-success ms-2">✅ Vinta</span>
-                                            }
-                                            else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
-                                            {
-                                                <span class="badge bg-danger ms-2">❌ Persa</span>
-                                            }
-                                            else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
-                                            {
-                                                <span class="badge bg-secondary ms-2">⏳ In corso</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
+{
+    <span class="badge bg-success ms-2">✅ Vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Lost)
+{
+    <span class="badge bg-danger ms-2">❌ Persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Push)
+{
+    <span class="badge bg-info ms-2">↩️ Rimborso</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.HalfWon)
+{
+    <span class="badge bg-success ms-2">🟩 Mezza vinta</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.HalfLost)
+{
+    <span class="badge bg-warning text-dark ms-2">🟧 Mezza persa</span>
+}
+else if (outcome == NextStakeWebApp.Pages.Schedine.IndexModel.SelectionOutcome.Pending)
+{
+    <span class="badge bg-secondary ms-2">⏳ In corso</span>
+}
+else
+{
+    <span class="badge bg-secondary ms-2">❓ Non valutabile</span>
                                             }
                                         </div>
 
