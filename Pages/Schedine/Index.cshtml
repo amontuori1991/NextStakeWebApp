@@ -570,8 +570,44 @@ else
     }
 
 </div>
+
+<!-- ✅ MODALE SCELTA CENSURA IMMAGINE -->
+<div class="modal fade" id="censorChoiceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark text-white border border-secondary rounded-4 shadow">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title">Genera immagine</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="fs-3">📸</div>
+          <div>
+<div class="fw-semibold mb-1">
+  Vuoi generare l’immagine con censura?
+  <span class="badge ms-2 ns-censored-badge">CENSORED</span>
+</div>
+<div class="text-white-50 small">
+  Con censura nasconde pick e quote (ideale per condivisione).
+</div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-outline-light" id="btnCensorNo">No (senza censura)</button>
+        <button type="button" class="btn btn-light" id="btnCensorYes">Sì (con censura)</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ✅ MODALE CONFERMA ELIMINAZIONE SCHEDINA -->
 <div class="modal fade" id="deleteSlipModal" tabindex="-1" aria-hidden="true">
+
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius:18px;">
       <div class="modal-header">
@@ -608,33 +644,18 @@ else
   </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const toast = document.getElementById("slipToast");
-
-  function showToastOnce() {
-    if (!toast) return;
-
-    toast.classList.remove("d-none");
-    toast.classList.add("d-flex");
-
-    setTimeout(() => {
-      toast.classList.remove("d-flex");
-      toast.classList.add("d-none");
-    }, 1000);
+<style>
+  .ns-censored-badge{
+    background: rgba(220, 53, 69, .18);
+    color: #ff6b6b;
+    border: 1px solid rgba(220, 53, 69, .35);
+    font-weight: 700;
+    letter-spacing: .5px;
+    padding: .35rem .55rem;
+    border-radius: 999px;
   }
+</style>
 
-  document.addEventListener("click", (e) => {
-    const a = e.target.closest("a");
-    if (!a) return;
-
-    const href = a.getAttribute("href") || "";
-    if (href.includes("handler=SlipImagePng")) {
-      showToastOnce();
-    }
-  });
-});
-</script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const modalEl = document.getElementById("deleteSlipModal");
@@ -666,3 +687,76 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
+<script>
+(function () {
+  let pendingUrl = null;
+  let modalInstance = null;
+
+  const toast = document.getElementById("slipToast");
+  function showToastOnce() {
+    if (!toast) return;
+    toast.classList.remove("d-none");
+    toast.classList.add("d-flex");
+
+    setTimeout(() => {
+      toast.classList.remove("d-flex");
+      toast.classList.add("d-none");
+    }, 1000);
+  }
+
+  function ensureModal() {
+    const el = document.getElementById('censorChoiceModal');
+    if (!el) return null;
+    if (!modalInstance) modalInstance = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+    return modalInstance;
+  }
+
+  function withCensor(url, censorValue) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('censor', String(censorValue)); // 0 o 1
+    return u.toString();
+  }
+
+  // click su "Immagine"
+  document.addEventListener('click', function (e) {
+    const a = e.target.closest('a.js-slip-image');
+    if (!a) return;
+
+    e.preventDefault();
+    pendingUrl = a.href;
+
+    const m = ensureModal();
+    if (m) m.show();
+    else {
+      showToastOnce();
+      window.location.href = withCensor(pendingUrl, 0);
+    }
+  });
+
+  // bottoni modal
+  document.addEventListener('click', function (e) {
+    if (!pendingUrl) return;
+
+    if (e.target && e.target.id === 'btnCensorYes') {
+      modalInstance?.hide();
+      showToastOnce();
+      window.location.href = withCensor(pendingUrl, 1);
+    }
+
+    if (e.target && e.target.id === 'btnCensorNo') {
+      modalInstance?.hide();
+      showToastOnce();
+      window.location.href = withCensor(pendingUrl, 0);
+    }
+  });
+
+  // quando chiudi (Annulla/X), resetto
+  const modalEl = document.getElementById('censorChoiceModal');
+  if (modalEl) {
+    modalEl.addEventListener('hidden.bs.modal', function () {
+      pendingUrl = null;
+    });
+  }
+})();
+</script>
+

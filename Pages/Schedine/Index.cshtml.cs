@@ -183,7 +183,8 @@ namespace NextStakeWebApp.Pages.Schedine
             return RedirectToPage();
         }
 
-        public async Task<IActionResult> OnGetSlipImagePngAsync(long slipId, int page = 1)
+        public async Task<IActionResult> OnGetSlipImagePngAsync(long slipId, int page = 1, int censor = 0)
+
         {
             // 🔐 solo plan=1
             if (!(User?.Identity?.IsAuthenticated ?? false) || !User.HasClaim("plan", "1"))
@@ -209,7 +210,8 @@ namespace NextStakeWebApp.Pages.Schedine
                 .Take(SvgPageSize)
                 .ToList();
 
-            var svg = await BuildSlipSvgAsync(slip, pageSelections, page, pages);
+            var svg = await BuildSlipSvgAsync(slip, pageSelections, page, pages, censor == 1);
+
             var pngBytes = SvgToPng(svg, widthPx: 1080);
 
             // ✅ iOS: meglio "image/png" così compare “Salva immagine”
@@ -217,7 +219,8 @@ namespace NextStakeWebApp.Pages.Schedine
             return File(pngBytes, "image/png");
         }
 
-        public async Task<IActionResult> OnGetSlipImageZipAsync(long slipId)
+        public async Task<IActionResult> OnGetSlipImageZipAsync(long slipId, int censor = 0)
+
         {
             // 🔐 solo plan=1
             if (!(User?.Identity?.IsAuthenticated ?? false) || !User.HasClaim("plan", "1"))
@@ -251,7 +254,8 @@ namespace NextStakeWebApp.Pages.Schedine
                         .ToList();
 
                     // genera SVG per questa pagina
-                    var svg = await BuildSlipSvgAsync(slip, pageSelections, pageIndex + 1, pages);
+                    var svg = await BuildSlipSvgAsync(slip, pageSelections, pageIndex + 1, pages, censor == 1);
+
 
                     // converte SVG->PNG
                     var pngBytes = SvgToPng(svg, widthPx: 1080);
@@ -270,7 +274,8 @@ namespace NextStakeWebApp.Pages.Schedine
             Response.Headers["Content-Disposition"] = $@"attachment; filename=""schedina_{slip.Id}.zip""";
             return File(zipBytes, "application/zip");
         }
-        private async Task<string> BuildSlipSvgAsync(BetSlip slip, List<BetSelection> pageSelections, int pageNo, int pages)
+        private async Task<string> BuildSlipSvgAsync(BetSlip slip, List<BetSelection> pageSelections, int pageNo, int pages, bool censor)
+
         {
             // match map locale (con loghi/nomi)
             var matchIds = pageSelections.Select(x => x.MatchId).Distinct().ToList();
@@ -680,19 +685,63 @@ namespace NextStakeWebApp.Pages.Schedine
                 int rowPillH = 46;
 
 
-                if (!string.IsNullOrWhiteSpace(market))
+                if (censor)
                 {
-                    sb.AppendLine($@"  <rect x=""120"" y=""{rowPillTop}"" width=""360"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                    sb.AppendLine($@"  <text x=""140"" y=""{rowPillTop + 31}"" class=""font pillText"">{Esc(market)}</text>");
+                    int censW = 520;
+                    int censX = 540 - (censW / 2);
 
+                    // Barra censura
+                    sb.AppendLine($@"
+  <rect x=""{censX}"" y=""{rowPillTop}""
+        width=""{censW}"" height=""{rowPillH}""
+        rx=""18""
+        fill=""#0b1020""
+        opacity=""0.92""
+        stroke=""#ff4d4f""
+        stroke-width=""2""/>");
+
+                    // Filigrana diagonale
+                    sb.AppendLine($@"
+  <text x=""540"" y=""{rowPillTop + 34}""
+        text-anchor=""middle""
+        class=""font""
+        transform=""rotate(-12 540 {rowPillTop + 34})""
+        style=""font-size:42px;
+               font-weight:900;
+               fill:#ff4d4f;
+               opacity:0.12;
+               letter-spacing:4px;"">
+    CENSORED
+  </text>");
+
+                    // Testo principale (centrato, leggibile)
+                    sb.AppendLine($@"
+  <text x=""540"" y=""{rowPillTop + 31}""
+        text-anchor=""middle""
+        class=""font""
+        style=""font-size:22px;
+               font-weight:900;
+               fill:#ff4d4f;
+               letter-spacing:2px;"">
+    CENSORED
+  </text>");
                 }
 
-                sb.AppendLine($@"  <rect x=""500"" y=""{rowPillTop}"" width=""340"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                sb.AppendLine($@"  <text x=""520"" y=""{rowPillTop + 31}"" class=""font pillText"">Pick: {Esc(pick)}</text>");
+                else
+                {
+                    if (!string.IsNullOrWhiteSpace(market))
+                    {
+                        sb.AppendLine($@"  <rect x=""120"" y=""{rowPillTop}"" width=""360"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                        sb.AppendLine($@"  <text x=""140"" y=""{rowPillTop + 31}"" class=""font pillText"">{Esc(market)}</text>");
+                    }
 
+                    sb.AppendLine($@"  <rect x=""500"" y=""{rowPillTop}"" width=""340"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                    sb.AppendLine($@"  <text x=""520"" y=""{rowPillTop + 31}"" class=""font pillText"">Pick: {Esc(pick)}</text>");
 
-                sb.AppendLine($@"  <rect x=""860"" y=""{rowPillTop}"" width=""120"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
-                sb.AppendLine($@"  <text x=""920"" y=""{rowPillTop + 31}"" text-anchor=""middle"" class=""font pillText"">x {Esc(oddTxt)}</text>");
+                    sb.AppendLine($@"  <rect x=""860"" y=""{rowPillTop}"" width=""120"" height=""{rowPillH}"" rx=""18"" fill=""#e5e7eb""/>");
+                    sb.AppendLine($@"  <text x=""920"" y=""{rowPillTop + 31}"" text-anchor=""middle"" class=""font pillText"">x {Esc(oddTxt)}</text>");
+                }
+
 
                 y += (RowRectH + RowGap);
                 idx++;
