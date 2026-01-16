@@ -318,6 +318,14 @@ namespace NextStakeWebApp.Pages.Schedine
 
             string Esc(string? s) => System.Security.SecurityElement.Escape(s ?? "") ?? "";
 
+            string Trunc(string s, int max)
+            {
+                if (string.IsNullOrWhiteSpace(s)) return "";
+                s = s.Trim();
+                return s.Length <= max ? s : s.Substring(0, max - 1) + "…";
+            }
+
+
             List<string> WrapByWords(string text, int maxCharsPerLine = 18, int maxLines = 2)
             {
                 if (string.IsNullOrWhiteSpace(text)) return new List<string> { "" };
@@ -760,8 +768,12 @@ namespace NextStakeWebApp.Pages.Schedine
             var published = slip.UpdatedAtUtc.ToRomeTime().ToString("dd/MM/yyyy HH:mm");
 
 
-            // testo centrato
-            sb.AppendLine($@"  <text x=""540"" y=""{footerTextY}"" text-anchor=""middle"" class=""font sub muted"">Pubblicata il: {Esc(published)}</text>");
+            // ✅ Footer: titolo a sinistra + timestamp a destra
+            var footerTitle = Trunc(title, 38); // regola pure 34/40/45 in base a quanto spazio vuoi
+
+            sb.AppendLine($@"  <text x=""80"" y=""{footerTextY}"" text-anchor=""start"" class=""font sub white"">{Esc(footerTitle)}</text>");
+            sb.AppendLine($@"  <text x=""1000"" y=""{footerTextY}"" text-anchor=""end"" class=""font sub muted"">Pubblicata il: {Esc(published)}</text>");
+
 
 
 
