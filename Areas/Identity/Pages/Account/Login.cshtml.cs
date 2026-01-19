@@ -93,8 +93,18 @@ namespace NextStakeWebApp.Areas.Identity.Pages.Account
 
             if (result.Succeeded)
             {
+                // Salva ultimo login
+                user.LastLoginAtUtc = DateTime.UtcNow;
+
+                // Opzionale: IP + UserAgent
+                user.LastLoginIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+                user.LastLoginUserAgent = Request.Headers["User-Agent"].ToString();
+
+                await _userManager.UpdateAsync(user);
+
                 return LocalRedirect(ReturnUrl);
             }
+
 
             ModelState.AddModelError(string.Empty, "Credenziali non valide.");
             return Page();

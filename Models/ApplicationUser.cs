@@ -17,5 +17,11 @@ namespace NextStakeWebApp.Models
 
         public string? Theme { get; set; }
 
+        // === Login tracking ===
+        public DateTime? LastLoginAtUtc { get; set; }
+
+        // (opzionali, ma utilissimi)
+        public string? LastLoginIp { get; set; }
+        public string? LastLoginUserAgent { get; set; }
     }
 }

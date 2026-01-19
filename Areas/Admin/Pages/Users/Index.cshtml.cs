@@ -58,6 +58,21 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
                 {
                     Id = u.Id,
                     Email = u.Email ?? "",
+                    UserName = u.UserName ?? "",
+                    DisplayName = u.DisplayName,
+                    EmailConfirmed = u.EmailConfirmed,
+
+                    CreatedAtUtc = u.CreatedAtUtc,
+                    CreatedAtDisplay = TimeZoneInfo.ConvertTimeFromUtc(u.CreatedAtUtc, RomeTz).ToString("dd/MM/yyyy HH:mm"),
+
+                    LastLoginAtUtc = u.LastLoginAtUtc,
+                    LastLoginAtDisplay = u.LastLoginAtUtc.HasValue
+                        ? TimeZoneInfo.ConvertTimeFromUtc(u.LastLoginAtUtc.Value, RomeTz).ToString("dd/MM/yyyy HH:mm")
+                        : null,
+
+                    LastLoginIp = u.LastLoginIp,
+                    LastLoginUserAgent = u.LastLoginUserAgent,
+
                     Plan = u.Plan.ToString(),
                     PlanExpiresAtUtc = u.PlanExpiresAtUtc,
                     PlanExpiresAtLocalYmd = localYmd,
@@ -66,6 +81,7 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
                     IsInfinite = infinite,
                     Status = status
                 };
+
             })
             // Per comodità, ordino: in scadenza, scaduti, attivi (ma poi dividiamo in 3 sezioni)
             .OrderBy(u => u.Status == "In scadenza" ? 0 : u.Status == "Scaduto" ? 1 : 2)
@@ -176,6 +192,19 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
         {
             public string Id { get; set; } = default!;
             public string Email { get; set; } = default!;
+
+            public string UserName { get; set; } = default!;
+            public string? DisplayName { get; set; }
+            public bool EmailConfirmed { get; set; }
+
+            public DateTime CreatedAtUtc { get; set; }
+            public string? CreatedAtDisplay { get; set; }
+
+            public DateTime? LastLoginAtUtc { get; set; }
+            public string? LastLoginAtDisplay { get; set; }
+            public string? LastLoginIp { get; set; }
+            public string? LastLoginUserAgent { get; set; }
+
             public string Plan { get; set; } = default!;
             public DateTime? PlanExpiresAtUtc { get; set; }
 
@@ -188,5 +217,6 @@ namespace NextStakeWebApp.Areas.Admin.Pages.Users
             // Stato calcolato: "Attivo" | "In scadenza" | "Scaduto"
             public string Status { get; set; } = "Attivo";
         }
+
     }
 }

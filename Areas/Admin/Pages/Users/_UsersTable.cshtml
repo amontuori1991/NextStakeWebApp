@@ -5,12 +5,18 @@
         <thead>
             <tr>
                 <th>Email</th>
+                <th>Username</th>
+                <th>Nome</th>
+                <th>Registrato</th>
+                <th>Ultimo login</th>
                 <th>Piano</th>
                 <th>Scadenza</th>
                 <th>Stato</th>
                 <th>Approvato</th>
+                <th>Email OK</th>
                 <th>Azioni</th>
             </tr>
+
         </thead>
         <tbody>
             @if (Model.Any())
@@ -19,24 +25,24 @@
                 {
                     <tr>
                         <td>@user.Email</td>
-                        <td>@user.Plan</td>
+                        <td>@user.UserName</td>
+                        <td>@(string.IsNullOrWhiteSpace(user.DisplayName) ? "-" : user.DisplayName)</td>
+                        <td>@(user.CreatedAtDisplay ?? "-")</td>
                         <td>
-                            @(user.PlanExpiresAtDisplay ?? "∞")
-                        </td>
-                        <td>
-                            @switch (user.Status)
+                            @if (!string.IsNullOrWhiteSpace(user.LastLoginAtDisplay))
                             {
-                                case "Attivo":
-                                    <span class="badge bg-success status-badge">Attivo</span>
-                                    break;
-                                case "In scadenza":
-                                    <span class="badge bg-warning text-dark status-badge">In scadenza</span>
-                                    break;
-                                default:
-                                    <span class="badge bg-danger status-badge">Scaduto</span>
-                                    break;
+                                <div>@user.LastLoginAtDisplay</div>
+                                @if (!string.IsNullOrWhiteSpace(user.LastLoginIp))
+                                {
+                                    <div class="text-muted small">@user.LastLoginIp</div>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">Mai</span>
                             }
                         </td>
+
                         <td>
                             @if (user.IsApproved)
                             {
@@ -47,6 +53,18 @@
                                 <span class="badge bg-danger">No</span>
                             }
                         </td>
+
+                        <td>
+                            @if (user.EmailConfirmed)
+                            {
+                                <span class="badge bg-success">Sì</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">No</span>
+                            }
+                        </td>
+
                         <td class="text-nowrap">
                             <!-- Approva/Blocca -->
                             <form method="post"
@@ -94,7 +112,8 @@
             else
             {
                 <tr>
-                    <td colspan="6" class="text-center text-muted">Nessun utente in questa sezione.</td>
+                    <td colspan="11" class="text-center text-muted">Nessun utente in questa sezione.</td>
+
                 </tr>
             }
         </tbody>
