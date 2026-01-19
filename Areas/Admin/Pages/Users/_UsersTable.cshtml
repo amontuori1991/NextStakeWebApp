@@ -1,7 +1,7 @@
 ﻿@model List<NextStakeWebApp.Areas.Admin.Pages.Users.IndexModel.AdminUserViewModel>
 
 <div class="table-responsive">
-    <table class="table table-sm table-striped align-middle">
+    <table class="table table-sm table-striped align-middle themed-table">
         <thead>
             <tr>
                 <th>Email</th>
@@ -16,95 +16,151 @@
                 <th>Email OK</th>
                 <th>Azioni</th>
             </tr>
-
         </thead>
+
         <tbody>
             @if (Model.Any())
             {
                 foreach (var user in Model)
                 {
                     <tr>
-                        <td>@user.Email</td>
-                        <td>@user.UserName</td>
-                        <td>@(string.IsNullOrWhiteSpace(user.DisplayName) ? "-" : user.DisplayName)</td>
-                        <td>@(user.CreatedAtDisplay ?? "-")</td>
-                        <td>
-                            @if (!string.IsNullOrWhiteSpace(user.LastLoginAtDisplay))
-                            {
-                                <div>@user.LastLoginAtDisplay</div>
-                                @if (!string.IsNullOrWhiteSpace(user.LastLoginIp))
+                        <td data-label="Email">
+                            <div class="cell-value" title="@user.Email">@user.Email</div>
+                        </td>
+
+                        <td data-label="Username">
+                            <div class="cell-value" title="@user.UserName">@user.UserName</div>
+                        </td>
+
+                        <td data-label="Nome">
+                            <div class="cell-value">
+                                @(string.IsNullOrWhiteSpace(user.DisplayName) ? "-" : user.DisplayName)
+                            </div>
+                        </td>
+
+                        <td data-label="Registrato">
+                            <div class="cell-value">@(user.CreatedAtDisplay ?? "-")</div>
+                        </td>
+
+                        <td data-label="Ultimo login">
+                            <div class="cell-value">
+                                @if (!string.IsNullOrWhiteSpace(user.LastLoginAtDisplay))
                                 {
-                                    <div class="text-muted small">@user.LastLoginIp</div>
-                                }
-                            }
-                            else
-                            {
-                                <span class="text-muted">Mai</span>
-                            }
-                        </td>
+                                    <div>@user.LastLoginAtDisplay</div>
 
-                        <td>
-                            @if (user.IsApproved)
-                            {
-                                <span class="badge bg-success">Sì</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-danger">No</span>
-                            }
-                        </td>
-
-                        <td>
-                            @if (user.EmailConfirmed)
-                            {
-                                <span class="badge bg-success">Sì</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-danger">No</span>
-                            }
-                        </td>
-
-                        <td class="text-nowrap">
-                            <!-- Approva/Blocca -->
-                            <form method="post"
-                                  action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
-                                  class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                    @(user.IsApproved ? "Blocca" : "Approva")
-                                </button>
-                            </form>
-
-                            <!-- Cambio Piano -->
-                            <form method="post"
-                                  action="/Admin/Users?handler=ChangePlan&id=@user.Id"
-                                  class="d-inline ms-1">
-                                @Html.AntiForgeryToken()
-                                <select name="plan" class="form-select form-select-sm d-inline w-auto align-middle">
-                                    @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
+                                    @if (!string.IsNullOrWhiteSpace(user.LastLoginIp))
                                     {
-                                        <option value="@p" selected="@(p == user.Plan)">@p</option>
+                                        <div class="text-muted small">@user.LastLoginIp</div>
                                     }
-                                </select>
-                                <button type="submit" class="btn btn-sm btn-outline-primary ms-1">Cambia</button>
-                            </form>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Mai</span>
+                                }
+                            </div>
+                        </td>
 
-                            <!-- Modifica Scadenza (data o ∞) -->
-                            <form method="post"
-                                  action="/Admin/Users?handler=ChangeExpiry&id=@user.Id"
-                                  class="d-inline ms-1">
-                                @Html.AntiForgeryToken()
-                                <input type="date"
-                                       name="expiryDate"
-                                       class="form-control form-control-sm d-inline w-auto align-middle"
-                                       value="@(user.PlanExpiresAtLocalYmd ?? "")" />
-                                <div class="form-check form-check-inline ms-1 align-middle">
-                                    <input class="form-check-input" type="checkbox" name="infinite" value="true" @(user.IsInfinite ? "checked" : "") />
-                                    <label class="form-check-label">∞</label>
-                                </div>
-                                <button type="submit" class="btn btn-sm btn-outline-warning ms-1">Salva scadenza</button>
-                            </form>
+                        <td data-label="Piano">
+                            <div class="cell-value">@user.Plan</div>
+                        </td>
+
+                        <td data-label="Scadenza">
+                            <div class="cell-value">@(user.PlanExpiresAtDisplay ?? "∞")</div>
+                        </td>
+
+                        <td data-label="Stato">
+                            <div class="cell-value">
+                                @switch (user.Status)
+                                {
+                                    case "Attivo":
+                                        <span class="badge bg-success status-badge">Attivo</span>
+                                        break;
+                                    case "In scadenza":
+                                        <span class="badge bg-warning text-dark status-badge">In scadenza</span>
+                                        break;
+                                    default:
+                                        <span class="badge bg-danger status-badge">Scaduto</span>
+                                        break;
+                                }
+                            </div>
+                        </td>
+
+                        <td data-label="Approvato">
+                            <div class="cell-value">
+                                @if (user.IsApproved)
+                                {
+                                    <span class="badge bg-success">Sì</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">No</span>
+                                }
+                            </div>
+                        </td>
+
+                        <td data-label="Email OK">
+                            <div class="cell-value">
+                                @if (user.EmailConfirmed)
+                                {
+                                    <span class="badge bg-success">Sì</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">No</span>
+                                }
+                            </div>
+                        </td>
+
+                        <td data-label="Azioni" class="actions-cell">
+                            <div class="cell-value">
+                                <!-- Approva/Blocca -->
+                                <form method="post"
+                                      action="/Admin/Users?handler=ToggleApproval&id=@user.Id"
+                                      class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                        @(user.IsApproved ? "Blocca" : "Approva")
+                                    </button>
+                                </form>
+
+                                <!-- Cambio Piano -->
+                                <form method="post"
+                                      action="/Admin/Users?handler=ChangePlan&id=@user.Id"
+                                      class="d-inline ms-1">
+                                    @Html.AntiForgeryToken()
+                                    <select name="plan" class="form-select form-select-sm d-inline w-auto align-middle">
+                                        @foreach (var p in Enum.GetNames(typeof(NextStakeWebApp.Models.SubscriptionPlan)))
+                                        {
+                                            <option value="@p" selected="@(p == user.Plan)">@p</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn-sm btn-outline-primary ms-1">Cambia</button>
+                                </form>
+
+                                <!-- Modifica Scadenza (data o ∞) -->
+                                <form method="post"
+                                      action="/Admin/Users?handler=ChangeExpiry&id=@user.Id"
+                                      class="d-inline ms-1">
+                                    @Html.AntiForgeryToken()
+                                    <input type="date"
+                                           name="expiryDate"
+                                           class="form-control form-control-sm d-inline w-auto align-middle"
+                                           value="@(user.PlanExpiresAtLocalYmd ?? "")" />
+
+                                    <div class="form-check form-check-inline ms-1 align-middle">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               name="infinite"
+                                               value="true"
+                                               @(user.IsInfinite ? "checked" : "") />
+                                        <label class="form-check-label">∞</label>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-sm btn-outline-warning ms-1">
+                                        Salva scadenza
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 }
@@ -113,7 +169,6 @@
             {
                 <tr>
                     <td colspan="11" class="text-center text-muted">Nessun utente in questa sezione.</td>
-
                 </tr>
             }
         </tbody>

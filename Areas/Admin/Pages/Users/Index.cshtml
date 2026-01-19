@@ -54,113 +54,102 @@
     </div>
 </div>
 
+
 @section Styles {
-    <text>
-        <style>
-            body {
-                background: linear-gradient(135deg, #252e40 0%, #1a2230 100%);
-                color: #e9edf3;
-                font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    <style>
+        /* Tabella coerente con tema (usa variabili globali) */
+        .admin-users-page .table {
+            --bs-table-color: var(--text);
+            --bs-table-bg: transparent;
+            --bs-table-border-color: var(--border);
+            --bs-table-striped-bg: rgba(255,255,255,.06);
+            --bs-table-striped-color: var(--text);
+            --bs-table-hover-bg: rgba(255,255,255,.10);
+            --bs-table-hover-color: var(--text);
+        }
+
+        :root[data-theme="light"] .admin-users-page .table {
+            --bs-table-striped-bg: rgba(0,0,0,.03);
+            --bs-table-hover-bg: rgba(0,0,0,.04);
+        }
+
+        .admin-users-page .table thead th {
+            white-space: nowrap;
+        }
+
+        .status-badge {
+            font-size: .75rem;
+        }
+
+        /* Mobile: tabella -> cards leggibili (NO tagli, NO overflow) */
+        @@media (max-width: 768px) {
+
+            .admin-users-page .table thead {
+                display: none;
             }
 
-            .admin-users-page .card,
-            .admin-users-page .dropdown-menu,
-            .admin-users-page .modal-content {
-                background: rgba(255,255,255,0.06);
-                border: 1px solid rgba(255,255,255,0.16);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-                color: #e9edf3;
+            .admin-users-page .table tbody tr {
+                display: block;
+                margin-bottom: 12px;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 12px;
+                background: var(--card);
+                overflow: hidden;
+            }
+            /* Ogni cella diventa: LABEL | VALUE */
+            .admin-users-page .table tbody td {
+                display: grid;
+                grid-template-columns: 120px 1fr;
+                align-items: start;
+                gap: 10px;
+                padding: 8px 0;
+                border: 0;
+                white-space: normal;
             }
 
-            .admin-users-page .card-header {
-                background: rgba(255,255,255,0.06);
-                border-bottom: 1px solid rgba(255,255,255,0.14);
-                color: #f4f7fb;
-            }
-
-            /* Tabella dark leggibile + zebratura */
-            .admin-users-page .table {
-                --bs-table-color: #e9edf3;
-                --bs-table-bg: transparent;
-                --bs-table-border-color: rgba(255,255,255,.16);
-                --bs-table-striped-bg: rgba(255,255,255,.08);
-                --bs-table-striped-color: #e9edf3;
-                --bs-table-hover-bg: rgba(255,255,255,.12);
-                --bs-table-hover-color: #fff;
-            }
-
-                .admin-users-page .table thead th {
-                    background: rgba(255,255,255,.12);
-                    color: #f4f7fb;
-                    border-bottom-color: rgba(255,255,255,.22);
-                    white-space: nowrap;
+                .admin-users-page .table tbody td::before {
+                    content: attr(data-label);
+                    font-weight: 700;
+                    color: var(--muted-text);
+                    line-height: 1.2;
                 }
-
-                .admin-users-page .table tbody tr > * {
-                    color: #e9edf3;
-                    border-top-color: rgba(255,255,255,.10);
-                }
-
-            /* Form scuri coerenti */
-            .admin-users-page .form-control,
-            .admin-users-page .form-select {
-                background: rgba(255,255,255,.10);
-                border: 1px solid rgba(255,255,255,.24);
-                color: #fff;
+            /* Valori: non devono uscire mai dalla card */
+            .admin-users-page .cell-value {
+                min-width: 0;
+                white-space: nowrap; /* 🔒 una sola riga */
+                overflow: hidden; /* nasconde il resto */
+                text-overflow: ellipsis; /* … */
+                text-align: right;
             }
 
-                .admin-users-page .form-control:focus,
-                .admin-users-page .form-select:focus {
-                    border-color: #00c3ff;
-                    box-shadow: 0 0 0 4px rgba(0,195,255,.18);
-                }
-                /* Opzioni nel menu nativo */
-                .admin-users-page .form-select option {
-                    color: #111;
-                    background: #fff;
-                }
 
-            /* Pulsanti coerenti */
-            .admin-users-page .btn-outline-primary {
-                color: #7bd3ff;
-                border-color: #7bd3ff;
+            .admin-users-page .table-responsive {
+                overflow: visible;
+            }
+            /* Azioni: stack verticale full width */
+            .admin-users-page td.actions-cell .cell-value {
+                white-space: normal; /* azioni libere */
+                overflow: visible;
+                text-overflow: unset;
             }
 
-                .admin-users-page .btn-outline-primary:hover {
-                    background: rgba(123,211,255,.12);
-                }
 
-            .admin-users-page .btn-outline-secondary {
-                color: #e9edf3;
-                border-color: rgba(255,255,255,.28);
+            .admin-users-page td.actions-cell form {
+                display: block !important;
+                margin: 8px 0 !important;
             }
 
-                .admin-users-page .btn-outline-secondary:hover {
-                    background: rgba(255,255,255,.10);
-                }
-
-            .admin-users-page .btn-outline-warning {
-                color: #ffd166;
-                border-color: #ffd166;
+            .admin-users-page td.actions-cell .form-select,
+            .admin-users-page td.actions-cell .form-control,
+            .admin-users-page td.actions-cell .btn {
+                width: 100% !important;
             }
 
-                .admin-users-page .btn-outline-warning:hover {
-                    background: rgba(255,209,102,.12);
-                }
-
-            a {
-                color: #7bd3ff;
+            .admin-users-page td.actions-cell .form-check {
+                margin-top: 8px;
             }
-
-                a:hover {
-                    color: #9be0ff;
-                }
-
-            .status-badge {
-                font-size: .75rem;
-            }
-        </style>
-    </text>
+        }
+    </style>
 }
 
