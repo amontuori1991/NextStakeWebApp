@@ -2217,6 +2217,38 @@
             .exchange-picks .list-group-item {
                 background: rgba(220,53,69,.05) !important;
             }
+            /* ===== FORCE GREEN per Best + Exchange (override finale) ===== */
+
+            /* Header verde per entrambe */
+            .best-picks > .card-header,
+            .exchange-picks > .card-header {
+                background: linear-gradient(90deg, #1f9d55, #38c172) !important;
+                color: #fff !important;
+                border: none !important;
+            }
+
+                .best-picks > .card-header small,
+                .exchange-picks > .card-header small {
+                    color: rgba(255,255,255,.85) !important;
+                }
+
+            /* Body verde leggero per entrambe */
+            .best-picks > .card-body,
+            .exchange-picks > .card-body {
+                background: rgba(40,167,69,.08) !important;
+            }
+
+            .best-picks .list-group-item,
+            .exchange-picks .list-group-item {
+                background: rgba(40,167,69,.05) !important;
+            }
+
+            /* Bordo leggero verde per entrambe */
+            .best-picks,
+            .exchange-picks {
+                border: 2px solid rgba(40,167,69,.30) !important;
+                box-shadow: 0 10px 30px rgba(0,0,0,.15) !important;
+            }
 
         </style>
     </text>
