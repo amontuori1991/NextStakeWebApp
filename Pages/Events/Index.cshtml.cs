@@ -57,6 +57,47 @@ namespace NextStakeWebApp.Pages.Events
         public bool ShowBest { get; private set; }
         public List<NextStakeWebApp.Models.BestPickRow> BestPicks { get; private set; } = new();
         public string? BestMessage { get; private set; }
+        // === Migliori Exchange di Oggi ===
+        public bool ShowExchange { get; private set; }
+        public List<ExchangeTodayRow> ExchangePicks { get; private set; } = new();
+
+        public string? ExchangeMessage { get; private set; }
+
+        // DTO per la view exchange_exact_lay_candidates...
+        public class ExchangePickRow
+        {
+            public long Match_Id { get; set; }
+            public DateTime Match_Date { get; set; }
+            public int LeagueId { get; set; }
+            public int Season { get; set; }
+            public int HomeId { get; set; }
+            public string? Home_Name { get; set; }
+            public int AwayId { get; set; }
+            public string? Away_Name { get; set; }
+
+            public float? Odd_Home { get; set; }
+            public float? Odd_Draw { get; set; }
+            public float? Odd_Away { get; set; }
+            public float? Odd_Over_15 { get; set; }
+            public float? Odd_Over_25 { get; set; }
+
+            public int? Home_Rank { get; set; }
+            public int? Away_Rank { get; set; }
+            public int? Rank_Diff { get; set; }
+
+            public float? Xg_Pred_Home { get; set; }
+            public float? Xg_Pred_Away { get; set; }
+            public float? Xg_Pred_Total { get; set; }
+
+            public int Home_Hist_N { get; set; }
+            public int Away_Hist_N { get; set; }
+
+            public string? Favorite_Side { get; set; }
+            public decimal? Favorite_Odd { get; set; }
+            public string? Score_To_Lay { get; set; }
+            public int Lay_Ok { get; set; }
+            public int Rating { get; set; }
+        }
 
         // === Asset per i Best, indicizzati per MatchId ===
         public Dictionary<long, MatchAssets> AssetsByMatchId { get; private set; } = new();
@@ -121,7 +162,8 @@ namespace NextStakeWebApp.Pages.Events
             public string? CountryName { get; set; }
         }
 
-        public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null)
+        public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null, int? ex = null)
+
         {
             if (!string.IsNullOrWhiteSpace(d) && DateOnly.TryParse(d, out var parsed))
                 SelectedDate = parsed;
@@ -130,6 +172,7 @@ namespace NextStakeWebApp.Pages.Events
             SelectedCountryCode = string.IsNullOrWhiteSpace(country) ? null : country;
             Query = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
             ShowBest = best == 1;
+            ShowExchange = ex == 1;
             VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
             // Preferiti dell'utente
             var userId = _userManager.GetUserId(User)!;
@@ -274,6 +317,10 @@ namespace NextStakeWebApp.Pages.Events
 
             if (ShowBest)
                 await LoadBestPicksAsync();
+
+            if (ShowExchange)
+                await LoadExchangePicksAsync();
+
 
             ViewData["Title"] = "Eventi";
         }
@@ -494,6 +541,82 @@ namespace NextStakeWebApp.Pages.Events
                 BestMessage = $"Errore nell'esecuzione della query dei pronostici: {ex.Message}";
                 BestPicks = new();
                 AssetsByMatchId = new();
+            }
+        }
+        private async Task LoadExchangePicksAsync()
+        {
+            var analysis = await _read.Analyses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Description == "Migliori Exchange Di Oggi");
+
+
+            if (analysis == null)
+            {
+                ExchangeMessage = "Nessuna analisi trovata con viewname='..' e description='Migliori Exchange Di Oggi'.";
+                ExchangePicks = new();
+                return;
+            }
+
+            var sql = (analysis.ViewValue ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(sql))
+            {
+                ExchangeMessage = "La query (viewvalue) risulta vuota.";
+                ExchangePicks = new();
+                return;
+            }
+
+            try
+            {
+                ExchangePicks = await _read.Set<ExchangeTodayRow>()
+                    .FromSqlRaw(sql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+
+                if (ExchangePicks.Count == 0)
+                {
+                    ExchangeMessage = "Nessun candidato exchange disponibile al momento.";
+                    return;
+                }
+
+                // Carico loghi/flag come fai per i Best
+                var matchIds = ExchangePicks.Select(x => (int)x.Match_Id).Distinct().ToList();
+
+                var assets = await (
+                    from m in _read.Matches
+                    join lg in _read.Leagues on m.LeagueId equals lg.Id
+                    join th in _read.Teams on m.HomeId equals th.Id
+                    join ta in _read.Teams on m.AwayId equals ta.Id
+                    where matchIds.Contains(m.Id)
+                    select new
+                    {
+                        m.Id,
+                        LeagueLogo = lg.Logo,
+                        LeagueFlag = lg.Flag,
+                        CountryCode = lg.CountryCode,
+                        HomeLogo = th.Logo,
+                        AwayLogo = ta.Logo
+                    }
+                )
+                .AsNoTracking()
+                .ToListAsync();
+
+                AssetsByMatchId = assets.ToDictionary(
+                    k => (long)k.Id,
+                    v => new MatchAssets
+                    {
+                        LeagueLogo = v.LeagueLogo,
+                        LeagueFlag = v.LeagueFlag,
+                        HomeLogo = v.HomeLogo,
+                        AwayLogo = v.AwayLogo,
+                        CountryCode = v.CountryCode
+                    }
+                );
+            }
+            catch (Exception ex)
+            {
+                ExchangeMessage = $"Errore nell'esecuzione della query Exchange: {ex.Message}";
+                ExchangePicks = new();
             }
         }
 

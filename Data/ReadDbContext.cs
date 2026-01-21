@@ -6,6 +6,8 @@ namespace NextStakeWebApp.Data
     public class ReadDbContext : DbContext
     {
         public ReadDbContext(DbContextOptions<ReadDbContext> options) : base(options) { }
+        public DbSet<ExchangeTodayRow> ExchangeTodayRows => Set<ExchangeTodayRow>();
+
 
         public DbSet<MatchCore> Matches => Set<MatchCore>();
         public DbSet<NextMatch> NextMatches => Set<NextMatch>();
@@ -27,6 +29,12 @@ namespace NextStakeWebApp.Data
             modelBuilder.Entity<Team>().ToTable("teams", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<Standing>().ToTable("standings", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<BestPickRow>().HasNoKey();
+            modelBuilder.Entity<ExchangeTodayRow>(eb =>
+            {
+                eb.HasNoKey();
+                eb.ToView(null); // query-only (FromSqlRaw)
+            });
+
 
             // 🔹 Mapping tabella odds (Postgres: "odds", tutta minuscola)
             modelBuilder.Entity<Odds>(entity =>

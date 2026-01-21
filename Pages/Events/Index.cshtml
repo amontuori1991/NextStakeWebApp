@@ -40,7 +40,11 @@
     var endCal = lastOfMonth;
     while (endCal.DayOfWeek != DayOfWeek.Sunday) endCal = endCal.AddDays(1);
 
-    var common = $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}" + (Model.ShowBest ? "&best=1" : "");
+    var common =
+    $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}"
+    + (Model.ShowBest ? "&best=1" : "")
+    + (Model.ShowExchange ? "&ex=1" : "");
+
 }
 
 @{
@@ -118,6 +122,19 @@
                        data-loading="best">
                         Migliori pronostici
                     </a>
+                    <a class="btn btn-primary"
+                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&ex=1"
+                       data-loading="exchange">
+                        Migliori Exchange di oggi
+                    </a>
+
+                    @if (Model.ShowExchange)
+                    {
+                        <a class="btn btn-outline-secondary"
+                           href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query">
+                            Nascondi exchange
+                        </a>
+                    }
 
                     @if (Model.ShowBest)
                     {
@@ -126,6 +143,8 @@
                             Nascondi pronostici
                         </a>
                     }
+                    
+
                 </div>
                 <div class="card p-3 mb-3">
                     <div class="d-flex align-items-center justify-content-between">
@@ -217,7 +236,8 @@
 
                 @if (Model.ShowBest)
                 {
-                    <div class="card mb-4 best-picks">
+                    <div class="card mb-4 exchange-picks">
+
                         <div class="card-header d-flex align-items-center justify-content-between">
                             <div class="fw-semibold">🔥 Migliori pronostici</div>
                             <small class="text-muted">Ordinati per data/ora</small>
@@ -361,6 +381,87 @@
                                         </div>
                                     </div>
                                 }
+                            }
+                        </div>
+                    </div>
+                }
+                @if (Model.ShowExchange)
+                {
+                    <div class="card mb-4 exchange-picks" id="exchangePicks">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <div class="fw-semibold">⚡ Migliori Exchange di oggi</div>
+                            <small class="text-muted">Ordinati per rating</small>
+                        </div>
+
+                        <div class="card-body">
+                            @if (!string.IsNullOrWhiteSpace(Model.ExchangeMessage))
+                            {
+                                <div class="alert alert-info mb-3">@Model.ExchangeMessage</div>
+                            }
+
+                            @{
+                                var exItems = (Model.ExchangePicks ?? new List<NextStakeWebApp.Models.ExchangeTodayRow>())
+
+                                .OrderByDescending(x => x.Rating)
+                                .ThenBy(x => x.Match_Date)
+                                .Select(r =>
+                                {
+                                    Model.AssetsByMatchId.TryGetValue(r.Match_Id, out var a);
+                                    return new { R = r, A = a };
+                                })
+                                .ToList();
+                            }
+
+                            @if (exItems.Count == 0)
+                            {
+                                <div class="alert alert-secondary mb-0">Nessun candidato exchange disponibile al momento.</div>
+                            }
+                            else
+                            {
+                                <div class="list-group list-group-flush">
+                                    @foreach (var row in exItems)
+                                    {
+                                        var ko = row.R.Match_Date.ToString("dd/MM HH:mm");
+
+                                        <div class="list-group-item exchange-row">
+                                            <a href="/Match/Details?id=@row.R.Match_Id&d=@Model.SelectedDate.ToString("yyyy-MM-dd")@common"
+                                               class="match-grid">
+
+                                                <div class="team home">
+                                                    @if (!string.IsNullOrWhiteSpace(row.A?.HomeLogo))
+                                                    {
+                                                        <span class="team-logo-box">
+                                                            <img src="@row.A.HomeLogo" alt="home" class="team-logo" />
+                                                        </span>
+                                                    }
+                                                    <span class="team-name">@row.R.Home_Name</span>
+                                                </div>
+
+                                                <div class="center">
+                                                    <span class="badge bg-danger mb-1">LAY @row.R.Score_To_Lay</span>
+                                                    <small class="text-muted">@ko</small>
+                                                    <small class="text-muted">
+                                                        Rating: <b>@row.R.Rating</b> | xG: <b>@row.R.Xg_Pred_Total.ToString("0.00")</b>
+                                                    </small>
+                                                </div>
+
+                                                <div class="team away">
+                                                    <span class="team-name">@row.R.Away_Name</span>
+                                                    @if (!string.IsNullOrWhiteSpace(row.A?.AwayLogo))
+                                                    {
+                                                        <span class="team-logo-box">
+                                                            <img src="@row.A.AwayLogo" alt="away" class="team-logo" />
+                                                        </span>
+                                                    }
+                                                </div>
+
+                                                <div class="home-score">–</div>
+                                                <div class="score-sep">:</div>
+                                                <div class="away-score">–</div>
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
                             }
                         </div>
                     </div>
@@ -558,6 +659,10 @@
 
         const matchLink = e.target.closest('a.match-grid');
         if (matchLink) { showOverlay('Caricamento match in corso…'); return; }
+
+            const exBtn = e.target.closest('a[data-loading="exchange"]');
+    if (exBtn) { showOverlay('Caricamento migliori exchange…'); return; }
+
 
         const generic = e.target.closest('a[data-loading-message]');
         if (generic) { showOverlay(generic.getAttribute('data-loading-message') || 'Caricamento…'); }
@@ -1562,6 +1667,16 @@
             });
         })();
     </script>
+    <script>
+        (function () {
+          const qs = new URLSearchParams(location.search);
+          if (qs.get('ex') === '1') {
+            setTimeout(() => {
+              document.getElementById('exchangePicks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 150);
+          }
+        })();
+    </script>
 
 
 }
@@ -2014,6 +2129,94 @@
                     border-color: #146c43;
                 }
 
+            .exchange-picks {
+                border: 2px solid rgba(220,53,69,.35);
+                box-shadow: 0 10px 30px rgba(0,0,0,.15);
+            }
+
+
+            /* Bottone Migliori Exchange di oggi */
+            .btn-primary[data-loading="exchange"],
+            .btn-primary:has([data-loading="exchange"]) {
+                color: #ffffff !important;
+            }
+
+            /* === HEADER MIGLIORI PRONOSTICI === */
+            .best-picks > .card-header {
+                background: linear-gradient(90deg, #1f9d55, #38c172); /* verde pastello */
+                color: #ffffff;
+                border: none;
+            }
+
+                .best-picks > .card-header small {
+                    color: rgba(255,255,255,.85);
+                }
+            /* Corpo card pronostici */
+            .best-picks > .card-body {
+                background: rgba(40, 167, 69, 0.08); /* verde leggerissimo */
+            }
+            /* === HEADER EXCHANGE === */
+            .exchange-picks > .card-header {
+                background: linear-gradient(90deg, #c81d25, #e63946);
+                color: #ffffff;
+                border: none;
+            }
+
+                .exchange-picks > .card-header small {
+                    color: rgba(255,255,255,.85);
+                }
+
+            /* Corpo card exchange */
+            .exchange-picks > .card-body {
+                background: rgba(220, 53, 69, 0.08); /* rosso leggerissimo */
+            }
+
+            .exchange-picks .list-group-item {
+                background: rgba(220,53,69,0.05);
+            }
+
+            .best-picks .list-group-item {
+                background: rgba(40,167,69,0.05);
+            }
+            /* ========= SEZIONI SPECIALI (FINALE) ========= */
+
+            /* Pronostici = VERDE */
+            .best-picks > .card-header {
+                background: linear-gradient(90deg, #1f9d55, #38c172);
+                color: #fff !important;
+                border: none;
+            }
+
+                .best-picks > .card-header small {
+                    color: rgba(255,255,255,.85) !important;
+                }
+
+            .best-picks > .card-body {
+                background: rgba(40,167,69,.08) !important;
+            }
+
+            .best-picks .list-group-item {
+                background: rgba(40,167,69,.05) !important;
+            }
+
+            /* Exchange = ROSSO */
+            .exchange-picks > .card-header {
+                background: linear-gradient(90deg, #c81d25, #e63946);
+                color: #fff !important;
+                border: none;
+            }
+
+                .exchange-picks > .card-header small {
+                    color: rgba(255,255,255,.85) !important;
+                }
+
+            .exchange-picks > .card-body {
+                background: rgba(220,53,69,.08) !important;
+            }
+
+            .exchange-picks .list-group-item {
+                background: rgba(220,53,69,.05) !important;
+            }
 
         </style>
     </text>
