@@ -391,27 +391,11 @@
                         <div class="card-header d-flex align-items-center justify-content-between">
                             <div class="fw-semibold">⚡ Migliori Exchange di oggi</div>
                             <small class="text-muted">Ordinati per rating</small>
-                            <div class="d-flex align-items-center gap-2">
-                                <label class="mb-0 small text-white-50">Portafoglio (€)</label>
-                                <input id="ex-portfolio-global"
-                                       type="number"
-                                       inputmode="decimal"
-                                       class="form-control form-control-sm"
-                                       style="width:140px"
-                                       placeholder="es. 500" />
-                            </div>
-
                         </div>
 
                         <div class="card-body">
-                            @if (!string.IsNullOrWhiteSpace(Model.ExchangeMessage))
-                            {
-                                <div class="alert alert-info mb-3">@Model.ExchangeMessage</div>
-                            }
-
                             @{
                                 var exItems = (Model.ExchangePicks ?? new List<NextStakeWebApp.Models.ExchangeTodayRow>())
-
                                 .OrderByDescending(x => x.Rating)
                                 .ThenBy(x => x.Match_Date)
                                 .Select(r =>
@@ -424,17 +408,33 @@
 
                             @if (exItems.Count == 0)
                             {
-                                <div class="alert alert-secondary mb-0">Nessun candidato exchange disponibile al momento.</div>
+                                // Se il backend ha già un messaggio, usa quello; altrimenti usa il fallback.
+                                if (!string.IsNullOrWhiteSpace(Model.ExchangeMessage))
+                                {
+                                    <div class="alert alert-info mb-0">@Model.ExchangeMessage</div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-secondary mb-0">Nessun candidato exchange disponibile al momento.</div>
+                                }
                             }
                             else
                             {
+                                // Se ci sono elementi, mostra eventuale messaggio informativo in alto
+                                if (!string.IsNullOrWhiteSpace(Model.ExchangeMessage))
+                                {
+                                    <div class="alert alert-info mb-3">@Model.ExchangeMessage</div>
+                                }
+
                                 <div class="list-group list-group-flush">
                                     @foreach (var row in exItems)
                                     {
                                         var ko = row.R.Match_Date.ToString("dd/MM HH:mm");
 
-                                        <div class="list-group-item exchange-row" data-rating="@row.R.Rating">
+                                        var rating = Convert.ToDouble(row.R.Rating);
+                                        var stakePct = (rating <= 85) ? 1 : (rating < 90 ? 2 : 3);
 
+                                        <div class="list-group-item exchange-row" data-rating="@row.R.Rating">
                                             <a href="/Match/Details?id=@row.R.Match_Id&d=@Model.SelectedDate.ToString("yyyy-MM-dd")@common"
                                                class="match-grid">
 
@@ -449,43 +449,20 @@
                                                 </div>
 
                                                 <div class="center">
-                                                    <span class="badge bg-danger mb-1">LAY @row.R.Score_To_Lay</span>
-                                                    <small class="text-muted">@ko</small>
-                                                    <small class="text-muted">
-                                                        Rating: <b>@row.R.Rating</b> | xG: <b>@row.R.Xg_Pred_Total.ToString("0.00")</b>
+                                                    <span class="vs-pill">vs</span>
+                                                    <small class="text-muted mt-1">@ko</small>
+                                                    <span class="badge bg-danger mt-1">LAY @row.R.Score_To_Lay</span>
+                                                    <small class="text-muted mt-1">
+                                                        Rating: <b>@row.R.Rating</b> |
+                                                        Stake suggerito: <b>@stakePct%</b> |
+                                                        xG: <b>@row.R.Xg_Pred_Total.ToString("0.00")</b>
                                                     </small>
-                                                    <div class="ex-inputs mt-2" data-ex-row="1">
-                                                        <div class="ex-cell">
-                                                            <div class="ex-label">Stake</div>
-                                                            <input class="form-control form-control-sm ex-stake"
-                                                                   type="text" inputmode="decimal"
-                                                                   readonly />
 
-                                                        </div>
-
-                                                        <div class="ex-cell">
-                                                            <div class="ex-label">Quota</div>
-                                                            <input class="form-control form-control-sm ex-odds"
-                                                                   type="text" inputmode="decimal"
-                                                                   placeholder="—" />
-                                                        </div>
-                                                        <div class="ex-cell">
-                                                            <div class="ex-label">Bancata</div>
-                                                            <input class="form-control ex-lay" readonly placeholder="—">
-                                                        </div>
-                                                        <div class="ex-cell">
-                                                            <div class="ex-label">Rischio</div>
-                                                            <input class="form-control form-control-sm ex-risk"
-                                                                   type="text" readonly
-                                                                   placeholder="—" />
-                                                        </div>
-                                                    </div>
                                                     <div class="ex-score mt-2">
                                                         <span class="home-score">–</span>
                                                         <span class="score-sep">:</span>
                                                         <span class="away-score">–</span>
                                                     </div>
-
                                                 </div>
 
                                                 <div class="team away">
@@ -497,22 +474,22 @@
                                                         </span>
                                                     }
                                                 </div>
-
-
-                                                                                            </a>
+                                            </a>
                                         </div>
                                     }
                                 </div>
                             }
+
                         </div>
                     </div>
                 }
 
 
-                @if (Model.Rows.Count == 0)
+                @if (!Model.ShowExchange && Model.Rows.Count == 0)
                 {
                     <p>Nessuna partita trovata per il giorno selezionato.</p>
                 }
+
                 else
                 {
                     @foreach (var group in Model.Rows.GroupBy(r => new { r.LeagueId, r.LeagueName, r.LeagueLogo, r.CountryName, r.LeagueFlag }))
@@ -1754,178 +1731,9 @@
           }
         })();
     </script>
-    <script>
-
-         (function () {
-
-           const PORT_KEY = 'ex_portfolio_global';
-
-           function normNumber(raw) {
-             if (raw == null) return null;
-             const v = String(raw).trim().replace(',', '.');
-             const n = parseFloat(v);
-             return Number.isFinite(n) ? n : null;
-           }
-
-           function fmt2(n) {
-             return (Math.round(n * 100) / 100).toFixed(2);
-           }
-
-           function stakePctFromRating(rating) {
-             if (rating === null || rating === undefined) return null;
-             const r = Number(rating);
-             if (!Number.isFinite(r)) return null;
-
-             if (r <= 85) return 0.01;
-             if (r > 85 && r < 90) return 0.02;
-             return 0.03; // >= 90
-           }
-
-           function applyStakeFromRating(rowEl) {
-             const ratingAttr = rowEl.getAttribute('data-rating');
-             const pct = stakePctFromRating(ratingAttr);
-
-             const stakeEl = rowEl.querySelector('.ex-stake');
-             if (!stakeEl) return pct;
-
-             if (pct === null) {
-               stakeEl.value = '';
-               return null;
-             }
-
-             stakeEl.value = fmt2(pct * 100) + '%';
-             return pct;
-           }
-
-           function getGlobalPortfolio() {
-             const el = document.getElementById('ex-portfolio-global');
-             if (!el) return null;
-             return normNumber(el.value);
-           }
-
-           function recalc(rowEl) {
-             if (!rowEl) return;
-
-             const oddsEl  = rowEl.querySelector('.ex-odds');
-             const layEl   = rowEl.querySelector('.ex-lay');   // <-- bancata €
-             const riskEl  = rowEl.querySelector('.ex-risk');
-
-             if (!oddsEl || !layEl || !riskEl) return;
-
-             const odds = normNumber(oddsEl.value);
-             const bankroll = getGlobalPortfolio();
-             const stakePct = applyStakeFromRating(rowEl);
-
-             // se mancano dati
-             if (odds === null || bankroll === null || stakePct === null || odds <= 1 || bankroll <= 0) {
-               layEl.value = '';
-               riskEl.value = '';
-               return;
-             }
-
-             // Bancata = bankroll * stake%
-             const layStake = bankroll * stakePct;
-
-             // Rischio = bancata * (quota - 1)
-             const risk = layStake * (odds - 1);
-
-             layEl.value = fmt2(layStake);
-             riskEl.value = fmt2(risk);
-           }
-
-           function recalcAll() {
-             document.querySelectorAll('.list-group-item.exchange-row').forEach(rowEl => {
-               applyStakeFromRating(rowEl);
-               recalc(rowEl);
-             });
-           }
-
-           function initPortfolioHeader() {
-             const el = document.getElementById('ex-portfolio-global');
-             if (!el) return;
-
-             // carica valore salvato
-             const saved = localStorage.getItem(PORT_KEY);
-             if (saved != null) el.value = saved;
-
-             // salva + ricalcola
-             el.addEventListener('input', () => {
-               if (typeof el.value === 'string' && el.value.includes(',')) {
-                 el.value = el.value.replace(',', '.');
-               }
-               localStorage.setItem(PORT_KEY, el.value);
-               recalcAll();
-             });
-           }
-
-           // Event delegation: cambia QUOTA => ricalcolo riga
-           document.addEventListener('input', function (e) {
-             const t = e.target;
-             if (!t) return;
-
-             if (t.classList.contains('ex-odds')) {
-               if (typeof t.value === 'string' && t.value.includes(',')) {
-                 t.value = t.value.replace(',', '.');
-               }
-               const rowEl = t.closest('.list-group-item.exchange-row');
-               recalc(rowEl);
-             }
-           });
-
-           document.addEventListener('blur', function (e) {
-             const t = e.target;
-             if (!t) return;
-
-             if (t.classList && t.classList.contains('ex-odds')) {
-               t.value = String(t.value || '').trim().replace(',', '.');
-               const rowEl = t.closest('.list-group-item.exchange-row');
-               recalc(rowEl);
-             }
-           }, true);
-
-           // init
-           function initAll() {
-             initPortfolioHeader();
-             recalcAll();
-           }
-
-           if (document.readyState === 'loading') {
-             document.addEventListener('DOMContentLoaded', initAll);
-           } else {
-             initAll();
-           }
-
-         })();
-    </script>
+ 
 
 
-
-    <script>
-        (function () {
-          // Se clicchi/usi input dentro una match-grid, NON navigare
-          document.addEventListener('click', function (e) {
-            const t = e.target;
-            if (!t) return;
-
-            if (t.closest('.ex-inputs')) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-          }, true);
-
-          // Anche su focus (mobile) evita comportamenti strani
-        document.addEventListener('mousedown', function (e) {
-          const t = e.target;
-          if (!t) return;
-
-          if (t.closest('.ex-inputs')) {
-            // NON fare preventDefault: altrimenti l’input non prende focus e non scrivi
-            e.stopPropagation();
-          }
-        }, true);
-
-        })();
-    </script>
 
 }
 
@@ -2895,6 +2703,28 @@
                         box-shadow: 0 0 0 4px rgba(255,255,255,.35);
                     }
 
+            /* ===== Exchange come eventi standard (override finale) ===== */
+            .list-group-item.exchange-row > a.match-grid {
+                grid-template-columns: 1fr auto 1fr !important;
+                grid-template-rows: auto auto !important;
+                column-gap: .5rem !important;
+                row-gap: .25rem !important;
+                align-items: center !important;
+            }
+
+            .list-group-item.exchange-row .team.home {
+                justify-self: end !important;
+            }
+
+            .list-group-item.exchange-row .team.away {
+                justify-self: start !important;
+            }
+
+            .list-group-item.exchange-row .center {
+                justify-self: center !important;
+                align-items: center !important;
+                text-align: center !important;
+            }
 
         </style>
     </text>
