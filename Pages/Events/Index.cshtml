@@ -451,11 +451,40 @@
                                                 <div class="center">
                                                     <span class="vs-pill">vs</span>
                                                     <small class="text-muted mt-1">@ko</small>
-                                                    <span class="badge bg-danger mt-1">LAY @row.R.Score_To_Lay</span>
+                                                    @{
+                                                        // Nuovi campi (mettiamo fallback robusti per evitare rotture)
+                                                        var layCons = row.R.Score_To_Lay_Exchange_Conservative;
+                                                        var layAggr = row.R.Score_To_Lay_Exchange_Aggressive;
+                                                        var layContra = row.R.Score_To_Lay_Contrarian;
+
+                                                        var layMode = row.R.Lay_Mode;         // "exchange" | "contrarian" (se lo esponi così)
+                                                        var conf = row.R.Confidence;          // "HIGH" | "MEDIUM" | "LOW"
+                                                    }
+
+                                                    <div class="d-flex flex-wrap gap-1 justify-content-center mt-1">
+
+                                                        @if (!string.IsNullOrWhiteSpace(layAggr))
+                                                        {
+                                                            <span class="badge badge-hard">HARD @layAggr</span>
+                                                        }
+
+                                                        @if (!string.IsNullOrWhiteSpace(layCons))
+                                                        {
+                                                            <span class="badge badge-medium">MEDIUM @layCons</span>
+                                                        }
+
+                                                        @if (!string.IsNullOrWhiteSpace(layContra))
+                                                        {
+                                                            <span class="badge badge-easy">EASY @layContra</span>
+                                                        }
+
+                                                    </div>
+
+
                                                     <small class="text-muted mt-1">
                                                         Rating: <b>@row.R.Rating</b> |
                                                         Stake suggerito: <b>@stakePct%</b> |
-                                                        xG: <b>@row.R.Xg_Pred_Total.ToString("0.00")</b>
+                                                        xG: <b>@((row.R.Xg_Pred_Total ?? 0).ToString("0.00"))</b>
                                                     </small>
 
                                                     <div class="ex-score mt-2">
@@ -2726,6 +2755,83 @@
                 text-align: center !important;
             }
 
+            .badge-hard {
+                background: #dc3545;
+                color: #fff;
+                font-weight: 700;
+            }
+
+            .badge-medium {
+                background: #ffc107;
+                color: #000;
+                font-weight: 700;
+            }
+
+            .badge-easy {
+                background: #28a745;
+                color: #fff;
+                font-weight: 700;
+            }
+            /* =========================
+               EXCHANGE PICKS - MOBILE FIX
+               (solo nel box "Migliori Exchange")
+               ========================= */
+
+            .exchange-picks .match-grid {
+                /* IMPORTANT: permette ai figli di restringersi senza overflow */
+                min-width: 0;
+            }
+
+            .exchange-picks .team,
+            .exchange-picks .center {
+                min-width: 0; /* fondamentale per non “sfondare” */
+                overflow: hidden;
+            }
+
+            .exchange-picks .team-name {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            /* Mobile: avvicina i team al VS e evita che escano */
+            @@media (max-width: 576px) {
+                .exchange-picks .match-grid
+
+            {
+                grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+                column-gap: .25rem; /* più vicino al VS */
+                row-gap: .35rem;
+            }
+
+            /* Riduci un filo la “larghezza percepita” dei team */
+            .exchange-picks .team.home,
+            .exchange-picks .team.away {
+                gap: .25rem;
+            }
+
+            /* Clamp a 2 righe (così “Nice” ok, ma anche nomi lunghi non sfondano) */
+            .exchange-picks .team-name {
+                font-size: .92rem;
+                line-height: 1.05;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                white-space: normal;
+            }
+
+            /* Logo un filo più piccolo per stringere tutto verso il centro */
+            .exchange-picks .team-logo {
+                height: 20px;
+            }
+
+            /* Centra il VS e non farlo allargare */
+            .exchange-picks .center {
+                padding: 0 .15rem;
+                white-space: nowrap;
+            }
+
+            }
         </style>
     </text>
 }
