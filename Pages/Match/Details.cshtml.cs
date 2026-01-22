@@ -2212,6 +2212,192 @@ TESTO DA RISCRIVERE:
         // =======================
         private async Task<PredictionRow?> LoadPredictionAsync(long matchId)
         {
+            // 1) prova cache
+            try
+            {
+                var cached = await LoadPredictionFromCacheAsync(matchId);
+                if (cached != null)
+                {
+                    _logger.LogInformation("PRED: HIT CACHE matchId={matchId}", matchId);
+                    return cached;
+                }
+
+                _logger.LogInformation("PRED: MISS CACHE → VIEW matchId={matchId}", matchId);
+            }
+            catch (Exception ex)
+            {
+                // non blocchiamo la pagina se la cache ha problemi
+                _logger.LogWarning(ex, "LoadPredictionFromCacheAsync failed for matchId={matchId}", matchId);
+                _logger.LogInformation("PRED: CACHE ERROR → VIEW matchId={matchId}", matchId);
+            }
+
+            // 2) fallback: calcola dalla view (come prima)
+            var computed = await LoadPredictionFromViewAsync(matchId);
+            if (computed == null)
+            {
+                _logger.LogInformation("PRED: VIEW returned NULL matchId={matchId}", matchId);
+                return null;
+            }
+
+            // 3) tenta upsert cache (best effort)
+            try
+            {
+                await UpsertPredictionCacheAsync(matchId, computed);
+                _logger.LogInformation("PRED: UPSERT CACHE OK matchId={matchId}", matchId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "UpsertPredictionCacheAsync failed for matchId={matchId}", matchId);
+            }
+
+            return computed;
+        }
+
+
+        // =======================
+        // Cache: Prediction (NextMatchPredictionsCache)
+        // =======================
+        private async Task<PredictionRow?> LoadPredictionFromCacheAsync(long matchId)
+        {
+            var cs = _read.Database.GetConnectionString();
+
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT
+  ""MatchId"",
+  ""GoalSimulatiCasa"",
+  ""GoalSimulatiOspite"",
+  ""TotaleGoalSimulati"",
+  ""Esito"",
+  ""OverUnderRange"",
+  ""Over1_5"",
+  ""Over2_5"",
+  ""Over3_5"",
+  ""GG_NG"",
+  ""MultigoalCasa"",
+  ""MultigoalOspite"",
+  ""ComboFinale""
+FROM ""NextMatchPredictionsCache""
+WHERE ""MatchId"" = @id
+LIMIT 1;
+";
+
+            cmd.Parameters.AddWithValue("id", matchId);
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync())
+                return null;
+
+            // Nota: PredictionRow.Id nel tuo codice è int.
+            // Qui lo settiamo con MatchId (cast), coerente con ciò che facevi dalla view (colonna "Id").
+            var row = new PredictionRow
+            {
+                Id = matchId > int.MaxValue ? 0 : (int)matchId,
+                GoalSimulatoCasa = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiCasa")) ? 0 : rd.GetInt32(rd.GetOrdinal("GoalSimulatiCasa")),
+                GoalSimulatoOspite = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiOspite")) ? 0 : rd.GetInt32(rd.GetOrdinal("GoalSimulatiOspite")),
+                TotaleGoalSimulati = rd.IsDBNull(rd.GetOrdinal("TotaleGoalSimulati")) ? 0 : rd.GetInt32(rd.GetOrdinal("TotaleGoalSimulati")),
+                Esito = rd.IsDBNull(rd.GetOrdinal("Esito")) ? "" : rd.GetString(rd.GetOrdinal("Esito")),
+                OverUnderRange = rd.IsDBNull(rd.GetOrdinal("OverUnderRange")) ? "" : rd.GetString(rd.GetOrdinal("OverUnderRange")),
+                Over1_5 = rd.IsDBNull(rd.GetOrdinal("Over1_5")) ? null : rd.GetDecimal(rd.GetOrdinal("Over1_5")),
+                Over2_5 = rd.IsDBNull(rd.GetOrdinal("Over2_5")) ? null : rd.GetDecimal(rd.GetOrdinal("Over2_5")),
+                Over3_5 = rd.IsDBNull(rd.GetOrdinal("Over3_5")) ? null : rd.GetDecimal(rd.GetOrdinal("Over3_5")),
+                GG_NG = rd.IsDBNull(rd.GetOrdinal("GG_NG")) ? "" : rd.GetString(rd.GetOrdinal("GG_NG")),
+                MultigoalCasa = rd.IsDBNull(rd.GetOrdinal("MultigoalCasa")) ? "" : rd.GetString(rd.GetOrdinal("MultigoalCasa")),
+                MultigoalOspite = rd.IsDBNull(rd.GetOrdinal("MultigoalOspite")) ? "" : rd.GetString(rd.GetOrdinal("MultigoalOspite")),
+                ComboFinale = rd.IsDBNull(rd.GetOrdinal("ComboFinale")) ? "" : rd.GetString(rd.GetOrdinal("ComboFinale")),
+            };
+
+            return row;
+        }
+
+        private async Task<bool> UpsertPredictionCacheAsync(long matchId, PredictionRow r)
+        {
+            var cs = _read.Database.GetConnectionString();
+
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+INSERT INTO ""NextMatchPredictionsCache"" (
+  ""MatchId"",
+  ""EventDate"",
+  ""GoalSimulatiCasa"",
+  ""GoalSimulatiOspite"",
+  ""TotaleGoalSimulati"",
+  ""Esito"",
+  ""OverUnderRange"",
+  ""Over1_5"",
+  ""Over2_5"",
+  ""Over3_5"",
+  ""GG_NG"",
+  ""MultigoalCasa"",
+  ""MultigoalOspite"",
+  ""ComboFinale"",
+  ""GeneratedAtUtc""
+)
+VALUES (
+  @MatchId,
+  (SELECT ""Date"" FROM ""Matches"" WHERE ""Id"" = @MatchId LIMIT 1),
+  @GSC,
+  @GSO,
+  @TGS,
+  @Esito,
+  @OUR,
+  @O15,
+  @O25,
+  @O35,
+  @GG,
+  @MGC,
+  @MGO,
+  @CF,
+  now()
+)
+ON CONFLICT (""MatchId"") DO UPDATE SET
+  ""EventDate""          = EXCLUDED.""EventDate"",
+  ""GoalSimulatiCasa""   = EXCLUDED.""GoalSimulatiCasa"",
+  ""GoalSimulatiOspite"" = EXCLUDED.""GoalSimulatiOspite"",
+  ""TotaleGoalSimulati"" = EXCLUDED.""TotaleGoalSimulati"",
+  ""Esito""              = EXCLUDED.""Esito"",
+  ""OverUnderRange""     = EXCLUDED.""OverUnderRange"",
+  ""Over1_5""            = EXCLUDED.""Over1_5"",
+  ""Over2_5""            = EXCLUDED.""Over2_5"",
+  ""Over3_5""            = EXCLUDED.""Over3_5"",
+  ""GG_NG""              = EXCLUDED.""GG_NG"",
+  ""MultigoalCasa""      = EXCLUDED.""MultigoalCasa"",
+  ""MultigoalOspite""    = EXCLUDED.""MultigoalOspite"",
+  ""ComboFinale""        = EXCLUDED.""ComboFinale"",
+  ""GeneratedAtUtc""     = now();
+";
+
+            cmd.Parameters.AddWithValue("MatchId", matchId);
+
+            cmd.Parameters.AddWithValue("GSC", r.GoalSimulatoCasa);
+            cmd.Parameters.AddWithValue("GSO", r.GoalSimulatoOspite);
+            cmd.Parameters.AddWithValue("TGS", r.TotaleGoalSimulati);
+
+            cmd.Parameters.AddWithValue("Esito", (object?)r.Esito ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("OUR", (object?)r.OverUnderRange ?? DBNull.Value);
+
+            cmd.Parameters.AddWithValue("O15", (object?)r.Over1_5 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("O25", (object?)r.Over2_5 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("O35", (object?)r.Over3_5 ?? DBNull.Value);
+
+            cmd.Parameters.AddWithValue("GG", (object?)r.GG_NG ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("MGC", (object?)r.MultigoalCasa ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("MGO", (object?)r.MultigoalOspite ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("CF", (object?)r.ComboFinale ?? DBNull.Value);
+
+            var n = await cmd.ExecuteNonQueryAsync();
+            return n > 0;
+        }
+
+        // Sposta qui la logica attuale (view) senza cache, così rimane pulita
+        private async Task<PredictionRow?> LoadPredictionFromViewAsync(long matchId)
+        {
             var script = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatch_Prediction_New")
                 .Select(a => a.ViewValue)
@@ -2233,7 +2419,6 @@ TESTO DA RISCRIVERE:
 
             cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
 
-            // IMPORTANTISSIMO: SingleRow + SequentialAccess riduce molto il rischio
             await using var rd = await cmd.ExecuteReaderAsync();
 
             if (!await rd.ReadAsync())

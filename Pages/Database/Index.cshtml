@@ -1,0 +1,47 @@
+﻿@page
+@model NextStakeWebApp.Pages.Database.IndexModel
+
+@{
+    ViewData["Title"] = "Database";
+}
+
+<h2>Database</h2>
+
+@if (!Model.IsPlan1)
+{
+    <div class="alert alert-warning">
+        Accesso non consentito.
+    </div>
+}
+else
+{
+    <div class="card p-3">
+        <p class="mb-2">
+            Questo comando calcola e salva i pronostici per <b>tutti i match di oggi</b> (Europe/Rome)
+            nella tabella <code>NextMatchPredictionsCache</code>.
+        </p>
+
+        <form method="post" asp-page-handler="RefreshPredictions">
+            <button type="submit" class="btn btn-primary">
+                Aggiorna Pronostici
+            </button>
+        </form>
+
+        @if (Model.LastRun != null)
+        {
+            <hr />
+            <div class="mt-2">
+                <div><b>Ultima esecuzione:</b> @Model.LastRun.Value.ToString("yyyy-MM-dd HH:mm:ss") (ora server)</div>
+                <div><b>Match trovati oggi:</b> @Model.TodayMatchesCount</div>
+                <div><b>Righe salvate/aggiornate:</b> @Model.UpsertedCount</div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.Error))
+                {
+                    <div class="alert alert-danger mt-2">
+                        @Model.Error
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}

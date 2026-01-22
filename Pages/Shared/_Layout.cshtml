@@ -1,6 +1,9 @@
 ﻿﻿@using NextStakeWebApp.Data
 @using Microsoft.AspNetCore.Identity
+@using NextStakeWebApp.Data
+@using NextStakeWebApp.Models
 
+@inject UserManager<ApplicationUser> UserManager
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -111,40 +114,49 @@
                         }
 
 
-                        @{
-                            var isSignedIn = User?.Identity?.IsAuthenticated ?? false;
+@{
+    var isSignedIn = User?.Identity?.IsAuthenticated ?? false;
 
-                            bool hasPlan1 = isSignedIn && User.HasClaim(c =>
-                            (string.Equals(c.Type, "plan", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(c.Type, "Plan", StringComparison.OrdinalIgnoreCase)) &&
-                            string.Equals((c.Value ?? "").Trim(), "1", StringComparison.Ordinal));
+    bool hasPlan1 = false;
 
-                            // Se vuoi che anche chi è SuperAdmin li veda comunque, usa:
-                            // bool showAdminMenu = hasPlan1 || User.IsInRole("SuperAdmin");
-                            // Se invece vuoi SOLO plan=1, usa direttamente hasPlan1:
-                            bool showAdminMenu = hasPlan1;
-                        }
+    if (isSignedIn)
+    {
+        var u = await UserManager.GetUserAsync(User);
+        hasPlan1 = (u != null && (int)u.Plan == 1);
+    }
+
+    bool showAdminMenu = hasPlan1;
+    // se vuoi includere anche SuperAdmin:
+    // bool showAdminMenu = hasPlan1 || User.IsInRole("SuperAdmin");
+}
 
 
-                        @if (showAdminMenu)
-                        {
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="Admin" asp-page="/Users/Index">Utenti</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-warning fw-bold" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
-                            </li>
-                            @* Voce visibile SOLO al ruolo SuperAdmin *@
-                            @if (User.IsInRole("SuperAdmin"))
-                            {
-                                <li class="nav-item">
-                                    <a class="nav-link text-info" asp-area="Admin" asp-page="/ConsumiApi">
-                                        Consumi API
-                                    </a>
-                                </li>
-                            }
 
-                        }
+
+ @if (showAdminMenu)
+{
+    <li class="nav-item">
+        <a class="nav-link text-dark" asp-page="/Database/Index">Database</a>
+    </li>
+
+    <li class="nav-item">
+        <a class="nav-link text-dark" asp-area="Admin" asp-page="/Users/Index">Utenti</a>
+    </li>
+
+    <li class="nav-item">
+        <a class="nav-link text-warning fw-bold" asp-area="Admin" asp-page="/Index">SuperAdmin</a>
+    </li>
+
+    @if (User.IsInRole("SuperAdmin"))
+    {
+        <li class="nav-item">
+            <a class="nav-link text-info" asp-area="Admin" asp-page="/ConsumiApi">
+                Consumi API
+            </a>
+        </li>
+    }
+}
+
 
                     </ul>
 

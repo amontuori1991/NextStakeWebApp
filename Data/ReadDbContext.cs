@@ -7,6 +7,7 @@ namespace NextStakeWebApp.Data
     {
         public ReadDbContext(DbContextOptions<ReadDbContext> options) : base(options) { }
         public DbSet<ExchangeTodayRow> ExchangeTodayRows => Set<ExchangeTodayRow>();
+        public DbSet<PredictionDbRow> PredictionsCache { get; set; } = default!;
 
 
         public DbSet<MatchCore> Matches => Set<MatchCore>();
