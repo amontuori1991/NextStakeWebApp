@@ -2,6 +2,10 @@
 bin/
 obj/
 
+# Google Drive temp / upload
+.tmp.driveupload/
+**/.tmp.driveupload/
+
 # VS/IDE
 .vs/
 *.user

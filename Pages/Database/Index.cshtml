@@ -21,11 +21,52 @@ else
             nella tabella <code>NextMatchPredictionsCache</code>.
         </p>
 
-        <form method="post" asp-page-handler="RefreshPredictions">
+        <form id="refreshForm" method="post" asp-page-handler="RefreshPredictionsStream">
+            @Html.AntiForgeryToken()
             <button type="submit" class="btn btn-primary">
                 Aggiorna Pronostici
             </button>
         </form>
+
+        <!-- Modal log (UNA SOLA VOLTA) -->
+        <div class="modal fade" id="refreshLogModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Aggiornamento pronostici in corso…</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <!-- PROGRESS -->
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted" id="refreshProgressText">Progresso: 0/0</small>
+                                <small class="text-muted" id="refreshProgressPct">0%</small>
+                            </div>
+                            <div class="progress" style="height:10px;">
+                                <div id="refreshProgressBar"
+                                     class="progress-bar"
+                                     role="progressbar"
+                                     style="width:0%;"
+                                     aria-valuenow="0"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100"></div>
+                            </div>
+                        </div>
+
+                        <pre id="refreshLogBox"
+                             style="white-space:pre-wrap; margin:0; font-size:.9rem; line-height:1.25; max-height:55vh;"></pre>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button id="btnCloseLog" type="button" class="btn btn-secondary" data-bs-dismiss="modal" disabled>
+                            Chiudi
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         @if (Model.LastRun != null)
         {
@@ -44,4 +85,132 @@ else
             </div>
         }
     </div>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            const form = document.getElementById('refreshForm');
+            const modalEl = document.getElementById('refreshLogModal');
+            const logBox = document.getElementById('refreshLogBox');
+            const btnClose = document.getElementById('btnCloseLog');
+
+            const progressText = document.getElementById('refreshProgressText');
+            const progressPct = document.getElementById('refreshProgressPct');
+            const progressBar = document.getElementById('refreshProgressBar');
+
+            if (!form || !modalEl || !logBox || !btnClose) return;
+
+            function resetProgress() {
+                if (progressText) progressText.textContent = 'Progresso: 0/0';
+                if (progressPct) progressPct.textContent = '0%';
+                if (progressBar) {
+                    progressBar.style.width = '0%';
+                    progressBar.setAttribute('aria-valuenow', '0');
+                }
+            }
+
+            function updateProgressFromText(text) {
+                // Cerca l'ultimo "➡️ [idx/total]" nella stringa passata
+                const all = text.match(/➡️\s*\[(\d+)\/(\d+)\]/g);
+                if (!all || !all.length) return;
+
+                const last = all[all.length - 1].match(/➡️\s*\[(\d+)\/(\d+)\]/);
+                if (!last) return;
+
+                const idx = parseInt(last[1], 10);
+                const total = parseInt(last[2], 10);
+                const pct = total > 0 ? Math.min(100, Math.round((idx / total) * 100)) : 0;
+
+                if (progressText) progressText.textContent = `Progresso: ${idx}/${total}`;
+                if (progressPct) progressPct.textContent = `${pct}%`;
+                if (progressBar) {
+                    progressBar.style.width = `${pct}%`;
+                    progressBar.setAttribute('aria-valuenow', String(pct));
+                }
+            }
+
+            // LOG INVERSO: scrivo sempre in TESTA
+            // Nota: qui aggiorniamo la progress usando SOLO il chunk in arrivo
+            // perché il pattern "➡️ [x/y]" è presente nei chunk.
+            function prependLog(chunk) {
+                // nuova riga sopra
+                logBox.textContent = chunk + logBox.textContent;
+                // in log inverso è più comodo restare "in alto"
+                // quindi NON scrolliamo al fondo: restiamo su top
+                const bodyEl = modalEl.querySelector('.modal-body');
+                if (bodyEl) bodyEl.scrollTop = 0;
+                // progress basata sul chunk appena arrivato (contiene il pattern)
+                updateProgressFromText(chunk);
+            }
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                // reset UI
+                logBox.textContent = '';
+                btnClose.disabled = true;
+                resetProgress();
+
+                // apre modal (blocca click fuori + ESC)
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false });
+                modal.show();
+
+                // antiforgery token
+                const tokenInput = form.querySelector('input[name="__RequestVerificationToken"]');
+                const token = tokenInput ? tokenInput.value : null;
+
+                try {
+                    const resp = await fetch(form.action, {
+                        method: 'POST',
+                        headers: token ? { 'RequestVerificationToken': token } : {},
+                        body: new FormData(form)
+                    });
+
+                    if (!resp.ok) {
+                        prependLog(`\n❌ HTTP ${resp.status}\n`);
+                        btnClose.disabled = false;
+                        return;
+                    }
+
+                    // streaming
+                    if (!resp.body || !resp.body.getReader) {
+                        const txt = await resp.text();
+                        prependLog(txt);
+                        btnClose.disabled = false;
+                        return;
+                    }
+
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+
+                        const chunk = decoder.decode(value, { stream: true });
+                        prependLog(chunk);
+                    }
+
+                    // completato
+                    prependLog("\n✅ Operazione completata.\n");
+                    btnClose.disabled = false;
+
+                    // chiudi automaticamente la modal (“form”) e poi ricarica la pagina
+                    // così aggiorni i numeri in card senza che l’utente debba cliccare
+                    setTimeout(() => {
+                        try { modal.hide(); } catch { }
+                        setTimeout(() => location.reload(), 250);
+                    }, 900);
+
+                    // fallback: se l’utente clicca comunque “Chiudi”, ricarica
+                    btnClose.addEventListener('click', () => location.reload(), { once: true });
+
+                } catch (err) {
+                    prependLog(`\n❌ ERRORE JS: ${err}\n`);
+                    btnClose.disabled = false;
+                }
+            });
+        })();
+    </script>
 }

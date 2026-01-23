@@ -15,16 +15,14 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 
-
 namespace NextStakeWebApp.Pages.Database
-
 {
     [Authorize]
     public class IndexModel : PageModel
     {
         private readonly ReadDbContext _read;
         private readonly ApplicationDbContext _identityDb;
-        private readonly UserManager<ApplicationUser> _userManager; // ✅ AGGIUNGI
+        private readonly UserManager<ApplicationUser> _userManager;
 
         public IndexModel(ReadDbContext read, ApplicationDbContext identityDb, UserManager<ApplicationUser> userManager)
         {
@@ -32,8 +30,6 @@ namespace NextStakeWebApp.Pages.Database
             _identityDb = identityDb;
             _userManager = userManager;
         }
-
-
 
         public bool IsPlan1 { get; private set; }
 
@@ -57,13 +53,11 @@ namespace NextStakeWebApp.Pages.Database
 
             try
             {
-                // 1) carico lo script dalla tabella Analyses
                 var script = await _read.Analyses
                     .Where(a => a.ViewName == "NextMatch_Prediction_New")
                     .Select(a => a.ViewValue)
                     .AsNoTracking()
                     .FirstOrDefaultAsync();
-
 
                 if (string.IsNullOrWhiteSpace(script))
                 {
@@ -71,7 +65,6 @@ namespace NextStakeWebApp.Pages.Database
                     return Page();
                 }
 
-                // 2) prendo tutti i match di oggi (Europe/Rome) basato su Matches.Date
                 var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
 
                 var todayMatchIds = await _read.Matches
@@ -80,12 +73,9 @@ namespace NextStakeWebApp.Pages.Database
                     .Select(m => m.Id)
                     .ToListAsync();
 
-
                 TodayMatchesCount = todayMatchIds.Count;
 
-                // 3) eseguo la query per ogni match e salvo in cache
                 var cs = _identityDb.Database.GetConnectionString();
-
 
                 await using var conn = new NpgsqlConnection(cs);
                 await conn.OpenAsync();
@@ -111,6 +101,97 @@ namespace NextStakeWebApp.Pages.Database
         // -------------------------
         // Helpers
         // -------------------------
+        public async Task<IActionResult> OnPostRefreshPredictionsStreamAsync()
+        {
+            IsPlan1 = await CheckPlan1Async();
+            if (!IsPlan1) return Forbid();
+
+            LastRun = DateTime.UtcNow;
+            Error = null;
+            TodayMatchesCount = 0;
+            UpsertedCount = 0;
+
+            Response.ContentType = "text/plain; charset=utf-8";
+            Response.Headers["Cache-Control"] = "no-store";
+            Response.Headers["X-Accel-Buffering"] = "no";
+
+            async Task Log(string s)
+            {
+                await Response.WriteAsync(s);
+                await Response.Body.FlushAsync();
+            }
+
+            try
+            {
+                await Log("🔎 Carico script da Analyses (NextMatch_Prediction_New)...\n");
+
+                var script = await _read.Analyses
+                    .Where(a => a.ViewName == "NextMatch_Prediction_New")
+                    .Select(a => a.ViewValue)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+
+                if (string.IsNullOrWhiteSpace(script))
+                {
+                    Error = "Script non trovato: Analyses.ViewName = 'NextMatch_Prediction_New'.";
+                    await Log($"❌ {Error}\n");
+                    return new EmptyResult();
+                }
+
+                var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
+                await Log($"📅 Range oggi (Europe/Rome) in UTC: {utcStart:yyyy-MM-dd HH:mm} -> {utcEnd:yyyy-MM-dd HH:mm}\n");
+
+                var todayMatches = await _read.Matches
+                    .AsNoTracking()
+                    .Where(m => m.Date >= utcStart && m.Date < utcEnd)
+                    .Select(m => new { m.Id, m.Date })
+                    .ToListAsync();
+
+                TodayMatchesCount = todayMatches.Count;
+                await Log($"⚽ Match trovati oggi: {TodayMatchesCount}\n\n");
+
+                var cs = _identityDb.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
+                await conn.OpenAsync();
+
+                int idx = 0;
+
+                foreach (var m in todayMatches)
+                {
+                    idx++;
+                    await Log($"➡️ [{idx}/{TodayMatchesCount}] MatchId {m.Id} | {m.Date:yyyy-MM-dd HH:mm}\n");
+
+                    var row = await ExecutePredictionAsync(conn, script, m.Id);
+                    if (row == null)
+                    {
+                        await Log("   ⚠️ Nessuna riga restituita dalla query.\n\n");
+                        continue;
+                    }
+
+                    await Log($"   🧠 Esito={row.Esito ?? "-"} | GG/NG={row.GG_NG ?? "-"} | O2.5={row.Over2_5?.ToString() ?? "-"} | Combo={row.ComboFinale ?? "-"}\n");
+
+                    var ok = await UpsertCacheAsync(conn, row);
+                    if (ok)
+                    {
+                        UpsertedCount++;
+                        await Log($"   ✅ Cache upsert OK (totale upsert: {UpsertedCount})\n\n");
+                    }
+                    else
+                    {
+                        await Log("   ❌ Cache upsert fallito.\n\n");
+                    }
+                }
+
+                await Log($"🎉 Fine. Match: {TodayMatchesCount} | Upsert: {UpsertedCount}\n");
+            }
+            catch (Exception ex)
+            {
+                Error = ex.Message;
+                await Log($"\n❌ ERRORE: {Error}\n");
+            }
+
+            return new EmptyResult();
+        }
 
         private async Task<bool> CheckPlan1Async()
         {
@@ -118,10 +199,8 @@ namespace NextStakeWebApp.Pages.Database
             return user != null && (int)user.Plan == 1;
         }
 
-
         private static (DateTime utcStart, DateTime utcEnd) GetTodayUtcRangeEuropeRome()
         {
-            // oggi locale Europe/Rome
             var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
 
             var nowUtc = DateTime.UtcNow;
@@ -164,16 +243,12 @@ namespace NextStakeWebApp.Pages.Database
                 CommandTimeout = 180
             };
 
-            // La tua query usa @MatchId
             cmd.Parameters.Add("@MatchId", NpgsqlDbType.Bigint).Value = matchId;
 
             await using var rd = await cmd.ExecuteReaderAsync();
             if (!await rd.ReadAsync())
                 return null;
 
-            // Nomi colonne output finale (alias nella SELECT finale)
-            // Id, Goal Simulati Casa, Goal Simulati Ospite, Totale Goal Simulati,
-            // Esito, OverUnderRange, Over1_5, Over2_5, Over3_5, GG_NG, MultigoalCasa, MultigoalOspite, ComboFinale
             var row = new CachedPredictionRow
             {
                 MatchId = GetField<long>(rd, "Id"),
@@ -193,8 +268,6 @@ namespace NextStakeWebApp.Pages.Database
                 ComboFinale = GetField<string>(rd, "ComboFinale"),
             };
 
-            // EventDate lo prendiamo dalla tabella Matches (una query veloce) così abbiamo il filtro “oggi”
-            // e un indice utile.
             await rd.CloseAsync();
 
             await using var cmdDate = conn.CreateCommand();
