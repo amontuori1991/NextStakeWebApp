@@ -10,7 +10,8 @@ using Microsoft.EntityFrameworkCore;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using System.Globalization;
-
+using Npgsql;
+using System.Text.RegularExpressions;
 
 namespace NextStakeWebApp.Pages.Events
 {
@@ -62,6 +63,7 @@ namespace NextStakeWebApp.Pages.Events
         public List<ExchangeTodayRow> ExchangePicks { get; private set; } = new();
 
         public string? ExchangeMessage { get; private set; }
+        public bool HasExchangeCandidatesToday { get; private set; }
 
         // DTO per la view exchange_exact_lay_candidates...
         public class ExchangePickRow
@@ -174,6 +176,9 @@ namespace NextStakeWebApp.Pages.Events
             ShowBest = best == 1;
             ShowExchange = ex == 1;
             VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
+
+            HasExchangeCandidatesToday = await CheckHasExchangeCandidatesTodayAsync();
+
             // Preferiti dell'utente
             var userId = _userManager.GetUserId(User)!;
             FavoriteMatchIds = _write.FavoriteMatches
@@ -543,16 +548,86 @@ namespace NextStakeWebApp.Pages.Events
                 AssetsByMatchId = new();
             }
         }
+        private async Task<bool> CheckHasExchangeCandidatesTodayAsync()
+        {
+            // La view è "today": se non stai guardando "oggi", consideriamo già false
+            var isSelectedToday = SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+            if (!isSelectedToday) return false;
+
+            try
+            {
+                // 1) Prendo lo script dalla tabella Analyses
+                var script = await _read.Analyses
+                    .Where(a => a.ViewName == "NextMatch_ExchangeToday")
+                    .Select(a => a.ViewValue)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+
+                if (string.IsNullOrWhiteSpace(script))
+                    return false;
+
+                // 2) Lo trasformo in "LIMIT 1" (check veloce)
+                var trimmed = script.Trim().TrimEnd(';');
+
+                string probeSql;
+                if (Regex.IsMatch(trimmed, @"\bLIMIT\s+\d+\b", RegexOptions.IgnoreCase))
+                {
+                    // sostituisce LIMIT N con LIMIT 1
+                    probeSql = Regex.Replace(trimmed, @"\bLIMIT\s+\d+\b", "LIMIT 1", RegexOptions.IgnoreCase);
+                }
+                else
+                {
+                    // fallback: wrappa e limita
+                    probeSql = $"SELECT * FROM ({trimmed}) t LIMIT 1";
+                }
+
+                // 3) Eseguo e mi basta sapere se esiste una riga
+                var cs = _read.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
+                await conn.OpenAsync();
+
+                await using var cmd = new NpgsqlCommand(probeSql, conn)
+                {
+                    CommandTimeout = 30
+                };
+
+                await using var rd = await cmd.ExecuteReaderAsync();
+                return await rd.ReadAsync();
+            }
+            catch
+            {
+                // se per qualsiasi motivo fallisce, non blocchiamo la pagina: bottone disabilitato
+                return false;
+            }
+        }
+
         private async Task LoadExchangePicksAsync()
         {
+            // La view è "today": se non sei su oggi, non ha senso caricarla
+            var isSelectedToday = SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+            if (!isSelectedToday)
+            {
+                ExchangePicks = new();
+                ExchangeMessage = "La sezione Exchange è disponibile solo su Oggi.";
+                return;
+            }
+
+            // Se abbiamo già calcolato prima che non ci sono candidati, evitiamo query pesanti
+            if (!HasExchangeCandidatesToday)
+            {
+                ExchangePicks = new();
+                ExchangeMessage = "Nessun candidato exchange disponibile al momento.";
+                return;
+            }
+
             var analysis = await _read.Analyses
                 .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.Description == "Migliori Exchange Di Oggi");
+                .FirstOrDefaultAsync(a => a.ViewName == "NextMatch_ExchangeToday");
 
 
             if (analysis == null)
             {
-                ExchangeMessage = "Nessuna analisi trovata con viewname='..' e description='Migliori Exchange Di Oggi'.";
+                ExchangeMessage = "Nessuna analisi trovata con description='Migliori Exchange Di Oggi'.";
                 ExchangePicks = new();
                 return;
             }
@@ -572,9 +647,11 @@ namespace NextStakeWebApp.Pages.Events
                     .AsNoTracking()
                     .ToListAsync();
 
-
                 if (ExchangePicks.Count == 0)
                 {
+                    // aggiornamento coerente della flag (così bottone si spegne alla prossima)
+                    HasExchangeCandidatesToday = false;
+
                     ExchangeMessage = "Nessun candidato exchange disponibile al momento.";
                     return;
                 }
@@ -601,17 +678,19 @@ namespace NextStakeWebApp.Pages.Events
                 .AsNoTracking()
                 .ToListAsync();
 
-                AssetsByMatchId = assets.ToDictionary(
-                    k => (long)k.Id,
-                    v => new MatchAssets
+                // Nota: NON sovrascrivo AssetsByMatchId globale se hai già caricato quelli dei Best.
+                // Qui faccio merge.
+                foreach (var a in assets)
+                {
+                    AssetsByMatchId[(long)a.Id] = new MatchAssets
                     {
-                        LeagueLogo = v.LeagueLogo,
-                        LeagueFlag = v.LeagueFlag,
-                        HomeLogo = v.HomeLogo,
-                        AwayLogo = v.AwayLogo,
-                        CountryCode = v.CountryCode
-                    }
-                );
+                        LeagueLogo = a.LeagueLogo,
+                        LeagueFlag = a.LeagueFlag,
+                        HomeLogo = a.HomeLogo,
+                        AwayLogo = a.AwayLogo,
+                        CountryCode = a.CountryCode
+                    };
+                }
             }
             catch (Exception ex)
             {

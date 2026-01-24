@@ -122,11 +122,31 @@
                        data-loading="best">
                         Migliori pronostici
                     </a>
-                    <a class="btn btn-primary"
-                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&ex=1"
-                       data-loading="exchange">
+                    @{
+                        var isSelectedToday = Model.SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+                        var exchangeDisabled = !isSelectedToday || !Model.HasExchangeCandidatesToday;
+                    }
+
+
+                    <a class="btn btn-primary @(exchangeDisabled ? "disabled" : "")"
+                       href="@(exchangeDisabled
+                                  ? "#"
+                                  : $"/Events?d={Model.SelectedDate:yyyy-MM-dd}&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}&ex=1")"
+                       data-loading="exchange"
+                       aria-disabled="@(exchangeDisabled ? "true" : "false")"
+                       tabindex="@(exchangeDisabled ? "-1" : "0")"
+                       title="@(exchangeDisabled ? (isSelectedToday ? "Nessun candidato Exchange disponibile oggi." : "Disponibile solo su Oggi.") : "")">
                         Migliori Exchange di oggi
                     </a>
+
+
+                    @if (exchangeDisabled)
+                    {
+                        <small class="text-muted d-block">
+                            @(isSelectedToday ? "Nessun candidato Exchange disponibile oggi." : "Disponibile solo su Oggi.")
+                        </small>
+                    }
+
 
                     @if (Model.ShowExchange)
                     {
