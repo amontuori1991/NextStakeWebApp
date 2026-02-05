@@ -80,13 +80,16 @@ namespace NextStakeWebApp.Pages.Database
                 await using var conn = new NpgsqlConnection(cs);
                 await conn.OpenAsync();
 
+                // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
+                await ClearPredictionsCacheAsync(conn);
+
                 foreach (var matchId in todayMatchIds)
                 {
                     var row = await ExecutePredictionAsync(conn, script, matchId);
                     if (row == null)
                         continue;
 
-                    var ok = await UpsertCacheAsync(conn, row);
+                    var ok = await InsertCacheAsync(conn, row);
                     if (ok) UpsertedCount++;
                 }
             }
@@ -154,6 +157,11 @@ namespace NextStakeWebApp.Pages.Database
                 await using var conn = new NpgsqlConnection(cs);
                 await conn.OpenAsync();
 
+                // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
+                await Log("🧹 Svuoto NextMatchPredictionsCache...\n");
+                await ClearPredictionsCacheAsync(conn);
+                await Log("✅ Cache svuotata.\n\n");
+
                 int idx = 0;
 
                 foreach (var m in todayMatches)
@@ -170,19 +178,19 @@ namespace NextStakeWebApp.Pages.Database
 
                     await Log($"   🧠 Esito={row.Esito ?? "-"} | GG/NG={row.GG_NG ?? "-"} | O2.5={row.Over2_5?.ToString() ?? "-"} | Combo={row.ComboFinale ?? "-"}\n");
 
-                    var ok = await UpsertCacheAsync(conn, row);
+                    var ok = await InsertCacheAsync(conn, row);
                     if (ok)
                     {
                         UpsertedCount++;
-                        await Log($"   ✅ Cache upsert OK (totale upsert: {UpsertedCount})\n\n");
+                        await Log($"   ✅ Cache insert OK (totale insert: {UpsertedCount})\n\n");
                     }
                     else
                     {
-                        await Log("   ❌ Cache upsert fallito.\n\n");
+                        await Log("   ❌ Cache insert fallito.\n\n");
                     }
                 }
 
-                await Log($"🎉 Fine. Match: {TodayMatchesCount} | Upsert: {UpsertedCount}\n");
+                await Log($"🎉 Fine. Match: {TodayMatchesCount} | Insert: {UpsertedCount}\n");
             }
             catch (Exception ex)
             {
@@ -191,6 +199,14 @@ namespace NextStakeWebApp.Pages.Database
             }
 
             return new EmptyResult();
+        }
+
+        // ✅ NEW: svuota completamente la cache prima del popolamento giornaliero
+        private async Task ClearPredictionsCacheAsync(NpgsqlConnection conn)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"TRUNCATE TABLE ""NextMatchPredictionsCache"";";
+            await cmd.ExecuteNonQueryAsync();
         }
 
         private async Task<bool> CheckPlan1Async()
@@ -280,7 +296,8 @@ namespace NextStakeWebApp.Pages.Database
             return row;
         }
 
-        private async Task<bool> UpsertCacheAsync(NpgsqlConnection conn, CachedPredictionRow r)
+        // ✅ RENAMED/CHANGED: ora è INSERT puro (tabella svuotata prima)
+        private async Task<bool> InsertCacheAsync(NpgsqlConnection conn, CachedPredictionRow r)
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
@@ -297,23 +314,7 @@ VALUES (
   @Esito, @OUR, @O15, @O25, @O35, @GG,
   @MGC, @MGO, @CF,
   now()
-)
-ON CONFLICT (""MatchId"") DO UPDATE SET
-  ""EventDate""          = EXCLUDED.""EventDate"",
-  ""GoalSimulatiCasa""   = EXCLUDED.""GoalSimulatiCasa"",
-  ""GoalSimulatiOspite"" = EXCLUDED.""GoalSimulatiOspite"",
-  ""TotaleGoalSimulati"" = EXCLUDED.""TotaleGoalSimulati"",
-  ""Esito""              = EXCLUDED.""Esito"",
-  ""OverUnderRange""     = EXCLUDED.""OverUnderRange"",
-  ""Over1_5""            = EXCLUDED.""Over1_5"",
-  ""Over2_5""            = EXCLUDED.""Over2_5"",
-  ""Over3_5""            = EXCLUDED.""Over3_5"",
-  ""GG_NG""              = EXCLUDED.""GG_NG"",
-  ""MultigoalCasa""      = EXCLUDED.""MultigoalCasa"",
-  ""MultigoalOspite""    = EXCLUDED.""MultigoalOspite"",
-  ""ComboFinale""        = EXCLUDED.""ComboFinale"",
-  ""GeneratedAtUtc""     = now();
-";
+);";
 
             cmd.Parameters.AddWithValue("MatchId", r.MatchId);
             cmd.Parameters.AddWithValue("EventDate", (object?)r.EventDate ?? DBNull.Value);
