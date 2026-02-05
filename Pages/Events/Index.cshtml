@@ -7,18 +7,21 @@
 @functions {
     string FormatScore(int? goals, string? statusShort)
     {
-        // Partita non iniziata → trattino
-        if (statusShort == "NS" || statusShort == "PST")
+        var st = (statusShort ?? "").Trim().ToUpperInvariant();
+
+        // Partita NON iniziata → SEMPRE "-"
+        if (st == "NS" || st == "PST")
             return "-";
 
-        // Se il provider non ha ancora scritto 0 a DB, ma la gara è live/finita, mostra 0
+        // Partita iniziata o finita:
+        // se il goal non c'è ancora, mostra 0
         if (!goals.HasValue)
             return "0";
 
-        // Valore presente (0,1,2,...) → stampalo
         return goals.Value.ToString();
     }
 }
+
 
 @using System.Globalization
 @using System.Runtime.InteropServices
