@@ -288,18 +288,55 @@ app.MapRazorPages();
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
 // Modificato per restituire zero risultati ed evitare chiamate API/DB
-app.MapGet("/api/livescores", (
-    [FromQuery] string? ids
+app.MapGet("/api/livescores", async (
+    [FromQuery] string? ids,
+    [FromQuery] int? includeFinished,
+    ApplicationDbContext db,
+    CancellationToken ct
 ) =>
 {
-    // Restituiamo una lista vuota immediatamente.
-    // In questo modo il widget nel frontend non riceve errori, 
-    // semplicemente vedrà che non ci sono partite live disponibili.
-    var emptyPayload = new List<object>();
+    // ids richiesti dal frontend: "123,456,789"
+    if (string.IsNullOrWhiteSpace(ids))
+        return Results.Json(Array.Empty<object>());
 
-    return Results.Json(emptyPayload);
+    var idList = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(x => int.TryParse(x, out var v) ? (int?)v : null)
+                    .Where(x => x.HasValue)
+                    .Select(x => x!.Value)
+                    .Distinct()
+                    .ToList();
+
+    if (idList.Count == 0)
+        return Results.Json(Array.Empty<object>());
+
+    // Se includeFinished != 1, per default NON ritorniamo match finiti
+    var finished = new[] { "FT", "AET", "PEN" };
+    var includeEnded = includeFinished == 1;
+
+    var q = db.LiveMatchStates
+        .AsNoTracking()
+        .Where(s => idList.Contains(s.MatchId));
+
+    if (!includeEnded)
+    {
+        q = q.Where(s => s.LastStatus == null || !finished.Contains(s.LastStatus));
+    }
+
+    var rows = await q
+        .Select(s => new
+        {
+            id = s.MatchId,
+            home = s.LastHome,
+            away = s.LastAway,
+            status = s.LastStatus,
+            elapsed = s.LastElapsed
+        })
+        .ToListAsync(ct);
+
+    return Results.Json(rows);
 })
 .WithName("LiveScores");
+
 
 
 // === Push Notifications: salva / disattiva subscription ===
