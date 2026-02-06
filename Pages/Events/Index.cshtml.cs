@@ -165,6 +165,56 @@ namespace NextStakeWebApp.Pages.Events
             public string? CountryCode { get; set; }
             public string? CountryName { get; set; }
         }
+        private async Task<bool> CheckHasBestCandidatesTodayAsync()
+        {
+            // Se non stai guardando "oggi", il bottone resta spento (coerente con la tua query che filtra su CURRENT_DATE)
+            var isSelectedToday = SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+            if (!isSelectedToday) return false;
+
+            try
+            {
+                // 1) Prendo lo script dalla tabella Analyses
+                var script = await _read.Analyses
+                    .Where(a => a.ViewName == ".." && a.Description == "Partite in Pronostico")
+                    .Select(a => a.ViewValue)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync();
+
+                if (string.IsNullOrWhiteSpace(script))
+                    return false;
+
+                // 2) LIMIT 1 per check veloce
+                var trimmed = script.Trim().TrimEnd(';');
+
+                string probeSql;
+                if (Regex.IsMatch(trimmed, @"\bLIMIT\s+\d+\b", RegexOptions.IgnoreCase))
+                {
+                    probeSql = Regex.Replace(trimmed, @"\bLIMIT\s+\d+\b", "LIMIT 1", RegexOptions.IgnoreCase);
+                }
+                else
+                {
+                    probeSql = $"SELECT * FROM ({trimmed}) t LIMIT 1";
+                }
+
+                // 3) Eseguo e mi basta sapere se esiste una riga
+                var cs = _read.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
+                await conn.OpenAsync();
+
+                await using var cmd = new NpgsqlCommand(probeSql, conn)
+                {
+                    CommandTimeout = 30
+                };
+
+                await using var rd = await cmd.ExecuteReaderAsync();
+                return await rd.ReadAsync();
+            }
+            catch
+            {
+                // non blocchiamo la pagina
+                return false;
+            }
+        }
 
         public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null, int? ex = null)
 
@@ -183,7 +233,9 @@ namespace NextStakeWebApp.Pages.Events
 
 
             HasExchangeCandidatesToday = await CheckHasExchangeCandidatesTodayAsync();
-          
+            HasBestCandidatesToday = await CheckHasBestCandidatesTodayAsync();
+
+
 
             // Preferiti dell'utente
             var userId = _userManager.GetUserId(User)!;
