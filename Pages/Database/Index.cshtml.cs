@@ -15,6 +15,7 @@ using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 using NextStakeWebApp.Services;
 
+
 namespace NextStakeWebApp.Pages.Database
 {
     [Authorize]
@@ -70,33 +71,40 @@ namespace NextStakeWebApp.Pages.Database
                 var todayMatchIds = await _read.Matches
                     .AsNoTracking()
                     .Where(m => m.Date >= utcStart && m.Date < utcEnd)
-                    .Select(m => m.Id)
-                    .ToListAsync();
+.Select(m => (long)m.Id)
+.ToListAsync();
+
 
                 TodayMatchesCount = todayMatchIds.Count;
 
                 var cs = _identityDb.Database.GetConnectionString();
 
-                await using var conn = new NpgsqlConnection(cs);
+                var csb = new NpgsqlConnectionStringBuilder(cs)
+                {
+                    KeepAlive = 30,              // ping ogni 30s
+                    CommandTimeout = 120,        // default command timeout
+                    Timeout = 15,                // timeout connessione (open)
+                    CancellationTimeout = 10     // secondi: attesa risposta al CANCEL
+                };
+
+                await using var conn = new NpgsqlConnection(csb.ToString());
                 await conn.OpenAsync();
+
 
                 // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
                 await ClearPredictionsCacheAsync(conn);
 
-                foreach (var matchId in todayMatchIds)
-                {
-                    var row = await ExecutePredictionAsync(conn, script, matchId);
-                    if (row == null)
-                        continue;
+                // ✅ POPOLA CACHE IN UN SOLO COLPO (NO LOOP)
+                UpsertedCount = await PopulateCacheBulkAsync(conn, script, todayMatchIds);
 
-                    var ok = await InsertCacheAsync(conn, row);
-                    if (ok) UpsertedCount++;
-                }
             }
             catch (Exception ex)
             {
-                Error = ex.Message;
+                Error = ex.ToString(); // log completo visibile nella card della pagina (Model.Error)
             }
+
+
+
 
             return Page();
         }
@@ -154,49 +162,90 @@ namespace NextStakeWebApp.Pages.Database
                 await Log($"⚽ Match trovati oggi: {TodayMatchesCount}\n\n");
 
                 var cs = _identityDb.Database.GetConnectionString();
-                await using var conn = new NpgsqlConnection(cs);
-                await conn.OpenAsync();
 
-                // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
+                var csb = new NpgsqlConnectionStringBuilder(cs)
+                {
+                    KeepAlive = 30,
+                    CommandTimeout = 120,
+                    Timeout = 15,
+                    CancellationTimeout = 10
+                };
+
+                // 1) SVUOTO CACHE con UNA connessione dedicata (così se muore non rovina il loop)
                 await Log("🧹 Svuoto NextMatchPredictionsCache...\n");
-                await ClearPredictionsCacheAsync(conn);
+                await using (var connClear = new NpgsqlConnection(csb.ToString()))
+                {
+                    await connClear.OpenAsync();
+                    await ClearPredictionsCacheAsync(connClear);
+                }
                 await Log("✅ Cache svuotata.\n\n");
 
-                int idx = 0;
+                await Log("🚀 Avvio popolamento cache in modalità BULK (un solo comando SQL)...\n");
 
-                foreach (var m in todayMatches)
+                var ids = todayMatches.Select(x => (long)x.Id).ToList();
+
+                const int batchSize = 1; // DEBUG: 1 match alla volta
+                int totalInserted = 0;
+
+                var batches = ids.Chunk(batchSize).ToList();
+                int b = 0;
+
+                foreach (var batch in batches)
                 {
-                    idx++;
-                    await Log($"➡️ [{idx}/{TodayMatchesCount}] MatchId {m.Id} | {m.Date:yyyy-MM-dd HH:mm}\n");
+                    b++;
 
-                    var row = await ExecutePredictionAsync(conn, script, m.Id);
-                    if (row == null)
+                    var matchList = batch.ToList();
+                    var matchId = matchList.FirstOrDefault();
+
+                    await Log($"📦 Batch {b}/{batches.Count} | matchId: {matchId}\n");
+
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    await Log($"   ⏳ START SQL matchId={matchId} {DateTime.UtcNow:HH:mm:ss}\n");
+
+                    try
                     {
-                        await Log("   ⚠️ Nessuna riga restituita dalla query.\n\n");
+                        // 2) OGNI BATCH USA UNA CONNESSIONE NUOVA
+                        await using var connBatch = new NpgsqlConnection(csb.ToString());
+                        await connBatch.OpenAsync();
+
+                        // ⛔ timeout DB per questa singola esecuzione (90 secondi)
+                        await using (var st2 = new NpgsqlCommand("SET statement_timeout = 90000;", connBatch))
+                            await st2.ExecuteNonQueryAsync();
+
+                        var ins = await PopulateCacheBulkAsync(connBatch, script, matchList);
+
+                        sw.Stop();
+                        await Log($"   ✅ END SQL matchId={matchId} {DateTime.UtcNow:HH:mm:ss}\n");
+
+                        totalInserted += ins;
+                        await Log($"   ✅ OK | Inserite: {ins} | Totale: {totalInserted} | Tempo: {sw.Elapsed.TotalSeconds:n1}s\n\n");
+                    }
+                    catch (Exception ex)
+                    {
+                        sw.Stop();
+                        await Log($"   ❌ FAIL | Tempo: {sw.Elapsed.TotalSeconds:n1}s\n");
+                        await Log($"   ❌ EX:\n{ex}\n\n");
                         continue;
                     }
-
-                    await Log($"   🧠 Esito={row.Esito ?? "-"} | GG/NG={row.GG_NG ?? "-"} | O2.5={row.Over2_5?.ToString() ?? "-"} | Combo={row.ComboFinale ?? "-"}\n");
-
-                    var ok = await InsertCacheAsync(conn, row);
-                    if (ok)
-                    {
-                        UpsertedCount++;
-                        await Log($"   ✅ Cache insert OK (totale insert: {UpsertedCount})\n\n");
-                    }
-                    else
-                    {
-                        await Log("   ❌ Cache insert fallito.\n\n");
-                    }
                 }
+
+
+
+                UpsertedCount = totalInserted;
+
+
+                await Log($"✅ Inserite righe in cache: {UpsertedCount}\n");
+                await Log("🎉 Fine.\n");
+
 
                 await Log($"🎉 Fine. Match: {TodayMatchesCount} | Insert: {UpsertedCount}\n");
             }
             catch (Exception ex)
             {
-                Error = ex.Message;
-                await Log($"\n❌ ERRORE: {Error}\n");
+                Error = ex.ToString();
+                await Log($"\n❌ ERRORE:\n{Error}\n");
             }
+
 
             return new EmptyResult();
         }
@@ -294,6 +343,117 @@ namespace NextStakeWebApp.Pages.Database
                 row.EventDate = (DateTime)obj;
 
             return row;
+        }
+
+
+        private async Task<int> PopulateCacheBulkAsync(
+    NpgsqlConnection conn,
+    string script,
+    List<long> matchIds)
+        {
+            if (matchIds == null || matchIds.Count == 0)
+                return 0;
+
+            // 1) Pulizia script: spesso termina con ';' e dentro un CTE rompe la sintassi
+            var cleaned = (script ?? string.Empty).Trim();
+            while (cleaned.EndsWith(";"))
+                cleaned = cleaned.Substring(0, cleaned.Length - 1).Trim();
+
+            // 2) lo script è fatto per @MatchId (singolo).
+            //    Lo trasformiamo in "ids.matchid" così diventa set-based.
+            var scriptSetBased = cleaned.Replace("@MatchId", "ids.matchid");
+
+
+            // 2) Query wrapper: unnest degli id + LATERAL sullo script + INSERT in cache
+            //    Non facciamo più query extra per EventDate: la prendiamo direttamente da matches.
+            var sql = $@"
+WITH ids AS (
+    SELECT unnest(@MatchIds::bigint[]) AS matchid
+)
+INSERT INTO ""NextMatchPredictionsCache"" (
+  ""MatchId"", ""EventDate"",
+  ""GoalSimulatiCasa"", ""GoalSimulatiOspite"", ""TotaleGoalSimulati"",
+  ""Esito"", ""OverUnderRange"", ""Over1_5"", ""Over2_5"", ""Over3_5"", ""GG_NG"",
+  ""MultigoalCasa"", ""MultigoalOspite"", ""ComboFinale"",
+  ""GeneratedAtUtc""
+)
+SELECT
+  ids.matchid                                   AS ""MatchId"",
+  mx.""date""                                   AS ""EventDate"",
+  pred.""Goal Simulati Casa""                    AS ""GoalSimulatiCasa"",
+  pred.""Goal Simulati Ospite""                  AS ""GoalSimulatiOspite"",
+  pred.""Totale Goal Simulati""                  AS ""TotaleGoalSimulati"",
+  pred.""Esito""                                 AS ""Esito"",
+  pred.""OverUnderRange""                        AS ""OverUnderRange"",
+  pred.""Over1_5""                               AS ""Over1_5"",
+  pred.""Over2_5""                               AS ""Over2_5"",
+  pred.""Over3_5""                               AS ""Over3_5"",
+  pred.""GG_NG""                                 AS ""GG_NG"",
+  pred.""MultigoalCasa""                         AS ""MultigoalCasa"",
+  pred.""MultigoalOspite""                       AS ""MultigoalOspite"",
+  pred.""ComboFinale""                           AS ""ComboFinale"",
+  now()                                          AS ""GeneratedAtUtc""
+FROM ids
+JOIN public.matches mx ON mx.id = ids.matchid
+CROSS JOIN LATERAL (
+    SELECT * FROM (
+        {scriptSetBased}
+    ) q
+) pred;
+";
+
+
+
+            await using var cmd = new NpgsqlCommand(sql, conn)
+            {
+                CommandTimeout = 120 // 2 minuti lato client (il server taglia già a 90s)
+            };
+
+
+
+            // parametro array bigint[]
+            cmd.Parameters.AddWithValue("MatchIds", NpgsqlDbType.Array | NpgsqlDbType.Bigint, matchIds.ToArray());
+
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(95));
+                var inserted = await cmd.ExecuteNonQueryAsync(cts.Token);
+
+                return inserted;
+            }
+            catch (Npgsql.PostgresException pgex)
+            {
+                int pos = 0;
+                bool hasPos = false;
+
+                try
+                {
+                    pos = Convert.ToInt32(pgex.Position, CultureInfo.InvariantCulture);
+                    hasPos = pos > 0 && pos <= sql.Length;
+                }
+                catch
+                {
+                    hasPos = false;
+                }
+
+                if (hasPos)
+                {
+                    var start = Math.Max(0, pos - 200);
+                    var len = Math.Min(400, sql.Length - start);
+                    var snippet = sql.Substring(start, len);
+
+                    throw new Exception(
+                        $"SQL ERROR {pgex.SqlState}: {pgex.MessageText}\n" +
+                        $"POSITION: {pos}\n" +
+                        $"--- SQL SNIPPET ---\n{snippet}\n--- END ---"
+                    );
+                }
+
+                throw new Exception($"SQL ERROR {pgex.SqlState}: {pgex.MessageText}", pgex);
+            }
+
+
+
         }
 
         // ✅ RENAMED/CHANGED: ora è INSERT puro (tabella svuotata prima)

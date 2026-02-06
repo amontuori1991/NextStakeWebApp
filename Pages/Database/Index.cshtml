@@ -192,19 +192,35 @@ else
                         prependLog(chunk);
                     }
 
-                    // completato
-                    prependLog("\n✅ Operazione completata.\n");
-                    btnClose.disabled = false;
+                           // completato
+        prependLog("\n🏁 STREAM TERMINATO.\n");
 
-                    // chiudi automaticamente la modal (“form”) e poi ricarica la pagina
-                    // così aggiorni i numeri in card senza che l’utente debba cliccare
-                    setTimeout(() => {
-                        try { modal.hide(); } catch { }
-                        setTimeout(() => location.reload(), 250);
-                    }, 900);
+        // rileva errore nel log (se c'è, NON chiudere la modal)
+        const hasError =
+            logBox.textContent.includes("❌") ||
+            logBox.textContent.includes("ERROR") ||
+            logBox.textContent.includes("FAIL") ||
+            logBox.textContent.includes("SQL ERROR") ||
+            logBox.textContent.includes("EX:");
 
-                    // fallback: se l’utente clicca comunque “Chiudi”, ricarica
-                    btnClose.addEventListener('click', () => location.reload(), { once: true });
+        btnClose.disabled = false;
+
+        if (!hasError) {
+            // ✅ SOLO SE NON CI SONO ERRORI: chiudi e ricarica
+            setTimeout(() => {
+                try { modal.hide(); } catch { }
+                setTimeout(() => location.reload(), 250);
+            }, 900);
+
+            // fallback: se l’utente clicca “Chiudi”, ricarica
+            btnClose.addEventListener('click', () => location.reload(), { once: true });
+        } else {
+            // ❌ ERRORE: resta aperta per copiare il log
+            prependLog("\n🛑 ERRORE RILEVATO: finestra lasciata aperta per copia/incolla.\n");
+            // opzionale: evidenzia log
+            // logBox.style.color = "#ff6b6b";
+        }
+
 
                 } catch (err) {
                     prependLog(`\n❌ ERRORE JS: ${err}\n`);

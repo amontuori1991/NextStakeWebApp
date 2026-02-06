@@ -49,22 +49,30 @@ namespace NextStakeWebApp.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("✅ LiveNotifyWorker avviato");
+            // =========================
+            // 🔴 LIVE + NOTIFICHE DISABILITATE TEMPORANEAMENTE
+            // NOTA: il worker è stato disabilitato anche in Program.cs (AddHostedService commentato).
+            // Questa guardia evita avvii accidentali.
+            // =========================
+            _logger.LogWarning("⛔ LiveNotifyWorker DISABILITATO (guard).");
+            return;
 
-            using var timer = new PeriodicTimer(Interval);
-
-            while (await timer.WaitForNextTickAsync(stoppingToken))
-            {
-                try
-                {
-                    await RunAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "❌ Errore nel ciclo LiveNotifyWorker");
-                }
-            }
+            // _logger.LogInformation("✅ LiveNotifyWorker avviato");
+            // using var timer = new PeriodicTimer(Interval);
+            //
+            // while (await timer.WaitForNextTickAsync(stoppingToken))
+            // {
+            //     try
+            //     {
+            //         await RunAsync(stoppingToken);
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         _logger.LogError(ex, "❌ Errore nel ciclo LiveNotifyWorker");
+            //     }
+            // }
         }
+
 
         private async Task RunAsync(CancellationToken ct)
         {

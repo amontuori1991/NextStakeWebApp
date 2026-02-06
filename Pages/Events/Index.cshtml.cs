@@ -58,6 +58,8 @@ namespace NextStakeWebApp.Pages.Events
         public bool ShowBest { get; private set; }
         public List<NextStakeWebApp.Models.BestPickRow> BestPicks { get; private set; } = new();
         public string? BestMessage { get; private set; }
+
+        public bool HasBestCandidatesToday { get; set; }
         // === Migliori Exchange di Oggi ===
         public bool ShowExchange { get; private set; }
         public List<ExchangeTodayRow> ExchangePicks { get; private set; } = new();
@@ -175,9 +177,13 @@ namespace NextStakeWebApp.Pages.Events
             Query = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
             ShowBest = best == 1;
             ShowExchange = ex == 1;
-            VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
+            // 🔕 NOTIFICHE (PUSH) DISABILITATE TEMPORANEAMENTE
+            // VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
+            VapidPublicKey = "";
+
 
             HasExchangeCandidatesToday = await CheckHasExchangeCandidatesTodayAsync();
+          
 
             // Preferiti dell'utente
             var userId = _userManager.GetUserId(User)!;
@@ -255,52 +261,56 @@ namespace NextStakeWebApp.Pages.Events
                 LeagueFlag = r.Flag,
                 KickoffLocal = DateTime.SpecifyKind(r.Date, DateTimeKind.Unspecified) // manteniamo "locale" senza offset
             }).ToList();
-            // 🔚 Sovrascrivo risultati/stato con quelli definitivi da LiveMatchStates (FT/AET/PEN)
-            var matchIdsInPage = Rows
-                .Select(r => (int)r.MatchId)   // LiveMatchStates.MatchId è int
-                .Distinct()
-                .ToList();
+            // =========================
+            // 🔴 LIVE DISABILITATO TEMPORANEAMENTE
+            // =========================
+            // // 🔚 Sovrascrivo risultati/stato con quelli definitivi da LiveMatchStates (FT/AET/PEN)
+            // var matchIdsInPage = Rows
+            //     .Select(r => (int)r.MatchId)   // LiveMatchStates.MatchId è int
+            //     .Distinct()
+            //     .ToList();
+            //
+            // if (matchIdsInPage.Count > 0)
+            // {
+            //     // 1) Prendo TUTTI gli stati per i match che sto mostrando
+            //     var allStates = await _write.LiveMatchStates
+            //         .Where(s => matchIdsInPage.Contains(s.MatchId))
+            //         .ToListAsync();
+            //
+            //     // 2) Normalizzo LastStatus (Trim + ToUpper) e tengo solo FT / AET / PEN
+            //     var finalStates = allStates
+            //         .Where(s =>
+            //             !string.IsNullOrWhiteSpace(s.LastStatus) &&
+            //             new[]
+            //             {
+            //                 "FT",
+            //                 "AET",
+            //                 "PEN"
+            //             }.Contains(s.LastStatus.Trim().ToUpperInvariant())
+            //         )
+            //         // se per assurdo ci fossero più righe per lo stesso MatchId, ne prendo una (la prima)
+            //         .GroupBy(s => s.MatchId)
+            //         .ToDictionary(g => g.Key, g => g.First());
+            //
+            //     // 3) Applico i valori finali alla lista Rows che va in pagina
+            //     foreach (var row in Rows)
+            //     {
+            //         var key = (int)row.MatchId;
+            //         if (!finalStates.TryGetValue(key, out var st))
+            //             continue;
+            //
+            //         // Stato finale (verrà usato anche da FormatScore e dalla logica live/non-live)
+            //         row.StatusShort = st.LastStatus?.Trim().ToUpperInvariant() ?? row.StatusShort;
+            //
+            //         // Gol finali
+            //         if (st.LastHome.HasValue)
+            //             row.HomeGoal = st.LastHome;
+            //
+            //         if (st.LastAway.HasValue)
+            //             row.AwayGoal = st.LastAway;
+            //     }
+            // }
 
-            if (matchIdsInPage.Count > 0)
-            {
-                // 1) Prendo TUTTI gli stati per i match che sto mostrando
-                var allStates = await _write.LiveMatchStates
-                    .Where(s => matchIdsInPage.Contains(s.MatchId))
-                    .ToListAsync();
-
-                // 2) Normalizzo LastStatus (Trim + ToUpper) e tengo solo FT / AET / PEN
-                var finalStates = allStates
-                    .Where(s =>
-                        !string.IsNullOrWhiteSpace(s.LastStatus) &&
-                        new[]
-                        {
-                "FT",
-                "AET",
-                "PEN"
-                        }.Contains(s.LastStatus.Trim().ToUpperInvariant())
-                    )
-                    // se per assurdo ci fossero più righe per lo stesso MatchId, ne prendo una (la prima)
-                    .GroupBy(s => s.MatchId)
-                    .ToDictionary(g => g.Key, g => g.First());
-
-                // 3) Applico i valori finali alla lista Rows che va in pagina
-                foreach (var row in Rows)
-                {
-                    var key = (int)row.MatchId;
-                    if (!finalStates.TryGetValue(key, out var st))
-                        continue;
-
-                    // Stato finale (verrà usato anche da FormatScore e dalla logica live/non-live)
-                    row.StatusShort = st.LastStatus?.Trim().ToUpperInvariant() ?? row.StatusShort;
-
-                    // Gol finali
-                    if (st.LastHome.HasValue)
-                        row.HomeGoal = st.LastHome;
-
-                    if (st.LastAway.HasValue)
-                        row.AwayGoal = st.LastAway;
-                }
-            }
 
 
             // Nazioni disponibili per il giorno (stessa finestra locale)
@@ -721,40 +731,44 @@ namespace NextStakeWebApp.Pages.Events
                 };
                 _write.FavoriteMatches.Add(existing);
 
-                // ✅ 2) Inizializzo lo stato live se NON esiste già
-                var existingState = await _write.LiveMatchStates
-                    .FirstOrDefaultAsync(s => s.MatchId == (int)matchId);
+                // =========================
+                // 🔴 LIVE DISABILITATO TEMPORANEAMENTE
+                // =========================
+                // // ✅ 2) Inizializzo lo stato live se NON esiste già
+                // var existingState = await _write.LiveMatchStates
+                //     .FirstOrDefaultAsync(s => s.MatchId == (int)matchId);
+                //
+                // if (existingState == null)
+                // {
+                //     // Prendo lo stato attuale dal DB di lettura
+                //     var match = await _read.Matches
+                //         .Where(m => m.Id == matchId)
+                //         .Select(m => new
+                //         {
+                //             m.StatusShort,
+                //             m.HomeGoal,
+                //             m.AwayGoal
+                //         })
+                //         .FirstOrDefaultAsync();
+                //
+                //     var status = (match?.StatusShort ?? "NS").ToUpperInvariant();
+                //     int? home = match?.HomeGoal;
+                //     int? away = match?.AwayGoal;
+                //
+                //     // Elapsed non ce l’abbiamo in Matches, partiamo da 0
+                //     var state = new LiveMatchState
+                //     {
+                //         MatchId = (int)matchId,   // LiveMatchStates.MatchId è int
+                //         LastStatus = status,
+                //         LastHome = home,
+                //         LastAway = away,
+                //         LastElapsed = 0,
+                //         LastUpdatedUtc = DateTime.UtcNow
+                //     };
+                //
+                //     _write.LiveMatchStates.Add(state);
+                // }
 
-                if (existingState == null)
-                {
-                    // Prendo lo stato attuale dal DB di lettura
-                    var match = await _read.Matches
-                        .Where(m => m.Id == matchId)
-                        .Select(m => new
-                        {
-                            m.StatusShort,
-                            m.HomeGoal,
-                            m.AwayGoal
-                        })
-                        .FirstOrDefaultAsync();
-
-                    var status = (match?.StatusShort ?? "NS").ToUpperInvariant();
-                    int? home = match?.HomeGoal;
-                    int? away = match?.AwayGoal;
-
-                    // Elapsed non ce l’abbiamo in Matches, partiamo da 0
-                    var state = new LiveMatchState
-                    {
-                        MatchId = (int)matchId,   // LiveMatchStates.MatchId è int
-                        LastStatus = status,
-                        LastHome = home,
-                        LastAway = away,
-                        LastElapsed = 0,
-                        LastUpdatedUtc = DateTime.UtcNow
-                    };
-
-                    _write.LiveMatchStates.Add(state);
-                }
             }
             else
             {

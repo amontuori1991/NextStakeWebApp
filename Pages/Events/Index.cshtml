@@ -120,15 +120,34 @@
                         ⭐ @(Model.OnlyFavorites ? "Mostra tutti" : "Vedi preferiti")
                     </a>
 
-                    <a class="btn btn-success"
-                       href="/Events?d=@Model.SelectedDate.ToString("yyyy-MM-dd")&fav=@(Model.OnlyFavorites ? 1 : 0)&country=@Model.SelectedCountryCode&q=@Model.Query&best=1"
-                       data-loading="best">
-                        Migliori pronostici
-                    </a>
                     @{
                         var isSelectedToday = Model.SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+
+                        // ✅ Best: stessa logica di Exchange
+                        var bestDisabled = !isSelectedToday || !Model.HasBestCandidatesToday;
+
+                        // Exchange (come ce l’hai già)
                         var exchangeDisabled = !isSelectedToday || !Model.HasExchangeCandidatesToday;
                     }
+
+                    <a class="btn btn-success @(bestDisabled ? "disabled" : "")"
+                       href="@(bestDisabled
+                                     ? "#"
+                                     : $"/Events?d={Model.SelectedDate:yyyy-MM-dd}&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}&best=1")"
+                       data-loading="best"
+                       aria-disabled="@(bestDisabled ? "true" : "false")"
+                       tabindex="@(bestDisabled ? "-1" : "0")"
+                       title="@(bestDisabled ? (isSelectedToday ? "Nessun candidato disponibile oggi." : "Disponibile solo su Oggi.") : "")">
+                        Migliori pronostici di oggi
+                    </a>
+
+                    @if (bestDisabled)
+                    {
+                        <small class="text-muted d-block">
+                            @(isSelectedToday ? "Nessun candidato disponibile oggi." : "Disponibile solo su Oggi.")
+                        </small>
+                    }
+
 
 
                     <a class="btn btn-primary @(exchangeDisabled ? "disabled" : "")"
@@ -1029,18 +1048,17 @@
 
 @section Scripts {
     <script>
-        // Richiede il permesso di inviare notifiche (una sola volta)
-        (function () {
-            if (!('Notification' in window)) return;
-
-            // Piccolo delay per evitare di sparare subito al caricamento
-            setTimeout(function () {
-                if (Notification.permission === 'default') {
-                    Notification.requestPermission().catch(function () { });
-                }
-            }, 2000);
-        })();
+        // 🔕 NOTIFICHE DISABILITATE TEMPORANEAMENTE (non chiedere permessi)
+        // (function () {
+        //     if (!('Notification' in window)) return;
+        //     setTimeout(function () {
+        //         if (Notification.permission === 'default') {
+        //             Notification.requestPermission().catch(function () { });
+        //         }
+        //     }, 2000);
+        // })();
     </script>
+
     <script>
         /**
          * Live scores NextStake + notifiche locali:
@@ -1054,7 +1072,12 @@
          *   - rettifica punteggio (gol annullato / VAR)
          */
         (function () {
+
+            // 🔴 LIVE + notifiche locali DISABILITATI TEMPORANEAMENTE
+            return;
+
             const ENDPOINT = '/api/livescores';
+
             const BATCH = 20;
             const LIVE_INTERVAL_MS = 60000; // 15 secondi
             const LIVE_STATUSES = ['1H', '2H', 'ET', 'P', 'BT', 'LIVE', 'HT'];
@@ -1467,6 +1490,12 @@
 
     <script>
         (function () {
+                (function () {
+        // 🔴 FILTRO LIVE DISABILITATO (live spento)
+        return;
+
+        const btn = document.getElementById('btn-live-filter');
+
             const btn = document.getElementById('btn-live-filter');
             if (!btn) return;
 
@@ -1512,8 +1541,13 @@
     </script>
 
     <script>
-        (function () {
-            console.log('[PUSH] Script push toggle caricato.');
+            (function () {
+
+        // 🔕 PUSH DISABILITATO TEMPORANEAMENTE
+        return;
+
+        console.log('[PUSH] Script push toggle caricato.');
+
 
             const btn = document.getElementById('btn-push-toggle');
             const btnTest = document.getElementById('btn-push-test');
