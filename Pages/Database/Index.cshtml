@@ -27,6 +27,47 @@ else
                 Aggiorna Pronostici
             </button>
         </form>
+ @if (Model.TodayCache != null && Model.TodayCache.Any())
+{
+    <hr />
+    <h5 class="mt-3 mb-2">Pronostici salvati oggi (cache)</h5>
+
+<div class="table-responsive">
+    <table class="table table-sm table-striped table-dark align-middle mb-0">
+        <thead>
+            <tr>
+                <th>MatchId</th>
+                <th>Data</th>
+                <th>GSC</th>
+                <th>GSO</th>
+                <th>TOT</th>
+                <th>Esito</th>
+                <th>OU</th>
+                <th>GG/NG</th>
+                <th>Combo</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (NextStakeWebApp.Pages.Database.IndexModel.CachedPredictionRow r in Model.TodayCache)
+            {
+                <tr>
+                    <td>@r.MatchId</td>
+                    <td>@(r.EventDate?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                    <td>@(r.GoalSimulatiCasa?.ToString() ?? "-")</td>
+                    <td>@(r.GoalSimulatiOspite?.ToString() ?? "-")</td>
+                    <td>@(r.TotaleGoalSimulati?.ToString() ?? "-")</td>
+                    <td>@(r.Esito ?? "-")</td>
+                    <td>@(r.OverUnderRange ?? "-")</td>
+                    <td>@(r.GG_NG ?? "-")</td>
+                    <td>@(r.ComboFinale ?? "-")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+}
+
 
         <!-- Modal log (UNA SOLA VOLTA) -->
         <div class="modal fade" id="refreshLogModal" tabindex="-1" aria-hidden="true">
@@ -100,6 +141,9 @@ else
             const progressBar = document.getElementById('refreshProgressBar');
 
             if (!form || !modalEl || !logBox || !btnClose) return;
+            let lastIdx = 0;
+let lastTotal = 0;
+
 
             function resetProgress() {
                 if (progressText) progressText.textContent = 'Progresso: 0/0';
@@ -110,39 +154,39 @@ else
                 }
             }
 
-            function updateProgressFromText(text) {
-                // Cerca l'ultimo "➡️ [idx/total]" nella stringa passata
-                const all = text.match(/➡️\s*\[(\d+)\/(\d+)\]/g);
-                if (!all || !all.length) return;
+         function updateProgressFromText(fullText) {
+            const all = fullText.match(/📦\s*Batch\s*(\d+)\s*\/\s*(\d+)/g);
+            if (!all || !all.length) return;
 
-                const last = all[all.length - 1].match(/➡️\s*\[(\d+)\/(\d+)\]/);
-                if (!last) return;
+            // LOG INVERSO (prepend): la riga più recente è la PRIMA nel testo
+            const raw = all[0];
+            const m = raw.match(/📦\s*Batch\s*(\d+)\s*\/\s*(\d+)/);
+            if (!m) return;
 
-                const idx = parseInt(last[1], 10);
-                const total = parseInt(last[2], 10);
-                const pct = total > 0 ? Math.min(100, Math.round((idx / total) * 100)) : 0;
+            lastIdx = parseInt(m[1], 10);
+            lastTotal = parseInt(m[2], 10);
 
-                if (progressText) progressText.textContent = `Progresso: ${idx}/${total}`;
-                if (progressPct) progressPct.textContent = `${pct}%`;
-                if (progressBar) {
-                    progressBar.style.width = `${pct}%`;
-                    progressBar.setAttribute('aria-valuenow', String(pct));
-                }
+            const pct = lastTotal > 0 ? Math.min(100, Math.round((lastIdx / lastTotal) * 100)) : 0;
+
+            if (progressText) progressText.textContent = `Progresso: ${lastIdx}/${lastTotal}`;
+            if (progressPct) progressPct.textContent = `${pct}%`;
+            if (progressBar) {
+                progressBar.style.width = `${pct}%`;
+                progressBar.setAttribute('aria-valuenow', String(pct));
             }
+        }
 
-            // LOG INVERSO: scrivo sempre in TESTA
-            // Nota: qui aggiorniamo la progress usando SOLO il chunk in arrivo
-            // perché il pattern "➡️ [x/y]" è presente nei chunk.
-            function prependLog(chunk) {
-                // nuova riga sopra
-                logBox.textContent = chunk + logBox.textContent;
-                // in log inverso è più comodo restare "in alto"
-                // quindi NON scrolliamo al fondo: restiamo su top
-                const bodyEl = modalEl.querySelector('.modal-body');
-                if (bodyEl) bodyEl.scrollTop = 0;
-                // progress basata sul chunk appena arrivato (contiene il pattern)
-                updateProgressFromText(chunk);
-            }
+
+        // LOG INVERSO: scrivo sempre in TESTA
+        function prependLog(chunk) {
+            logBox.textContent = chunk + logBox.textContent;
+            const bodyEl = modalEl.querySelector('.modal-body');
+            if (bodyEl) bodyEl.scrollTop = 0;
+
+            updateProgressFromText(logBox.textContent);
+        }
+
+
 
             form.addEventListener('submit', async function (e) {
                 e.preventDefault();
@@ -194,6 +238,18 @@ else
 
                            // completato
         prependLog("\n🏁 STREAM TERMINATO.\n");
+
+        // se abbiamo un totale e siamo arrivati in fondo, forza 100%
+        if (lastTotal > 0 && lastIdx >= lastTotal) {
+            if (progressText) progressText.textContent = `Progresso: ${lastTotal}/${lastTotal}`;
+            if (progressPct) progressPct.textContent = `100%`;
+            if (progressBar) {
+                progressBar.style.width = `100%`;
+                progressBar.setAttribute('aria-valuenow', '100');
+            }
+        }
+
+
 
         // rileva errore nel log (se c'è, NON chiudere la modal)
         const hasError =

@@ -33,6 +33,7 @@ namespace NextStakeWebApp.Pages.Database
         }
 
         public bool IsPlan1 { get; private set; }
+        public List<CachedPredictionRow> TodayCache { get; private set; } = new();
 
         public DateTime? LastRun { get; private set; }
         public int TodayMatchesCount { get; private set; }
@@ -42,7 +43,79 @@ namespace NextStakeWebApp.Pages.Database
         public async Task OnGetAsync()
         {
             IsPlan1 = await CheckPlan1Async();
+            if (IsPlan1)
+                TodayCache = await LoadTodayCacheAsync();
         }
+        private async Task<List<CachedPredictionRow>> LoadTodayCacheAsync()
+        {
+            var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
+
+            var cs = _identityDb.Database.GetConnectionString();
+            var csb = new NpgsqlConnectionStringBuilder(cs)
+            {
+                KeepAlive = 30,
+                CommandTimeout = 120,
+                Timeout = 15,
+                CancellationTimeout = 10
+            };
+
+            var list = new List<CachedPredictionRow>();
+
+            await using var conn = new NpgsqlConnection(csb.ToString());
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT
+  ""MatchId"",
+  ""EventDate"",
+  ""GoalSimulatiCasa"",
+  ""GoalSimulatiOspite"",
+  ""TotaleGoalSimulati"",
+  ""Esito"",
+  ""OverUnderRange"",
+  ""Over1_5"",
+  ""Over2_5"",
+  ""Over3_5"",
+  ""GG_NG"",
+  ""MultigoalCasa"",
+  ""MultigoalOspite"",
+  ""ComboFinale""
+FROM ""NextMatchPredictionsCache""
+WHERE ""EventDate"" >= @utcStart AND ""EventDate"" < @utcEnd
+ORDER BY ""EventDate"", ""MatchId"";
+";
+            cmd.Parameters.AddWithValue("utcStart", utcStart);
+            cmd.Parameters.AddWithValue("utcEnd", utcEnd);
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            while (await rd.ReadAsync())
+            {
+                list.Add(new CachedPredictionRow
+                {
+                    MatchId = rd.GetFieldValue<long>(rd.GetOrdinal("MatchId")),
+                    EventDate = rd.IsDBNull(rd.GetOrdinal("EventDate")) ? null : rd.GetFieldValue<DateTime>(rd.GetOrdinal("EventDate")),
+
+                    GoalSimulatiCasa = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiCasa")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GoalSimulatiCasa")),
+                    GoalSimulatiOspite = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiOspite")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GoalSimulatiOspite")),
+                    TotaleGoalSimulati = rd.IsDBNull(rd.GetOrdinal("TotaleGoalSimulati")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("TotaleGoalSimulati")),
+
+                    Esito = rd.IsDBNull(rd.GetOrdinal("Esito")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("Esito")),
+                    OverUnderRange = rd.IsDBNull(rd.GetOrdinal("OverUnderRange")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("OverUnderRange")),
+                    Over1_5 = rd.IsDBNull(rd.GetOrdinal("Over1_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over1_5")),
+                    Over2_5 = rd.IsDBNull(rd.GetOrdinal("Over2_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over2_5")),
+                    Over3_5 = rd.IsDBNull(rd.GetOrdinal("Over3_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over3_5")),
+                    GG_NG = rd.IsDBNull(rd.GetOrdinal("GG_NG")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("GG_NG")),
+
+                    MultigoalCasa = rd.IsDBNull(rd.GetOrdinal("MultigoalCasa")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("MultigoalCasa")),
+                    MultigoalOspite = rd.IsDBNull(rd.GetOrdinal("MultigoalOspite")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("MultigoalOspite")),
+                    ComboFinale = rd.IsDBNull(rd.GetOrdinal("ComboFinale")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("ComboFinale")),
+                });
+            }
+
+            return list;
+        }
+
 
         public async Task<IActionResult> OnPostRefreshPredictionsAsync()
         {
@@ -280,7 +353,8 @@ namespace NextStakeWebApp.Pages.Database
             return (utcStart, utcEnd);
         }
 
-        private sealed class CachedPredictionRow
+        public sealed class CachedPredictionRow
+
         {
             public long MatchId { get; set; }
             public DateTime? EventDate { get; set; }
@@ -347,9 +421,9 @@ namespace NextStakeWebApp.Pages.Database
 
 
         private async Task<int> PopulateCacheBulkAsync(
-    NpgsqlConnection conn,
-    string script,
-    List<long> matchIds)
+            NpgsqlConnection conn,
+            string script,
+            List<long> matchIds)
         {
             if (matchIds == null || matchIds.Count == 0)
                 return 0;
@@ -359,16 +433,29 @@ namespace NextStakeWebApp.Pages.Database
             while (cleaned.EndsWith(";"))
                 cleaned = cleaned.Substring(0, cleaned.Length - 1).Trim();
 
-            // 2) lo script è fatto per @MatchId (singolo).
+            // 2) Lo script è fatto per @MatchId (singolo).
             //    Lo trasformiamo in "ids.matchid" così diventa set-based.
             var scriptSetBased = cleaned.Replace("@MatchId", "ids.matchid");
 
-
-            // 2) Query wrapper: unnest degli id + LATERAL sullo script + INSERT in cache
-            //    Non facciamo più query extra per EventDate: la prendiamo direttamente da matches.
+            // 3) Wrapper set-based + LIMIT 1 per evitare duplicati dal tuo script
+            //    + ON CONFLICT per non esplodere se esiste già la riga (PK su MatchId)
             var sql = $@"
 WITH ids AS (
     SELECT unnest(@MatchIds::bigint[]) AS matchid
+),
+pred_one AS (
+    SELECT
+        ids.matchid AS matchid,
+        mx.""date"" AS eventdate,
+        pred.*
+    FROM ids
+    JOIN public.matches mx ON mx.id = ids.matchid
+    CROSS JOIN LATERAL (
+        SELECT * FROM (
+            {scriptSetBased}
+        ) q
+        LIMIT 1
+    ) pred
 )
 INSERT INTO ""NextMatchPredictionsCache"" (
   ""MatchId"", ""EventDate"",
@@ -378,38 +465,44 @@ INSERT INTO ""NextMatchPredictionsCache"" (
   ""GeneratedAtUtc""
 )
 SELECT
-  ids.matchid                                   AS ""MatchId"",
-  mx.""date""                                   AS ""EventDate"",
-  pred.""Goal Simulati Casa""                    AS ""GoalSimulatiCasa"",
-  pred.""Goal Simulati Ospite""                  AS ""GoalSimulatiOspite"",
-  pred.""Totale Goal Simulati""                  AS ""TotaleGoalSimulati"",
-  pred.""Esito""                                 AS ""Esito"",
-  pred.""OverUnderRange""                        AS ""OverUnderRange"",
-  pred.""Over1_5""                               AS ""Over1_5"",
-  pred.""Over2_5""                               AS ""Over2_5"",
-  pred.""Over3_5""                               AS ""Over3_5"",
-  pred.""GG_NG""                                 AS ""GG_NG"",
-  pred.""MultigoalCasa""                         AS ""MultigoalCasa"",
-  pred.""MultigoalOspite""                       AS ""MultigoalOspite"",
-  pred.""ComboFinale""                           AS ""ComboFinale"",
-  now()                                          AS ""GeneratedAtUtc""
-FROM ids
-JOIN public.matches mx ON mx.id = ids.matchid
-CROSS JOIN LATERAL (
-    SELECT * FROM (
-        {scriptSetBased}
-    ) q
-) pred;
+  p.matchid                                   AS ""MatchId"",
+  p.eventdate                                 AS ""EventDate"",
+  p.""Goal Simulati Casa""                    AS ""GoalSimulatiCasa"",
+  p.""Goal Simulati Ospite""                  AS ""GoalSimulatiOspite"",
+  p.""Totale Goal Simulati""                  AS ""TotaleGoalSimulati"",
+  p.""Esito""                                 AS ""Esito"",
+  p.""OverUnderRange""                        AS ""OverUnderRange"",
+  p.""Over1_5""                               AS ""Over1_5"",
+  p.""Over2_5""                               AS ""Over2_5"",
+  p.""Over3_5""                               AS ""Over3_5"",
+  p.""GG_NG""                                 AS ""GG_NG"",
+  p.""MultigoalCasa""                         AS ""MultigoalCasa"",
+  p.""MultigoalOspite""                       AS ""MultigoalOspite"",
+  p.""ComboFinale""                           AS ""ComboFinale"",
+  now()                                       AS ""GeneratedAtUtc""
+FROM pred_one p
+ON CONFLICT (""MatchId"")
+DO UPDATE SET
+  ""EventDate""           = EXCLUDED.""EventDate"",
+  ""GoalSimulatiCasa""    = EXCLUDED.""GoalSimulatiCasa"",
+  ""GoalSimulatiOspite""  = EXCLUDED.""GoalSimulatiOspite"",
+  ""TotaleGoalSimulati""  = EXCLUDED.""TotaleGoalSimulati"",
+  ""Esito""               = EXCLUDED.""Esito"",
+  ""OverUnderRange""      = EXCLUDED.""OverUnderRange"",
+  ""Over1_5""             = EXCLUDED.""Over1_5"",
+  ""Over2_5""             = EXCLUDED.""Over2_5"",
+  ""Over3_5""             = EXCLUDED.""Over3_5"",
+  ""GG_NG""               = EXCLUDED.""GG_NG"",
+  ""MultigoalCasa""       = EXCLUDED.""MultigoalCasa"",
+  ""MultigoalOspite""     = EXCLUDED.""MultigoalOspite"",
+  ""ComboFinale""         = EXCLUDED.""ComboFinale"",
+  ""GeneratedAtUtc""      = EXCLUDED.""GeneratedAtUtc"";
 ";
-
-
 
             await using var cmd = new NpgsqlCommand(sql, conn)
             {
                 CommandTimeout = 120 // 2 minuti lato client (il server taglia già a 90s)
             };
-
-
 
             // parametro array bigint[]
             cmd.Parameters.AddWithValue("MatchIds", NpgsqlDbType.Array | NpgsqlDbType.Bigint, matchIds.ToArray());
@@ -417,9 +510,10 @@ CROSS JOIN LATERAL (
             try
             {
                 using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(95));
-                var inserted = await cmd.ExecuteNonQueryAsync(cts.Token);
+                var affected = await cmd.ExecuteNonQueryAsync(cts.Token);
 
-                return inserted;
+                // Nota: con ON CONFLICT, ExecuteNonQuery ritorna "righe coinvolte" (insert + update).
+                return affected;
             }
             catch (Npgsql.PostgresException pgex)
             {
@@ -451,10 +545,8 @@ CROSS JOIN LATERAL (
 
                 throw new Exception($"SQL ERROR {pgex.SqlState}: {pgex.MessageText}", pgex);
             }
-
-
-
         }
+
 
         // ✅ RENAMED/CHANGED: ora è INSERT puro (tabella svuotata prima)
         private async Task<bool> InsertCacheAsync(NpgsqlConnection conn, CachedPredictionRow r)
