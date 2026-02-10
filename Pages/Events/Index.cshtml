@@ -46,7 +46,9 @@
     var common =
     $"&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}"
     + (Model.ShowBest ? "&best=1" : "")
-    + (Model.ShowExchange ? "&ex=1" : "");
+    + (Model.ShowExchange ? "&ex=1" : "")
+    + (Request.Query["ex2"] == "1" ? "&ex2=1" : "");
+
 
 }
 
@@ -123,12 +125,14 @@
                     @{
                         var isSelectedToday = Model.SelectedDate == DateOnly.FromDateTime(DateTime.Now);
 
-                        // ✅ Best: stessa logica di Exchange
                         var bestDisabled = !isSelectedToday || !Model.HasBestCandidatesToday;
-
-                        // Exchange (come ce l’hai già)
                         var exchangeDisabled = !isSelectedToday || !Model.HasExchangeCandidatesToday;
+
+                        // 🔵 NUOVO: Exchange - Altri risultati (stessa logica: solo Oggi)
+                        var exchangeOtherDisabled = !isSelectedToday || !Model.HasExchangeOtherCandidatesToday;
+
                     }
+
 
                     <a class="btn btn-success @(bestDisabled ? "disabled" : "")"
                        href="@(bestDisabled
@@ -168,6 +172,25 @@
                             @(isSelectedToday ? "Nessun candidato Exchange disponibile oggi." : "Disponibile solo su Oggi.")
                         </small>
                     }
+
+                    <a class="btn btn-info @(exchangeOtherDisabled ? "disabled" : "")"
+                       href="@(exchangeOtherDisabled
+                                     ? "#"
+                                     : $"/Events?d={Model.SelectedDate:yyyy-MM-dd}&fav={(Model.OnlyFavorites ? 1 : 0)}&country={Model.SelectedCountryCode}&q={Model.Query}&ex2=1")"
+                       data-loading="exchangeOther"
+                       aria-disabled="@(exchangeOtherDisabled ? "true" : "false")"
+                       tabindex="@(exchangeOtherDisabled ? "-1" : "0")"
+                       title="@(exchangeOtherDisabled ? (isSelectedToday ? "Nessun candidato Exchange (Altri Risultati) disponibile oggi." : "Disponibile solo su Oggi.") : "")">
+                       Migliori Exchange - Altri risultati
+                    </a>
+
+                    @if (exchangeOtherDisabled)
+                    {
+                        <small class="text-muted d-block">
+                            @(isSelectedToday ? "Nessun candidato Exchange (Altri Risultati) disponibile oggi." : "Disponibile solo su Oggi.")
+                        </small>
+                    }
+
 
 
                     @if (Model.ShowExchange)
@@ -543,6 +566,115 @@
                     </div>
                 }
 
+                @if (Model.ShowExchangeOther)
+                {
+                    <div class="card mb-4 exchange-picks" id="exchangeOtherPicks">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <div class="fw-semibold">🧩 Migliori Exchange - Altri risultati</div>
+                            <small class="text-muted">Ordinati per rating</small>
+                        </div>
+
+                        <div class="card-body">
+                            @{
+                                var ex2Items = (Model.ExchangeOtherPicks ?? new List<NextStakeWebApp.Models.ExchangeOtherTodayRow>())
+                                .OrderByDescending(x => x.Rating)
+                                .ThenBy(x => x.Match_Date)
+                                .Select(r =>
+                                {
+                                    Model.AssetsByMatchId.TryGetValue(r.Match_Id, out var a);
+                                    return new { R = r, A = a };
+                                })
+                                .ToList();
+                            }
+
+                            @if (ex2Items.Count == 0)
+                            {
+                                if (!string.IsNullOrWhiteSpace(Model.ExchangeOtherMessage))
+                                {
+                                    <div class="alert alert-info mb-0">@Model.ExchangeOtherMessage</div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-secondary mb-0">Nessun candidato exchange (altri risultati) disponibile al momento.</div>
+                                }
+                            }
+                            else
+                            {
+                                if (!string.IsNullOrWhiteSpace(Model.ExchangeOtherMessage))
+                                {
+                                    <div class="alert alert-info mb-3">@Model.ExchangeOtherMessage</div>
+                                }
+
+                                <div class="list-group list-group-flush">
+                                    @foreach (var row in ex2Items)
+                                    {
+                                        var ko = row.R.Match_Date.ToString("dd/MM HH:mm");
+
+                                        // stesso calcolo stakePct della sezione Exchange principale
+                                        var rating = Convert.ToDouble(row.R.Rating);
+                                        var stakePct = (rating <= 85) ? 1 : (rating < 90 ? 2 : 3);
+
+                                        <div class="list-group-item exchange-row" data-rating="@row.R.Rating">
+
+                                            @* LAY sopra, centrato: SOLO Score_To_Lay *@
+                                            @if (!string.IsNullOrWhiteSpace(row.R.Score_To_Lay))
+                                            {
+                                                <div class="ex-lay-float">
+                                                    <span class="badge badge-lay">LAY: @row.R.Score_To_Lay</span>
+                                                </div>
+                                            }
+
+                                            <a href="/Match/Details?id=@row.R.Match_Id&d=@Model.SelectedDate.ToString("yyyy-MM-dd")@common"
+                                               class="match-grid ex-match-grid">
+
+                                                <div class="team home">
+                                                    @if (!string.IsNullOrWhiteSpace(row.A?.HomeLogo))
+                                                    {
+                                                        <span class="team-logo-box">
+                                                            <img src="@row.A.HomeLogo" alt="home" class="team-logo" />
+                                                        </span>
+                                                    }
+                                                    <span class="team-name">@row.R.Home_Name</span>
+                                                </div>
+
+                                                <div class="center ex-vs">
+                                                    <span class="vs-pill">vs</span>
+                                                </div>
+
+                                                <div class="ex-meta">
+                                                    <div class="ex-ko">@ko</div>
+
+                                                    <div class="ex-info">
+                                                        Rating: <b>@row.R.Rating</b> |
+                                                        Stake suggerito: <b>@stakePct%</b> |
+                                                        xG: <b>@((row.R.Xg_Pred_Total ?? 0).ToString("0.00"))</b>
+                                                    </div>
+
+                                                    <div class="ex-score">
+                                                        <span class="home-score">–</span>
+                                                        <span class="score-sep">:</span>
+                                                        <span class="away-score">–</span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="team away">
+                                                    <span class="team-name">@row.R.Away_Name</span>
+                                                    @if (!string.IsNullOrWhiteSpace(row.A?.AwayLogo))
+                                                    {
+                                                        <span class="team-logo-box">
+                                                            <img src="@row.A.AwayLogo" alt="away" class="team-logo" />
+                                                        </span>
+                                                    }
+                                                </div>
+
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
 
                 @if (!Model.ShowExchange && Model.Rows.Count == 0)
                 {
@@ -739,6 +871,10 @@
 
             const exBtn = e.target.closest('a[data-loading="exchange"]');
     if (exBtn) { showOverlay('Caricamento migliori exchange…'); return; }
+
+        const exOtherBtn = e.target.closest('a[data-loading="exchangeOther"]');
+    if (exOtherBtn) { showOverlay('Caricamento exchange (altri risultati)…'); return; }
+
 
 
         const generic = e.target.closest('a[data-loading-message]');
@@ -1805,8 +1941,18 @@
           }
         })();
     </script>
- 
 
+
+    <script>
+        (function () {
+          const qs = new URLSearchParams(location.search);
+          if (qs.get('ex2') === '1') {
+            setTimeout(() => {
+              document.getElementById('exchangeOtherPicks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 150);
+          }
+        })();
+    </script>
 
 
 }

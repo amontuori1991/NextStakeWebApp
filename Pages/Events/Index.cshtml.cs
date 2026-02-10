@@ -60,12 +60,21 @@ namespace NextStakeWebApp.Pages.Events
         public string? BestMessage { get; private set; }
 
         public bool HasBestCandidatesToday { get; set; }
+
         // === Migliori Exchange di Oggi ===
         public bool ShowExchange { get; private set; }
-        public List<ExchangeTodayRow> ExchangePicks { get; private set; } = new();
 
+        // === Migliori Exchange - Altri risultati ===
+        public bool ShowExchangeOther { get; private set; }
+
+        public List<ExchangeTodayRow> ExchangePicks { get; private set; } = new();
         public string? ExchangeMessage { get; private set; }
         public bool HasExchangeCandidatesToday { get; private set; }
+
+        // 🔵 NUOVO: altri risultati
+        public List<NextStakeWebApp.Models.ExchangeOtherTodayRow> ExchangeOtherPicks { get; private set; } = new();
+        public string? ExchangeOtherMessage { get; private set; }
+        public bool HasExchangeOtherCandidatesToday { get; private set; }
 
         // DTO per la view exchange_exact_lay_candidates...
         public class ExchangePickRow
@@ -216,7 +225,8 @@ namespace NextStakeWebApp.Pages.Events
             }
         }
 
-        public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null, int? ex = null)
+        public async Task OnGetAsync(string? d = null, int? fav = null, string? country = null, string? q = null, int? best = null, int? ex = null, int? ex2 = null)
+
 
         {
             if (!string.IsNullOrWhiteSpace(d) && DateOnly.TryParse(d, out var parsed))
@@ -227,6 +237,8 @@ namespace NextStakeWebApp.Pages.Events
             Query = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
             ShowBest = best == 1;
             ShowExchange = ex == 1;
+            ShowExchangeOther = ex2 == 1;
+
             // 🔕 NOTIFICHE (PUSH) DISABILITATE TEMPORANEAMENTE
             // VapidPublicKey = _config["Vapid:PublicKey"] ?? "";
             VapidPublicKey = "";
@@ -234,6 +246,7 @@ namespace NextStakeWebApp.Pages.Events
 
             HasExchangeCandidatesToday = await CheckHasExchangeCandidatesTodayAsync();
             HasBestCandidatesToday = await CheckHasBestCandidatesTodayAsync();
+            HasExchangeOtherCandidatesToday = await CheckHasExchangeOtherCandidatesTodayAsync();
 
 
 
@@ -388,6 +401,8 @@ namespace NextStakeWebApp.Pages.Events
             if (ShowExchange)
                 await LoadExchangePicksAsync();
 
+            if (ShowExchangeOther)
+                await LoadExchangeOtherPicksAsync();
 
             ViewData["Title"] = "Eventi";
         }
@@ -662,6 +677,110 @@ namespace NextStakeWebApp.Pages.Events
                 return false;
             }
         }
+        private async Task<bool> CheckHasExchangeOtherCandidatesTodayAsync()
+        {
+            var isSelectedToday = SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+            if (!isSelectedToday) return false;
+
+            try
+            {
+                var cs = _read.Database.GetConnectionString();
+                await using var conn = new NpgsqlConnection(cs);
+                await conn.OpenAsync();
+
+                // Check rapido sulla VIEW
+                const string probeSql = "SELECT 1 FROM exchange_exact_lay_candidates_today_other LIMIT 1";
+
+                await using var cmd = new NpgsqlCommand(probeSql, conn)
+                {
+                    CommandTimeout = 30
+                };
+
+                await using var rd = await cmd.ExecuteReaderAsync();
+                return await rd.ReadAsync();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async Task LoadExchangeOtherPicksAsync()
+        {
+            var isSelectedToday = SelectedDate == DateOnly.FromDateTime(DateTime.Now);
+            if (!isSelectedToday)
+            {
+                ExchangeOtherPicks = new();
+                ExchangeOtherMessage = "La sezione Exchange - Altri risultati è disponibile solo su Oggi.";
+                return;
+            }
+
+            if (!HasExchangeOtherCandidatesToday)
+            {
+                ExchangeOtherPicks = new();
+                ExchangeOtherMessage = "Nessun candidato Exchange (Altri Risultati) disponibile al momento.";
+                return;
+            }
+
+            try
+            {
+                const string sql = "SELECT * FROM exchange_exact_lay_candidates_today_other";
+
+                ExchangeOtherPicks = await _read.Set<NextStakeWebApp.Models.ExchangeOtherTodayRow>()
+                    .FromSqlRaw(sql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+
+                if (ExchangeOtherPicks.Count == 0)
+                {
+                    HasExchangeOtherCandidatesToday = false;
+                    ExchangeOtherMessage = "Nessun candidato Exchange (Altri Risultati) disponibile al momento.";
+                    return;
+                }
+
+                // Merge assets (loghi) come fai per Exchange normale
+                var matchIds = ExchangeOtherPicks.Select(x => (int)x.Match_Id).Distinct().ToList();
+
+                var assets = await (
+                    from m in _read.Matches
+                    join lg in _read.Leagues on m.LeagueId equals lg.Id
+                    join th in _read.Teams on m.HomeId equals th.Id
+                    join ta in _read.Teams on m.AwayId equals ta.Id
+                    where matchIds.Contains(m.Id)
+                    select new
+                    {
+                        m.Id,
+                        LeagueLogo = lg.Logo,
+                        LeagueFlag = lg.Flag,
+                        CountryCode = lg.CountryCode,
+                        HomeLogo = th.Logo,
+                        AwayLogo = ta.Logo
+                    }
+                )
+                .AsNoTracking()
+                .ToListAsync();
+
+                foreach (var a in assets)
+                {
+                    AssetsByMatchId[(long)a.Id] = new MatchAssets
+                    {
+                        LeagueLogo = a.LeagueLogo,
+                        LeagueFlag = a.LeagueFlag,
+                        HomeLogo = a.HomeLogo,
+                        AwayLogo = a.AwayLogo,
+                        CountryCode = a.CountryCode
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                ExchangeOtherMessage = $"Errore nell'esecuzione della query Exchange (Altri Risultati): {ex.Message}";
+                ExchangeOtherPicks = new();
+            }
+        }
+
+  
 
         private async Task LoadExchangePicksAsync()
         {

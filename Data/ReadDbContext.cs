@@ -30,6 +30,7 @@ namespace NextStakeWebApp.Data
             modelBuilder.Entity<Team>().ToTable("teams", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<Standing>().ToTable("standings", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<BestPickRow>().HasNoKey();
+            modelBuilder.Entity<NextStakeWebApp.Models.ExchangeOtherTodayRow>().HasNoKey();
             modelBuilder.Entity<ExchangeTodayRow>(eb =>
             {
                 eb.HasNoKey();
