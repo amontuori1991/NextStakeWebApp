@@ -37,7 +37,8 @@
 }
 
 
-<div id="snow-container-details"></div>
+<!-- <div id="snow-container-details"></div> -->
+
 
 <div class="details-page">
 
@@ -4395,13 +4396,13 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 
 
-    <script>
+<!--
+<script>
 (function () {
     let SNOW_COUNT = 50;
 
-    // Se mobile / viewport piccola, riduci i fiocchi
     if (window.matchMedia('(max-width: 768px)').matches) {
-        SNOW_COUNT = 15; // o 10, prova tu
+        SNOW_COUNT = 15;
     }
 
     const container = document.getElementById('snow-container');
@@ -4416,7 +4417,7 @@ document.addEventListener("DOMContentLoaded", () => {
         flake.className = 'snowflake';
         flake.textContent = '❄';
 
-        const size = Math.random() * 12 + 8; // 8px - 20px
+        const size = Math.random() * 12 + 8;
         flake.style.fontSize = size + 'px';
 
         flake.style.left = Math.random() * 100 + 'vw';
@@ -4432,8 +4433,9 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 })();
+</script>
+-->
 
-    </script>
         <script>
     (function () {
         const btns = document.querySelectorAll('[data-theme-choice]');
@@ -4919,13 +4921,14 @@ body {
     display: inline-block;
     vertical-align: middle;
 }
-    #snow-container-details {
-        pointer-events: none;
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        overflow: hidden;
-    }
+/*
+#snow-container-details {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    overflow: hidden;
+}
 
 .snowflake {
     position: absolute;
@@ -4936,6 +4939,8 @@ body {
     animation: fall linear infinite;
     opacity: 0.9;
 }
+*/
+
 #aiLoadingOverlay video {
     width: 100%;
     max-width: 340px; /* identico alla pagina Eventi */
@@ -5001,10 +5006,10 @@ body {
 }
 
 /* Su schermi piccoli: togli il drop-shadow e riduci dimensione */
-@@media (max-width: 768px) {
+/* @@media (max-width: 768px) {
     .snowflake {
-        filter: none;           /* niente drop-shadow */
-        font-size: 0.8rem;      /* più piccoli */
+        filter: none;           
+        font-size: 0.8rem;     
     }
 }
 
@@ -5019,7 +5024,7 @@ body {
             transform: translateY(110vh);
         }
     }
-
+*/
     /* === Actions bar (3 righe centrali, eleganti) === */
 .details-page .actions-bar{
     display: flex;

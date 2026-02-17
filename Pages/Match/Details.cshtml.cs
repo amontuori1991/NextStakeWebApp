@@ -3615,8 +3615,7 @@ WHERE
             static bool ContainsI(string s, string needle) =>
                 s?.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
 
-            static bool AnyContains(string s, params string[] needles) =>
-                needles.Any(n => ContainsI(s, n));
+            
 
             static string FirstOr(string? s, string alt = "—") =>
                 string.IsNullOrWhiteSpace(s) ? alt : s;

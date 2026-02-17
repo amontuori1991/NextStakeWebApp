@@ -461,30 +461,7 @@ namespace NextStakeWebApp.Pages.Schedine
                 }
                 catch { return null; }
             }
-            // logo locale (wwwroot) -> data uri (SVG)
-            string? LocalSvgToDataUri(string relativePathFromWwwroot)
-            {
-                try
-                {
-                    // es: "icons/favicon.svg"
-                    var env = HttpContext?.RequestServices?.GetService(typeof(IWebHostEnvironment)) as IWebHostEnvironment;
-                    if (env == null) return null;
 
-                    var fullPath = Path.Combine(
-                        env.WebRootPath,
-                        relativePathFromWwwroot.Replace("/", Path.DirectorySeparatorChar.ToString())
-                    );
-
-                    if (!System.IO.File.Exists(fullPath)) return null;
-
-                    var svgText = System.IO.File.ReadAllText(fullPath);
-
-                    // data-uri svg (URL encoded)
-                    var encoded = Uri.EscapeDataString(svgText);
-                    return $"data:image/svg+xml;utf8,{encoded}";
-                }
-                catch { return null; }
-            }
             // logo locale (wwwroot) -> data uri (PNG/JPG)
             string? LocalImageToDataUri(string relativePathFromWwwroot)
             {

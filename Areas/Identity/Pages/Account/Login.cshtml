@@ -5,7 +5,7 @@
 }
 
 <div id="login-page" class="ns-login-wrapper d-flex align-items-center justify-content-center">
-    <div id="snow-container-login"></div>
+    <!-- <div id="snow-container-login"></div> -->
     <div class="ns-login-card">
         <div class="ns-login-header">
             <img src="~/icons/favicon.svg" alt="NextStake Logo" class="ns-login-logo" />
@@ -64,6 +64,7 @@
     <partial name="_ValidationScriptsPartial" />
 
     <!-- ❄ Neve solo sulla pagina di login -->
+    <!--
     <script>
         (function () {
             function initLoginSnow() {
@@ -80,7 +81,7 @@
                     flake.className = 'snowflake-login';
                     flake.textContent = '❄';
 
-                    const size = Math.random() * 12 + 8; // 8px - 20px
+                    const size = Math.random() * 12 + 8;
                     flake.style.fontSize = size + 'px';
 
                     flake.style.left = Math.random() * 100 + 'vw';
@@ -104,7 +105,7 @@
             }
         })();
     </script>
-
+    -->
     <!-- 📱 Banner "Installa app" / Aggiungi alla Home -->
     <script>
         (function () {
@@ -413,7 +414,7 @@
             #login-page a.text-info:hover {
                 color: #66d0ff !important;
             }
-        /* --- Neve pagina login --- */
+        /*
         #snow-container-login {
             pointer-events: none;
             position: fixed;
@@ -438,6 +439,8 @@
                 transform: translateY(110vh);
             }
         }
+        */
+
         /* --- Hint PWA / Aggiungi alla Home --- */
         #login-page .ns-pwa-hint {
             margin-top: 20px;

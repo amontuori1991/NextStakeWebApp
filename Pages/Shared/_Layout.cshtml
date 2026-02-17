@@ -1,6 +1,5 @@
 ﻿﻿@using NextStakeWebApp.Data
 @using Microsoft.AspNetCore.Identity
-@using NextStakeWebApp.Data
 @using NextStakeWebApp.Models
 
 @inject UserManager<ApplicationUser> UserManager
@@ -195,8 +194,9 @@
 
     @await RenderSectionAsync("Scripts", required: false)
 
-    <div id="snow-container"></div>
+    <!-- <div id="snow-container"></div> -->
 
+<!--
     <style>
         #snow-container {
             pointer-events: none;
@@ -270,8 +270,8 @@
 
         }
     </style>
-
-
+    -->
+<!--
     <script>
         (function () {
             // Di base 50 fiocchi (desktop/tablet)
@@ -311,7 +311,7 @@
             }
         })();
     </script>
-
+    -->
 
 </body>
 </html>
