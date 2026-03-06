@@ -40,11 +40,17 @@ namespace NextStakeWebApp.Pages.Database
         public int UpsertedCount { get; private set; }
         public string? Error { get; private set; }
 
+        public List<VerificaRow> Verifica { get; private set; } = new();
+        public VerificaStats VerificaTotali { get; private set; } = new();
+
         public async Task OnGetAsync()
         {
             IsPlan1 = await CheckPlan1Async();
             if (IsPlan1)
+            {
                 TodayCache = await LoadTodayCacheAsync();
+                (Verifica, VerificaTotali) = await LoadVerificaAsync();
+            }
         }
 
         private async Task<List<CachedPredictionRow>> LoadTodayCacheAsync()
@@ -669,6 +675,106 @@ VALUES (
             if (targetType == typeof(decimal) && val is double d) val = (decimal)d;
 
             return (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Carica storico verifica da PredictionsVerifica (ultimi 30 giorni)
+        // ─────────────────────────────────────────────────────────────────────
+        private async Task<(List<VerificaRow>, VerificaStats)> LoadVerificaAsync()
+        {
+            var cs = _identityDb.Database.GetConnectionString();
+            var csb = new NpgsqlConnectionStringBuilder(cs)
+            {
+                KeepAlive = 30,
+                CommandTimeout = 60,
+                Timeout = 15
+            };
+
+            var list = new List<VerificaRow>();
+
+            await using var conn = new NpgsqlConnection(csb.ToString());
+            await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT
+    ""MatchId"", ""EventDate"", ""HomeName"", ""AwayName"", ""Lega"",
+    ""Esito"", ""OverUnderRange"", ""GG_NG"", ""ComboFinale"",
+    ""GolRealiCasa"", ""GolRealiOspite"",
+    ""EsitoReale"", ""EsitoOK"", ""OverUnderOK"", ""GG_NG_OK"", ""ComboOK""
+FROM ""PredictionsVerifica""
+WHERE ""EventDate"" >= now() - interval '30 days'
+ORDER BY ""EventDate"" DESC, ""MatchId"";
+";
+
+            await using var rd = await cmd.ExecuteReaderAsync();
+            while (await rd.ReadAsync())
+            {
+                list.Add(new VerificaRow
+                {
+                    MatchId = rd.GetFieldValue<long>(rd.GetOrdinal("MatchId")),
+                    EventDate = rd.IsDBNull(rd.GetOrdinal("EventDate")) ? null : rd.GetFieldValue<DateTime>(rd.GetOrdinal("EventDate")),
+                    HomeName = rd.IsDBNull(rd.GetOrdinal("HomeName")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("HomeName")),
+                    AwayName = rd.IsDBNull(rd.GetOrdinal("AwayName")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("AwayName")),
+                    Lega = rd.IsDBNull(rd.GetOrdinal("Lega")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("Lega")),
+                    Esito = rd.IsDBNull(rd.GetOrdinal("Esito")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("Esito")),
+                    OverUnderRange = rd.IsDBNull(rd.GetOrdinal("OverUnderRange")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("OverUnderRange")),
+                    GG_NG = rd.IsDBNull(rd.GetOrdinal("GG_NG")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("GG_NG")),
+                    ComboFinale = rd.IsDBNull(rd.GetOrdinal("ComboFinale")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("ComboFinale")),
+                    GolRealiCasa = rd.IsDBNull(rd.GetOrdinal("GolRealiCasa")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GolRealiCasa")),
+                    GolRealiOspite = rd.IsDBNull(rd.GetOrdinal("GolRealiOspite")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GolRealiOspite")),
+                    EsitoReale = rd.IsDBNull(rd.GetOrdinal("EsitoReale")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("EsitoReale")),
+                    EsitoOK = rd.IsDBNull(rd.GetOrdinal("EsitoOK")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("EsitoOK")),
+                    OverUnderOK = rd.IsDBNull(rd.GetOrdinal("OverUnderOK")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("OverUnderOK")),
+                    GG_NG_OK = rd.IsDBNull(rd.GetOrdinal("GG_NG_OK")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("GG_NG_OK")),
+                    ComboOK = rd.IsDBNull(rd.GetOrdinal("ComboOK")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("ComboOK")),
+                });
+            }
+
+            // Statistiche aggregate
+            var finished = list.Where(x => x.EsitoOK != null).ToList();
+            var stats = new VerificaStats
+            {
+                Totale = finished.Count,
+                PctEsito = finished.Count > 0 ? Math.Round(finished.Count(x => x.EsitoOK == "OK") * 100.0 / finished.Count, 1) : 0,
+                PctOU = finished.Count > 0 ? Math.Round(finished.Count(x => x.OverUnderOK == "OK") * 100.0 / finished.Count, 1) : 0,
+                PctGGNG = finished.Count > 0 ? Math.Round(finished.Count(x => x.GG_NG_OK == "OK") * 100.0 / finished.Count, 1) : 0,
+                PctCombo = finished.Count > 0 ? Math.Round(finished.Count(x => x.ComboOK == "OK") * 100.0 / finished.Count, 1) : 0,
+            };
+
+            return (list, stats);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Model classes
+        // ─────────────────────────────────────────────────────────────────────
+        public sealed class VerificaRow
+        {
+            public long MatchId { get; set; }
+            public DateTime? EventDate { get; set; }
+            public string? HomeName { get; set; }
+            public string? AwayName { get; set; }
+            public string? Lega { get; set; }
+            public string? Esito { get; set; }
+            public string? OverUnderRange { get; set; }
+            public string? GG_NG { get; set; }
+            public string? ComboFinale { get; set; }
+            public int? GolRealiCasa { get; set; }
+            public int? GolRealiOspite { get; set; }
+            public string? EsitoReale { get; set; }
+            public string? EsitoOK { get; set; }
+            public string? OverUnderOK { get; set; }
+            public string? GG_NG_OK { get; set; }
+            public string? ComboOK { get; set; }
+        }
+
+        public sealed class VerificaStats
+        {
+            public int Totale { get; set; }
+            public double PctEsito { get; set; }
+            public double PctOU { get; set; }
+            public double PctGGNG { get; set; }
+            public double PctCombo { get; set; }
         }
     }
 }
