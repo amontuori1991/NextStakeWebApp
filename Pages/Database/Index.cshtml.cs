@@ -46,6 +46,7 @@ namespace NextStakeWebApp.Pages.Database
             if (IsPlan1)
                 TodayCache = await LoadTodayCacheAsync();
         }
+
         private async Task<List<CachedPredictionRow>> LoadTodayCacheAsync()
         {
             var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
@@ -95,18 +96,15 @@ ORDER BY ""EventDate"", ""MatchId"";
                 {
                     MatchId = rd.GetFieldValue<long>(rd.GetOrdinal("MatchId")),
                     EventDate = rd.IsDBNull(rd.GetOrdinal("EventDate")) ? null : rd.GetFieldValue<DateTime>(rd.GetOrdinal("EventDate")),
-
                     GoalSimulatiCasa = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiCasa")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GoalSimulatiCasa")),
                     GoalSimulatiOspite = rd.IsDBNull(rd.GetOrdinal("GoalSimulatiOspite")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("GoalSimulatiOspite")),
                     TotaleGoalSimulati = rd.IsDBNull(rd.GetOrdinal("TotaleGoalSimulati")) ? null : rd.GetFieldValue<int>(rd.GetOrdinal("TotaleGoalSimulati")),
-
                     Esito = rd.IsDBNull(rd.GetOrdinal("Esito")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("Esito")),
                     OverUnderRange = rd.IsDBNull(rd.GetOrdinal("OverUnderRange")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("OverUnderRange")),
                     Over1_5 = rd.IsDBNull(rd.GetOrdinal("Over1_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over1_5")),
                     Over2_5 = rd.IsDBNull(rd.GetOrdinal("Over2_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over2_5")),
                     Over3_5 = rd.IsDBNull(rd.GetOrdinal("Over3_5")) ? null : rd.GetFieldValue<decimal>(rd.GetOrdinal("Over3_5")),
                     GG_NG = rd.IsDBNull(rd.GetOrdinal("GG_NG")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("GG_NG")),
-
                     MultigoalCasa = rd.IsDBNull(rd.GetOrdinal("MultigoalCasa")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("MultigoalCasa")),
                     MultigoalOspite = rd.IsDBNull(rd.GetOrdinal("MultigoalOspite")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("MultigoalOspite")),
                     ComboFinale = rd.IsDBNull(rd.GetOrdinal("ComboFinale")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("ComboFinale")),
@@ -115,7 +113,6 @@ ORDER BY ""EventDate"", ""MatchId"";
 
             return list;
         }
-
 
         public async Task<IActionResult> OnPostRefreshPredictionsAsync()
         {
@@ -144,40 +141,33 @@ ORDER BY ""EventDate"", ""MatchId"";
                 var todayMatchIds = await _read.Matches
                     .AsNoTracking()
                     .Where(m => m.Date >= utcStart && m.Date < utcEnd)
-.Select(m => (long)m.Id)
-.ToListAsync();
-
+                    .Select(m => (long)m.Id)
+                    .ToListAsync();
 
                 TodayMatchesCount = todayMatchIds.Count;
 
                 var cs = _identityDb.Database.GetConnectionString();
-
                 var csb = new NpgsqlConnectionStringBuilder(cs)
                 {
-                    KeepAlive = 30,              // ping ogni 30s
-                    CommandTimeout = 120,        // default command timeout
-                    Timeout = 15,                // timeout connessione (open)
-                    CancellationTimeout = 10     // secondi: attesa risposta al CANCEL
+                    KeepAlive = 30,
+                    CommandTimeout = 120,
+                    Timeout = 15,
+                    CancellationTimeout = 10
                 };
 
                 await using var conn = new NpgsqlConnection(csb.ToString());
                 await conn.OpenAsync();
-
 
                 // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
                 await ClearPredictionsCacheAsync(conn);
 
                 // ✅ POPOLA CACHE IN UN SOLO COLPO (NO LOOP)
                 UpsertedCount = await PopulateCacheBulkAsync(conn, script, todayMatchIds);
-
             }
             catch (Exception ex)
             {
-                Error = ex.ToString(); // log completo visibile nella card della pagina (Model.Error)
+                Error = ex.ToString();
             }
-
-
-
 
             return Page();
         }
@@ -235,7 +225,6 @@ ORDER BY ""EventDate"", ""MatchId"";
                 await Log($"⚽ Match trovati oggi: {TodayMatchesCount}\n\n");
 
                 var cs = _identityDb.Database.GetConnectionString();
-
                 var csb = new NpgsqlConnectionStringBuilder(cs)
                 {
                     KeepAlive = 30,
@@ -244,7 +233,26 @@ ORDER BY ""EventDate"", ""MatchId"";
                     CancellationTimeout = 10
                 };
 
-                // 1) SVUOTO CACHE con UNA connessione dedicata (così se muore non rovina il loop)
+                // ─────────────────────────────────────────────────────────────
+                // STEP 1: salva verifica pronostici del giorno PRIMA del truncate
+                // ─────────────────────────────────────────────────────────────
+                await Log("📊 Salvo verifica pronostici in PredictionsVerifica...\n");
+                try
+                {
+                    await using var connVerifica = new NpgsqlConnection(csb.ToString());
+                    await connVerifica.OpenAsync();
+                    var verificaSaved = await SaveDailyVerificaAsync(connVerifica);
+                    await Log($"✅ Verifica salvata: {verificaSaved} righe.\n\n");
+                }
+                catch (Exception exV)
+                {
+                    // non blocchiamo il job se la verifica fallisce
+                    await Log($"⚠️ Verifica non salvata (non bloccante): {exV.Message}\n\n");
+                }
+
+                // ─────────────────────────────────────────────────────────────
+                // STEP 2: svuota cache
+                // ─────────────────────────────────────────────────────────────
                 await Log("🧹 Svuoto NextMatchPredictionsCache...\n");
                 await using (var connClear = new NpgsqlConnection(csb.ToString()))
                 {
@@ -253,6 +261,9 @@ ORDER BY ""EventDate"", ""MatchId"";
                 }
                 await Log("✅ Cache svuotata.\n\n");
 
+                // ─────────────────────────────────────────────────────────────
+                // STEP 3: popola cache con i match di oggi
+                // ─────────────────────────────────────────────────────────────
                 await Log("🚀 Avvio popolamento cache in modalità BULK (un solo comando SQL)...\n");
 
                 var ids = todayMatches.Select(x => (long)x.Id).ToList();
@@ -277,11 +288,9 @@ ORDER BY ""EventDate"", ""MatchId"";
 
                     try
                     {
-                        // 2) OGNI BATCH USA UNA CONNESSIONE NUOVA
                         await using var connBatch = new NpgsqlConnection(csb.ToString());
                         await connBatch.OpenAsync();
 
-                        // ⛔ timeout DB per questa singola esecuzione (90 secondi)
                         await using (var st2 = new NpgsqlCommand("SET statement_timeout = 90000;", connBatch))
                             await st2.ExecuteNonQueryAsync();
 
@@ -302,15 +311,10 @@ ORDER BY ""EventDate"", ""MatchId"";
                     }
                 }
 
-
-
                 UpsertedCount = totalInserted;
-
 
                 await Log($"✅ Inserite righe in cache: {UpsertedCount}\n");
                 await Log("🎉 Fine.\n");
-
-
                 await Log($"🎉 Fine. Match: {TodayMatchesCount} | Insert: {UpsertedCount}\n");
             }
             catch (Exception ex)
@@ -319,11 +323,87 @@ ORDER BY ""EventDate"", ""MatchId"";
                 await Log($"\n❌ ERRORE:\n{Error}\n");
             }
 
-
             return new EmptyResult();
         }
 
-        // ✅ NEW: svuota completamente la cache prima del popolamento giornaliero
+        // ─────────────────────────────────────────────────────────────────────
+        // Salva i pronostici del giorno (solo FT) in PredictionsVerifica
+        // ─────────────────────────────────────────────────────────────────────
+        private async Task<int> SaveDailyVerificaAsync(NpgsqlConnection conn)
+        {
+            // Carica la query di verifica da Analyses
+            var verificaScript = await _read.Analyses
+                .Where(a => a.ViewName == "NextMatch_Verifica_Giornaliera")
+                .Select(a => a.ViewValue)
+                .AsNoTracking()
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(verificaScript))
+                return 0;
+
+            // Rimuove eventuale ';' finale che romperebbe la subquery
+            var cleaned = verificaScript.Trim();
+            while (cleaned.EndsWith(";"))
+                cleaned = cleaned.Substring(0, cleaned.Length - 1).Trim();
+
+            var sql = $@"
+INSERT INTO ""PredictionsVerifica"" (
+    ""MatchId"", ""EventDate"", ""HomeName"", ""AwayName"", ""Lega"",
+    ""GoalSimulatiCasa"", ""GoalSimulatiOspite"", ""TotaleGoalSimulati"",
+    ""Esito"", ""OverUnderRange"", ""GG_NG"", ""ComboFinale"",
+    ""GolRealiCasa"", ""GolRealiOspite"", ""TotaleGolReali"",
+    ""EsitoReale"", ""EsitoOK"", ""OverUnderOK"", ""GG_NG_OK"", ""ComboOK"",
+    ""Stato"", ""SavedAt""
+)
+SELECT
+    v.""MatchId"",
+    v.""EventDate"",
+    v.""HomeName"",
+    v.""AwayName"",
+    v.""Lega"",
+    v.""GoalSimulatiCasa"",
+    v.""GoalSimulatiOspite"",
+    v.""TotaleGoalSimulati"",
+    v.""Esito"",
+    v.""OverUnderRange"",
+    v.""GG_NG"",
+    v.""ComboFinale"",
+    v.""GolRealiCasa"",
+    v.""GolRealiOspite"",
+    v.""TotaleGolReali"",
+    v.""EsitoReale"",
+    v.""EsitoOK"",
+    v.""OverUnderOK"",
+    v.""GG_NG_OK"",
+    v.""ComboOK"",
+    v.""Stato"",
+    now()
+FROM ({cleaned}) v
+WHERE v.""Stato"" = 'FT'
+ON CONFLICT (""MatchId"", ""EventDate"") DO UPDATE SET
+    ""GolRealiCasa""    = EXCLUDED.""GolRealiCasa"",
+    ""GolRealiOspite""  = EXCLUDED.""GolRealiOspite"",
+    ""TotaleGolReali""  = EXCLUDED.""TotaleGolReali"",
+    ""EsitoReale""      = EXCLUDED.""EsitoReale"",
+    ""EsitoOK""         = EXCLUDED.""EsitoOK"",
+    ""OverUnderOK""     = EXCLUDED.""OverUnderOK"",
+    ""GG_NG_OK""        = EXCLUDED.""GG_NG_OK"",
+    ""ComboOK""         = EXCLUDED.""ComboOK"",
+    ""Stato""           = EXCLUDED.""Stato"",
+    ""SavedAt""         = EXCLUDED.""SavedAt"";
+";
+
+            await using var cmd = new NpgsqlCommand(sql, conn)
+            {
+                CommandTimeout = 120
+            };
+
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Svuota completamente la cache prima del popolamento giornaliero
+        // ─────────────────────────────────────────────────────────────────────
         private async Task ClearPredictionsCacheAsync(NpgsqlConnection conn)
         {
             await using var cmd = conn.CreateCommand();
@@ -354,22 +434,18 @@ ORDER BY ""EventDate"", ""MatchId"";
         }
 
         public sealed class CachedPredictionRow
-
         {
             public long MatchId { get; set; }
             public DateTime? EventDate { get; set; }
-
             public int? GoalSimulatiCasa { get; set; }
             public int? GoalSimulatiOspite { get; set; }
             public int? TotaleGoalSimulati { get; set; }
-
             public string? Esito { get; set; }
             public string? OverUnderRange { get; set; }
             public decimal? Over1_5 { get; set; }
             public decimal? Over2_5 { get; set; }
             public decimal? Over3_5 { get; set; }
             public string? GG_NG { get; set; }
-
             public string? MultigoalCasa { get; set; }
             public string? MultigoalOspite { get; set; }
             public string? ComboFinale { get; set; }
@@ -394,14 +470,12 @@ ORDER BY ""EventDate"", ""MatchId"";
                 GoalSimulatiCasa = GetField<int?>(rd, "Goal Simulati Casa"),
                 GoalSimulatiOspite = GetField<int?>(rd, "Goal Simulati Ospite"),
                 TotaleGoalSimulati = GetField<int?>(rd, "Totale Goal Simulati"),
-
                 Esito = GetField<string>(rd, "Esito"),
                 OverUnderRange = GetField<string>(rd, "OverUnderRange"),
                 Over1_5 = GetField<decimal?>(rd, "Over1_5"),
                 Over2_5 = GetField<decimal?>(rd, "Over2_5"),
                 Over3_5 = GetField<decimal?>(rd, "Over3_5"),
                 GG_NG = GetField<string>(rd, "GG_NG"),
-
                 MultigoalCasa = GetField<string>(rd, "MultigoalCasa"),
                 MultigoalOspite = GetField<string>(rd, "MultigoalOspite"),
                 ComboFinale = GetField<string>(rd, "ComboFinale"),
@@ -418,7 +492,6 @@ ORDER BY ""EventDate"", ""MatchId"";
 
             return row;
         }
-
 
         private async Task<int> PopulateCacheBulkAsync(
             NpgsqlConnection conn,
@@ -501,18 +574,15 @@ DO UPDATE SET
 
             await using var cmd = new NpgsqlCommand(sql, conn)
             {
-                CommandTimeout = 120 // 2 minuti lato client (il server taglia già a 90s)
+                CommandTimeout = 120
             };
 
-            // parametro array bigint[]
             cmd.Parameters.AddWithValue("MatchIds", NpgsqlDbType.Array | NpgsqlDbType.Bigint, matchIds.ToArray());
 
             try
             {
                 using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(95));
                 var affected = await cmd.ExecuteNonQueryAsync(cts.Token);
-
-                // Nota: con ON CONFLICT, ExecuteNonQuery ritorna "righe coinvolte" (insert + update).
                 return affected;
             }
             catch (Npgsql.PostgresException pgex)
@@ -547,8 +617,7 @@ DO UPDATE SET
             }
         }
 
-
-        // ✅ RENAMED/CHANGED: ora è INSERT puro (tabella svuotata prima)
+        // ✅ INSERT puro (tabella svuotata prima)
         private async Task<bool> InsertCacheAsync(NpgsqlConnection conn, CachedPredictionRow r)
         {
             await using var cmd = conn.CreateCommand();
@@ -570,20 +639,15 @@ VALUES (
 
             cmd.Parameters.AddWithValue("MatchId", r.MatchId);
             cmd.Parameters.AddWithValue("EventDate", (object?)r.EventDate ?? DBNull.Value);
-
             cmd.Parameters.AddWithValue("GSC", (object?)r.GoalSimulatiCasa ?? DBNull.Value);
             cmd.Parameters.AddWithValue("GSO", (object?)r.GoalSimulatiOspite ?? DBNull.Value);
             cmd.Parameters.AddWithValue("TGS", (object?)r.TotaleGoalSimulati ?? DBNull.Value);
-
             cmd.Parameters.AddWithValue("Esito", (object?)r.Esito ?? DBNull.Value);
             cmd.Parameters.AddWithValue("OUR", (object?)r.OverUnderRange ?? DBNull.Value);
-
             cmd.Parameters.AddWithValue("O15", (object?)r.Over1_5 ?? DBNull.Value);
             cmd.Parameters.AddWithValue("O25", (object?)r.Over2_5 ?? DBNull.Value);
             cmd.Parameters.AddWithValue("O35", (object?)r.Over3_5 ?? DBNull.Value);
-
             cmd.Parameters.AddWithValue("GG", (object?)r.GG_NG ?? DBNull.Value);
-
             cmd.Parameters.AddWithValue("MGC", (object?)r.MultigoalCasa ?? DBNull.Value);
             cmd.Parameters.AddWithValue("MGO", (object?)r.MultigoalOspite ?? DBNull.Value);
             cmd.Parameters.AddWithValue("CF", (object?)r.ComboFinale ?? DBNull.Value);
@@ -602,7 +666,6 @@ VALUES (
 
             if (targetType == typeof(long) && val is int i) val = (long)i;
             if (targetType == typeof(int) && val is long l) val = (int)l;
-
             if (targetType == typeof(decimal) && val is double d) val = (decimal)d;
 
             return (T)Convert.ChangeType(val, targetType, CultureInfo.InvariantCulture);
