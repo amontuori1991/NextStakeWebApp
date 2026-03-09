@@ -679,6 +679,7 @@ VALUES (
 
         // ─────────────────────────────────────────────────────────────────────
         // Carica storico verifica da PredictionsVerifica (ultimi 30 giorni)
+        // con join su matches → leagues per recuperare logo e flag
         // ─────────────────────────────────────────────────────────────────────
         private async Task<(List<VerificaRow>, VerificaStats)> LoadVerificaAsync()
         {
@@ -695,6 +696,12 @@ VALUES (
             await using var conn = new NpgsqlConnection(csb.ToString());
             await conn.OpenAsync();
 
+            // Usa ReadDb connection string per il join su matches/leagues
+            var readCs = _read.Database.GetConnectionString();
+            await using var connRead = new NpgsqlConnection(readCs);
+            await connRead.OpenAsync();
+
+            // Step 1: carica dati verifica
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 SELECT
@@ -706,7 +713,6 @@ FROM ""PredictionsVerifica""
 WHERE ""EventDate"" >= now() - interval '30 days'
 ORDER BY ""EventDate"" DESC, ""MatchId"";
 ";
-
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
             {
@@ -730,8 +736,45 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
                     ComboOK = rd.IsDBNull(rd.GetOrdinal("ComboOK")) ? null : rd.GetFieldValue<string>(rd.GetOrdinal("ComboOK")),
                 });
             }
+            await rd.CloseAsync();
 
-            // Statistiche aggregate
+            // Step 2: recupera logo+flag per lega via join matches→leagues (ReadDb)
+            if (list.Count > 0)
+            {
+                var matchIds = list.Select(x => x.MatchId).Distinct().ToList();
+
+                // Costruisce array literal PostgreSQL
+                await using var cmdLogos = connRead.CreateCommand();
+                cmdLogos.CommandText = @"
+SELECT m.id AS match_id, lg.logo, lg.flag
+FROM matches m
+JOIN leagues lg ON lg.id = m.leagueid
+WHERE m.id = ANY(@ids);
+";
+                cmdLogos.Parameters.AddWithValue("ids", NpgsqlDbType.Array | NpgsqlDbType.Bigint, matchIds.ToArray());
+
+                var logoMap = new Dictionary<long, (string? Logo, string? Flag)>();
+                await using var rdLogos = await cmdLogos.ExecuteReaderAsync();
+                while (await rdLogos.ReadAsync())
+                {
+                    var mid = rdLogos.GetFieldValue<long>(rdLogos.GetOrdinal("match_id"));
+                    var logo = rdLogos.IsDBNull(rdLogos.GetOrdinal("logo")) ? null : rdLogos.GetFieldValue<string>(rdLogos.GetOrdinal("logo"));
+                    var flag = rdLogos.IsDBNull(rdLogos.GetOrdinal("flag")) ? null : rdLogos.GetFieldValue<string>(rdLogos.GetOrdinal("flag"));
+                    logoMap[mid] = (logo, flag);
+                }
+
+                // Applica logo/flag a ogni riga
+                foreach (var row in list)
+                {
+                    if (logoMap.TryGetValue(row.MatchId, out var lf))
+                    {
+                        row.LeagueLogo = lf.Logo;
+                        row.LeagueFlag = lf.Flag;
+                    }
+                }
+            }
+
+            // Step 3: statistiche aggregate globali
             var finished = list.Where(x => x.EsitoOK != null).ToList();
             var stats = new VerificaStats
             {
@@ -741,6 +784,22 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
                 PctGGNG = finished.Count > 0 ? Math.Round(finished.Count(x => x.GG_NG_OK == "OK") * 100.0 / finished.Count, 1) : 0,
                 PctCombo = finished.Count > 0 ? Math.Round(finished.Count(x => x.ComboOK == "OK") * 100.0 / finished.Count, 1) : 0,
             };
+
+            // Step 4: statistiche per lega
+            stats.PerLega = finished
+                .GroupBy(x => x.Lega ?? "–")
+                .Select(g => new LeagueStatsRow
+                {
+                    Lega = g.Key,
+                    LeagueLogo = g.FirstOrDefault(x => x.LeagueLogo != null)?.LeagueLogo,
+                    LeagueFlag = g.FirstOrDefault(x => x.LeagueFlag != null)?.LeagueFlag,
+                    Totale = g.Count(),
+                    PctEsito = Math.Round(g.Count(x => x.EsitoOK == "OK") * 100.0 / g.Count(), 1),
+                    PctOU = Math.Round(g.Count(x => x.OverUnderOK == "OK") * 100.0 / g.Count(), 1),
+                    PctGGNG = Math.Round(g.Count(x => x.GG_NG_OK == "OK") * 100.0 / g.Count(), 1),
+                })
+                .OrderByDescending(x => x.Totale)
+                .ToList();
 
             return (list, stats);
         }
@@ -755,6 +814,8 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
             public string? HomeName { get; set; }
             public string? AwayName { get; set; }
             public string? Lega { get; set; }
+            public string? LeagueLogo { get; set; }
+            public string? LeagueFlag { get; set; }
             public string? Esito { get; set; }
             public string? OverUnderRange { get; set; }
             public string? GG_NG { get; set; }
@@ -768,6 +829,17 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
             public string? ComboOK { get; set; }
         }
 
+        public sealed class LeagueStatsRow
+        {
+            public string? Lega { get; set; }
+            public string? LeagueLogo { get; set; }
+            public string? LeagueFlag { get; set; }
+            public int Totale { get; set; }
+            public double PctEsito { get; set; }
+            public double PctOU { get; set; }
+            public double PctGGNG { get; set; }
+        }
+
         public sealed class VerificaStats
         {
             public int Totale { get; set; }
@@ -775,6 +847,7 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
             public double PctOU { get; set; }
             public double PctGGNG { get; set; }
             public double PctCombo { get; set; }
+            public List<LeagueStatsRow> PerLega { get; set; } = new();
         }
     }
 }

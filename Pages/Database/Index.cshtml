@@ -1,9 +1,118 @@
 ﻿@page
 @model NextStakeWebApp.Pages.Database.IndexModel
+@using System.Globalization
+@using Microsoft.AspNetCore.Html
+
+@functions {
+    IHtmlContent BadgeOkKo(string? val)
+    {
+        if (val == "OK") return new HtmlString("<span class=\"badge bg-success\">✓</span>");
+        if (val == "KO") return new HtmlString("<span class=\"badge bg-danger\">✗</span>");
+        return new HtmlString("<span class=\"text-muted\">–</span>");
+    }
+}
 
 @{
     ViewData["Title"] = "Database";
 }
+
+<style>
+/* ── Card lega ── */
+.league-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: .75rem;
+}
+
+.league-stat-card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: .6rem;
+    padding: .75rem .6rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: .3rem;
+}
+
+.league-stat-header {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    justify-content: center;
+}
+
+.league-stat-logo {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
+}
+
+.league-stat-logo-placeholder {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.league-stat-flag {
+    height: 14px;
+    width: auto;
+    vertical-align: middle;
+}
+
+.league-stat-name {
+    font-size: .72rem;
+    font-weight: 600;
+    line-height: 1.2;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.league-stat-matches {
+    font-size: .68rem;
+}
+
+.league-stat-pills {
+    display: flex;
+    gap: .25rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: .25rem;
+}
+
+.league-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-radius: .4rem;
+    padding: .2rem .35rem;
+    min-width: 36px;
+}
+
+.pill-ok   { background: rgba(25,135,84,.85);  color:#fff; }
+.pill-warn { background: rgba(255,193,7,.85);   color:#111; }
+.pill-ko   { background: rgba(220,53,69,.85);   color:#fff; }
+
+.pill-label { font-size: .58rem; opacity: .85; line-height: 1; }
+.pill-value { font-size: .8rem;  font-weight: 700; line-height: 1.2; }
+
+/* ── Nomi squadre nella tabella ── */
+.team-name-cell {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: .8rem;
+    max-width: 90px;
+}
+
+@@media (max-width: 576px) {
+    .league-stats-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+    .team-name-cell { max-width: 70px; }
+}
+</style>
 
 <h2>Database</h2>
 
@@ -124,8 +233,8 @@ else
 
         @if (Model.VerificaTotali.Totale > 0)
         {
-            <!-- Statistiche aggregate -->
-            <div class="row g-2 mb-3">
+            <!-- ── Statistiche aggregate globali ── -->
+            <div class="row g-2 mb-4">
                 <div class="col-6 col-md-3">
                     <div class="card text-center p-2 bg-dark">
                         <div class="text-muted small">Partite</div>
@@ -134,101 +243,184 @@ else
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="card text-center p-2 @(Model.VerificaTotali.PctEsito >= 55 ? "bg-success" : Model.VerificaTotali.PctEsito >= 45 ? "bg-warning text-dark" : "bg-danger")">
-                        <div class="small">Esito</div>
+                        <div class="small fw-semibold">Esito</div>
                         <div class="fs-4 fw-bold">@Model.VerificaTotali.PctEsito.ToString("0.0")%</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="card text-center p-2 @(Model.VerificaTotali.PctOU >= 60 ? "bg-success" : Model.VerificaTotali.PctOU >= 50 ? "bg-warning text-dark" : "bg-danger")">
-                        <div class="small">Over/Under</div>
+                        <div class="small fw-semibold">Over/Under</div>
                         <div class="fs-4 fw-bold">@Model.VerificaTotali.PctOU.ToString("0.0")%</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="card text-center p-2 @(Model.VerificaTotali.PctGGNG >= 60 ? "bg-success" : Model.VerificaTotali.PctGGNG >= 50 ? "bg-warning text-dark" : "bg-danger")">
-                        <div class="small">GG/NG</div>
+                        <div class="small fw-semibold">GG/NG</div>
                         <div class="fs-4 fw-bold">@Model.VerificaTotali.PctGGNG.ToString("0.0")%</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Tabella dettaglio -->
-            <div class="table-responsive">
-                <table class="table table-sm table-striped table-dark align-middle mb-0" id="verificaTable">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Casa</th>
-                            <th>Ospite</th>
-                            <th>Lega</th>
-                            <th>Esito</th>
-                            <th>OU</th>
-                            <th>GG/NG</th>
-                            <th>Risultato</th>
-                            <th class="text-center">E</th>
-                            <th class="text-center">OU</th>
-                            <th class="text-center">GG</th>
-                            <th class="text-center">Combo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var r in Model.Verifica)
-                        {
-                            <tr>
-                                <td>@(r.EventDate?.ToString("dd/MM HH:mm") ?? "-")</td>
-                                <td>@(r.HomeName ?? "-")</td>
-                                <td>@(r.AwayName ?? "-")</td>
-                                <td><small class="text-muted">@(r.Lega ?? "-")</small></td>
-                                <td>@(r.Esito ?? "-")</td>
-                                <td><small>@(r.OverUnderRange ?? "-")</small></td>
-                                <td>@(r.GG_NG ?? "-")</td>
-                                <td>
-                                    @if (r.GolRealiCasa.HasValue && r.GolRealiOspite.HasValue)
-                                    {
-                                        <b>@r.GolRealiCasa - @r.GolRealiOspite</b>
-                                        <small class="text-muted ms-1">(@(r.EsitoReale ?? "-"))</small>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">-</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    @if (r.EsitoOK == "OK")
-                                    { <span class="badge bg-success">✓</span> }
-                                    else if (r.EsitoOK == "KO")
-                                    { <span class="badge bg-danger">✗</span> }
-                                    else
-                                    { <span class="text-muted">-</span> }
-                                </td>
-                                <td class="text-center">
-                                    @if (r.OverUnderOK == "OK")
-                                    { <span class="badge bg-success">✓</span> }
-                                    else if (r.OverUnderOK == "KO")
-                                    { <span class="badge bg-danger">✗</span> }
-                                    else
-                                    { <span class="text-muted">-</span> }
-                                </td>
-                                <td class="text-center">
-                                    @if (r.GG_NG_OK == "OK")
-                                    { <span class="badge bg-success">✓</span> }
-                                    else if (r.GG_NG_OK == "KO")
-                                    { <span class="badge bg-danger">✗</span> }
-                                    else
-                                    { <span class="text-muted">-</span> }
-                                </td>
-                                <td class="text-center">
-                                    @if (r.ComboOK == "OK")
-                                    { <span class="badge bg-success">✓</span> }
-                                    else if (r.ComboOK == "KO")
-                                    { <span class="badge bg-danger">✗</span> }
-                                    else
-                                    { <span class="text-muted">-</span> }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+            <!-- ── Statistiche per lega ── -->
+            @if (Model.VerificaTotali.PerLega.Any())
+            {
+                <h6 class="text-muted mb-2">Per lega</h6>
+                <div class="league-stats-grid mb-4">
+                    @foreach (var lg in Model.VerificaTotali.PerLega)
+                    {
+                        <div class="league-stat-card">
+                            <!-- Logo + bandiera + nome -->
+                            <div class="league-stat-header">
+                                @if (!string.IsNullOrWhiteSpace(lg.LeagueLogo))
+                                {
+                                    <img src="@lg.LeagueLogo" alt="logo" class="league-stat-logo" />
+                                }
+                                else
+                                {
+                                    <div class="league-stat-logo-placeholder">⚽</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(lg.LeagueFlag))
+                                {
+                                    <img src="@lg.LeagueFlag" alt="flag" class="league-stat-flag" />
+                                }
+                            </div>
+                            <div class="league-stat-name" title="@lg.Lega">@lg.Lega</div>
+                            <div class="league-stat-matches text-muted">@lg.Totale partite</div>
+
+                            <!-- Tre pill percentuali -->
+                            <div class="league-stat-pills">
+                                <div class="league-pill @(lg.PctEsito >= 55 ? "pill-ok" : lg.PctEsito >= 45 ? "pill-warn" : "pill-ko")">
+                                    <span class="pill-label">Esito</span>
+                                    <span class="pill-value">@lg.PctEsito.ToString("0")%</span>
+                                </div>
+                                <div class="league-pill @(lg.PctOU >= 60 ? "pill-ok" : lg.PctOU >= 50 ? "pill-warn" : "pill-ko")">
+                                    <span class="pill-label">O/U</span>
+                                    <span class="pill-value">@lg.PctOU.ToString("0")%</span>
+                                </div>
+                                <div class="league-pill @(lg.PctGGNG >= 60 ? "pill-ok" : lg.PctGGNG >= 50 ? "pill-warn" : "pill-ko")">
+                                    <span class="pill-label">GG</span>
+                                    <span class="pill-value">@lg.PctGGNG.ToString("0")%</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- ── Dettaglio per giorno (accordion) ── -->
+            <h6 class="text-muted mb-2">Dettaglio per giorno</h6>
+            <div class="accordion accordion-flush" id="accordionVerifica">
+                @{
+                    var giorni = Model.Verifica
+                        .GroupBy(r => r.EventDate.HasValue ? r.EventDate.Value.Date : DateTime.MinValue)
+                        .OrderByDescending(g => g.Key)
+                        .ToList();
+                    var dayIdx = 0;
+                }
+                @foreach (var giorno in giorni)
+                {
+                    dayIdx++;
+                    var dayId     = $"day-{dayIdx}";
+                    var isFirst   = dayIdx == 1;
+                    var dateLabel = giorno.Key != DateTime.MinValue
+                        ? giorno.Key.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("it-IT"))
+                        : "–";
+                    dateLabel = char.ToUpper(dateLabel[0]) + dateLabel.Substring(1);
+
+                    var dayRows    = giorno.ToList();
+                    var dayFin     = dayRows.Where(x => x.EsitoOK != null).ToList();
+                    var dayEsitoOk = dayFin.Count > 0 ? dayFin.Count(x => x.EsitoOK    == "OK") : 0;
+                    var dayOuOk    = dayFin.Count > 0 ? dayFin.Count(x => x.OverUnderOK == "OK") : 0;
+                    var dayGgOk    = dayFin.Count > 0 ? dayFin.Count(x => x.GG_NG_OK   == "OK") : 0;
+
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="h-@dayId">
+                            <button class="accordion-button @(isFirst ? "" : "collapsed")"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#c-@dayId"
+                                    aria-expanded="@(isFirst ? "true" : "false")"
+                                    aria-controls="c-@dayId">
+                                <span class="me-2 fw-semibold">@dateLabel</span>
+                                <span class="badge bg-secondary me-1">@dayRows.Count partite</span>
+                                @if (dayFin.Count > 0)
+                                {
+                                    <span class="badge bg-dark me-1">E: @dayEsitoOk/@dayFin.Count</span>
+                                    <span class="badge bg-dark me-1">OU: @dayOuOk/@dayFin.Count</span>
+                                    <span class="badge bg-dark">GG: @dayGgOk/@dayFin.Count</span>
+                                }
+                            </button>
+                        </h2>
+                        <div id="c-@dayId"
+                             class="accordion-collapse collapse @(isFirst ? "show" : "")"
+                             aria-labelledby="h-@dayId"
+                             data-bs-parent="#accordionVerifica">
+                            <div class="accordion-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped table-dark align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Ora</th>
+                                                <th>Casa</th>
+                                                <th>Ospite</th>
+                                                <th class="d-none d-md-table-cell">Lega</th>
+                                                <th>Pronostico</th>
+                                                <th>Risultato</th>
+                                                <th class="text-center px-1">E</th>
+                                                <th class="text-center px-1">OU</th>
+                                                <th class="text-center px-1">GG</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var r in dayRows)
+                                            {
+                                                <tr>
+                                                    <td class="text-nowrap">@(r.EventDate?.ToString("HH:mm") ?? "-")</td>
+                                                    <td>
+                                                        <span class="team-name-cell">@(r.HomeName ?? "-")</span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="team-name-cell">@(r.AwayName ?? "-")</span>
+                                                    </td>
+                                                    <td class="d-none d-md-table-cell">
+                                                        <div class="d-flex align-items-center gap-1">
+                                                            @if (!string.IsNullOrWhiteSpace(r.LeagueLogo))
+                                                            {
+                                                                <img src="@r.LeagueLogo" alt="" style="height:14px;width:auto;" />
+                                                            }
+                                                            <small class="text-muted text-truncate" style="max-width:110px;">@(r.Lega ?? "-")</small>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        <small>
+                                                            @(r.Esito ?? "-")
+                                                            &nbsp;·&nbsp;@(r.OverUnderRange ?? "-")
+                                                            &nbsp;·&nbsp;@(r.GG_NG ?? "-")
+                                                        </small>
+                                                    </td>
+                                                    <td class="text-nowrap">
+                                                        @if (r.GolRealiCasa.HasValue && r.GolRealiOspite.HasValue)
+                                                        {
+                                                            <b>@r.GolRealiCasa-@r.GolRealiOspite</b>
+                                                            <small class="text-muted">(@(r.EsitoReale ?? "-"))</small>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">–</span>
+                                                        }
+                                                    </td>
+                                                    <td class="text-center px-1">@BadgeOkKo(r.EsitoOK)</td>
+                                                    <td class="text-center px-1">@BadgeOkKo(r.OverUnderOK)</td>
+                                                    <td class="text-center px-1">@BadgeOkKo(r.GG_NG_OK)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
             </div>
         }
         else
