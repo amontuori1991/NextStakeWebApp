@@ -178,7 +178,24 @@ builder.Services.AddRazorPages(o =>
     o.Conventions.AllowAnonymousToAreaPage("Identity", "/Account/ConfirmEmail");
 });
 
+// === JWT per API Mobile ===
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? Environment.GetEnvironmentVariable("JWT_KEY")
+    ?? throw new InvalidOperationException("Missing JWT:Key");
 
+builder.Services.AddAuthentication()
+    .AddJwtBearer("Bearer", o =>
+    {
+        o.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                System.Text.Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
 builder.Services.AddControllersWithViews();
 // 🔴 LIVE/NOTIFY DISABILITATO TEMPORANEAMENTE
 // builder.Services.AddHostedService<NextStakeWebApp.Services.LiveNotifyWorker>();
