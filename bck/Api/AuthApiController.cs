@@ -30,7 +30,9 @@ namespace NextStakeWebApp.bck.Api
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
-            var user = await _userManager.FindByEmailAsync(dto.Email);
+            // Cerca per email OPPURE per username
+            var user = await _userManager.FindByEmailAsync(dto.Email)
+                    ?? await _userManager.FindByNameAsync(dto.Email);
             if (user == null)
                 return Unauthorized(new { error = "Credenziali non valide" });
 
