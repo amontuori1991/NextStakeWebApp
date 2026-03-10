@@ -59,5 +59,86 @@ namespace NextStakeWebApp.bck.Api
 
             return Ok(new { date = selectedDate.ToString("yyyy-MM-dd"), events });
         }
+
+        // GET /api/events/best
+        [HttpGet("best")]
+        public async Task<IActionResult> GetBestPicks()
+        {
+            try
+            {
+                var analysis = await _read.Analyses
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.ViewName == ".." && a.Description == "Partite in Pronostico");
+
+                if (analysis == null)
+                    return Ok(new { picks = new List<object>(), message = "Nessun pronostico disponibile." });
+
+                var sql = (analysis.ViewValue ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(sql))
+                    return Ok(new { picks = new List<object>(), message = "Query vuota." });
+
+                var picks = await _read.Set<NextStakeWebApp.Models.BestPickRow>()
+                    .FromSqlRaw(sql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return Ok(new { picks, message = picks.Count == 0 ? "Nessun pronostico al momento." : null });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        // GET /api/events/exchange
+        [HttpGet("exchange")]
+        public async Task<IActionResult> GetExchangePicks()
+        {
+            try
+            {
+                var analysis = await _read.Analyses
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.ViewName == "NextMatch_ExchangeToday");
+
+                if (analysis == null)
+                    return Ok(new { picks = new List<object>(), message = "Nessun exchange disponibile." });
+
+                var sql = (analysis.ViewValue ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(sql))
+                    return Ok(new { picks = new List<object>(), message = "Query vuota." });
+
+                var picks = await _read.Set<NextStakeWebApp.Models.ExchangeTodayRow>()
+                    .FromSqlRaw(sql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return Ok(new { picks, message = picks.Count == 0 ? "Nessun exchange al momento." : null });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        // GET /api/events/exchange-other
+        [HttpGet("exchange-other")]
+        public async Task<IActionResult> GetExchangeOtherPicks()
+        {
+            try
+            {
+                const string sql = "SELECT * FROM exchange_exact_lay_candidates_today_other";
+
+                var picks = await _read.Set<NextStakeWebApp.Models.ExchangeOtherTodayRow>()
+                    .FromSqlRaw(sql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                return Ok(new { picks, message = picks.Count == 0 ? "Nessun candidato al momento." : null });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
     }
 }
