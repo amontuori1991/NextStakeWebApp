@@ -302,6 +302,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
+app.MapControllers();
 
 
 // --- Proxy minimal per Live Scores (API-FOOTBALL) ---
