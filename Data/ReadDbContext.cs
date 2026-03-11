@@ -27,6 +27,7 @@ namespace NextStakeWebApp.Data
             modelBuilder.Entity<MatchCore>().ToTable("matches", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<NextMatch>().ToTable("nextmatch", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<League>().ToTable("leagues", t => t.ExcludeFromMigrations());
+            modelBuilder.Entity<ExchangePredictionRow>().HasNoKey();
             modelBuilder.Entity<Team>().ToTable("teams", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<Standing>().ToTable("standings", t => t.ExcludeFromMigrations());
             modelBuilder.Entity<BestPickRow>().HasNoKey();

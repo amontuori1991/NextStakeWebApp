@@ -7,6 +7,21 @@ using NextStakeWebApp.Models;
 
 namespace NextStakeWebApp.bck.Api;
 
+// Modello keyless per NextMatch_Prediction_Exchange
+// Le colonne SQL hanno nomi con spazi, quindi usiamo un SELECT wrapper con alias
+[Keyless]
+public class ExchangePredictionRow
+{
+    public long MatchId { get; set; }
+    public int? Banca1Pct { get; set; }
+    public int? BancaXPct { get; set; }
+    public int? Banca2Pct { get; set; }
+    public string? BancataConsigliata { get; set; }
+    public string? BancaRisultato1 { get; set; }
+    public string? BancaRisultato2 { get; set; }
+    public string? BancaRisultato3 { get; set; }
+}
+
 [ApiController]
 [Route("api/match")]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
@@ -19,9 +34,6 @@ public class MatchDetailsApiController : ControllerBase
         _read = read;
     }
 
-    // ─────────────────────────────────────────────────────────
-    // GET /api/match/{id}/details
-    // ─────────────────────────────────────────────────────────
     [HttpGet("{id}/details")]
     public async Task<IActionResult> GetDetails(long id)
     {
@@ -59,22 +71,19 @@ public class MatchDetailsApiController : ControllerBase
             return NotFound(new { error = "Partita non trovata" });
 
         // ── 2. PRONOSTICO ─────────────────────────────────────
-        // BestPickRow è keyless (FromSqlRaw dalla query in Analyses)
-        // Filtriamo per Id == matchId dopo aver eseguito la view
         object? prediction = null;
         try
         {
-            var analysisProno = await _read.Analyses
+            var analysisRow = await _read.Analyses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.ViewName == ".." && a.Description == "Partite in Pronostico");
 
-            if (analysisProno?.ViewValue is { Length: > 0 } sql)
+            if (analysisRow?.ViewValue is { Length: > 0 } sql)
             {
-                // Rimuove eventuale ; finale che romperebbe la subquery
-                var cleanSql = sql.Trim().TrimEnd(';');
-                var fullSql = $@"SELECT * FROM ({cleanSql}) AS _sub WHERE ""MatchId"" = {id}";
+                var execSql = sql.Trim().TrimEnd(';').Replace("@MatchId", id.ToString());
+
                 var rows = await _read.Set<BestPickRow>()
-                    .FromSqlRaw(fullSql)
+                    .FromSqlRaw(execSql)
                     .AsNoTracking()
                     .ToListAsync();
 
@@ -91,85 +100,61 @@ public class MatchDetailsApiController : ControllerBase
                     };
             }
         }
-        catch { /* pronostico non disponibile per questa partita */ }
+        catch { }
 
         // ── 3. EXCHANGE ───────────────────────────────────────
-        // Prova prima la view dedicata al singolo match (NextMatch_Prediction_Exchange)
-        // poi fallback su NextMatch_ExchangeToday filtrata per match_id
         object? exchange = null;
         string? exchangeError = null;
         try
         {
-            // La view NextMatch_Prediction_Exchange accetta un MatchId specifico
-            var exSql = await _read.Analyses
+            var exRow = await _read.Analyses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.ViewName == "NextMatch_Prediction_Exchange");
 
-            if (exSql?.ViewValue is { Length: > 0 } exQuery)
+            if (exRow?.ViewValue is { Length: > 0 } exQuery)
             {
-                var cleanEx = exQuery.Trim().TrimEnd(';');
-                var fullExSql = $@"SELECT * FROM ({cleanEx}) AS _ex WHERE ""MatchId"" = {id}";
-                var exRows = await _read.Set<ExchangeTodayRow>()
-                    .FromSqlRaw(fullExSql)
+                var innerSql = exQuery.Trim().TrimEnd(';').Replace("@MatchId", id.ToString());
+
+                // Wrapper con alias semplici perché le colonne originali hanno spazi
+                var wrapSql = "SELECT"
+                    + @" ""MatchId"" AS ""MatchId"","
+                    + @" ""Banca 1 - Affidabilità %"" AS ""Banca1Pct"","
+                    + @" ""Banca X - Affidabilità %"" AS ""BancaXPct"","
+                    + @" ""Banca 2 - Affidabilità %"" AS ""Banca2Pct"","
+                    + @" ""Bancata consigliata"" AS ""BancataConsigliata"","
+                    + @" ""Banca Risultato 1"" AS ""BancaRisultato1"","
+                    + @" ""Banca Risultato 2"" AS ""BancaRisultato2"","
+                    + @" ""Banca Risultato 3"" AS ""BancaRisultato3"""
+                    + " FROM (" + innerSql + ") AS _exwrap";
+
+                var rows = await _read.Set<ExchangePredictionRow>()
+                    .FromSqlRaw(wrapSql)
                     .AsNoTracking()
                     .ToListAsync();
 
-                var ex = exRows.FirstOrDefault();
+                var ex = rows.FirstOrDefault();
                 if (ex != null)
                     exchange = new
                     {
-                        scoreToLay = ex.Score_To_Lay,
-                        rating = ex.Rating,
-                        layOk = ex.Lay_Ok,
-                        favoriteSide = ex.Favorite_Side,
-                        favoriteOdd = ex.Favorite_Odd,
-                        oddHome = ex.Odd_Home,
-                        oddDraw = ex.Odd_Draw,
-                        oddAway = ex.Odd_Away,
-                        rankDiff = ex.Rank_Diff
-                    };
-            }
-
-            // Fallback: NextMatch_ExchangeToday (partite di oggi)
-            if (exchange == null)
-            {
-                var exRows2 = await _read.Set<ExchangeTodayRow>()
-                    .FromSqlRaw($@"SELECT * FROM ""NextMatch_ExchangeToday"" WHERE match_id = {id}")
-                    .AsNoTracking()
-                    .ToListAsync();
-
-                var ex2 = exRows2.FirstOrDefault();
-                if (ex2 != null)
-                    exchange = new
-                    {
-                        scoreToLay = ex2.Score_To_Lay,
-                        rating = ex2.Rating,
-                        layOk = ex2.Lay_Ok,
-                        favoriteSide = ex2.Favorite_Side,
-                        favoriteOdd = ex2.Favorite_Odd,
-                        oddHome = ex2.Odd_Home,
-                        oddDraw = ex2.Odd_Draw,
-                        oddAway = ex2.Odd_Away,
-                        rankDiff = ex2.Rank_Diff
+                        banca1Pct = ex.Banca1Pct,
+                        bancaXPct = ex.BancaXPct,
+                        banca2Pct = ex.Banca2Pct,
+                        bancataConsigliata = ex.BancataConsigliata,
+                        bancaRisultato1 = ex.BancaRisultato1,
+                        bancaRisultato2 = ex.BancaRisultato2,
+                        bancaRisultato3 = ex.BancaRisultato3
                     };
             }
         }
-        catch (Exception ex) { exchangeError = ex.Message; }
+        catch (Exception exErr) { exchangeError = exErr.Message; }
 
-        // ── 4 + 5. FORMA HOME e AWAY (LINQ su _read.Matches) ─
-        // Usiamo i DbSet già disponibili — nessuna SQL raw necessaria
+        // ── 4 + 5. FORMA HOME e AWAY ──────────────────────────
         List<object> homeForm = new();
         List<object> awayForm = new();
-        try
-        {
-            homeForm = await GetFormAsync(match.homeId, id);
-            awayForm = await GetFormAsync(match.awayId, id);
-        }
-        catch { }
+        try { homeForm = await GetFormAsync(match.homeId, id); } catch { }
+        try { awayForm = await GetFormAsync(match.awayId, id); } catch { }
 
         // ── 6. CLASSIFICA ─────────────────────────────────────
-        // Standing non ha TeamLogo → join Teams per logo
-        // Proprietà reali: AllPlayed, AllWin, AllDraw, AllLose, AllGoalFor, AllGoalAgainst
         List<object> standings = new();
         try
         {
@@ -198,7 +183,6 @@ public class MatchDetailsApiController : ControllerBase
         catch { }
 
         // ── 7. QUOTE 1X2 ──────────────────────────────────────
-        // Odds.Id = match_id (fixture), Odd è float, Bookmaker è int
         List<object> odds = new();
         try
         {
@@ -223,11 +207,10 @@ public class MatchDetailsApiController : ControllerBase
         return Ok(new { match, prediction, exchange, exchangeError, homeForm, awayForm, standings, odds });
     }
 
-    // ── Helper: ultime 5 partite di un team via LINQ ──────────
+    // ── Helper: ultime 5 partite di un team (solo FT) ────────
     private async Task<List<object>> GetFormAsync(int teamId, long excludeMatchId)
     {
-        // Prendi le ultime 5 partite con risultato definitivo
-        var recentMatches = await (
+        var recent = await (
             from m in _read.Matches
             join th in _read.Teams on m.HomeId equals th.Id
             join ta in _read.Teams on m.AwayId equals ta.Id
@@ -235,7 +218,7 @@ public class MatchDetailsApiController : ControllerBase
                && m.Id != excludeMatchId
                && m.HomeGoal != null
                && m.AwayGoal != null
-               && m.StatusShort == "FT"  // solo partite terminate
+               && m.StatusShort == "FT"
             orderby m.Date descending
             select new
             {
@@ -247,7 +230,7 @@ public class MatchDetailsApiController : ControllerBase
             }
         ).AsNoTracking().Take(5).ToListAsync();
 
-        return recentMatches.Select(m =>
+        return recent.Select(m =>
         {
             var scored = (m.IsHome ? m.HomeGoal : m.AwayGoal) ?? 0;
             var conceded = (m.IsHome ? m.AwayGoal : m.HomeGoal) ?? 0;
