@@ -70,8 +70,9 @@ public class MatchDetailsApiController : ControllerBase
 
             if (analysisProno?.ViewValue is { Length: > 0 } sql)
             {
-                // La query usa "MatchId" come alias (non "Id")
-                var fullSql = $@"SELECT * FROM ({sql.Trim()}) AS _sub WHERE ""MatchId"" = {id}";
+                // Rimuove eventuale ; finale che romperebbe la subquery
+                var cleanSql = sql.Trim().TrimEnd(';');
+                var fullSql = $@"SELECT * FROM ({cleanSql}) AS _sub WHERE ""MatchId"" = {id}";
                 var rows = await _read.Set<BestPickRow>()
                     .FromSqlRaw(fullSql)
                     .AsNoTracking()
@@ -106,7 +107,8 @@ public class MatchDetailsApiController : ControllerBase
 
             if (exSql?.ViewValue is { Length: > 0 } exQuery)
             {
-                var fullExSql = $@"SELECT * FROM ({exQuery.Trim()}) AS _ex WHERE ""MatchId"" = {id}";
+                var cleanEx = exQuery.Trim().TrimEnd(';');
+                var fullExSql = $@"SELECT * FROM ({cleanEx}) AS _ex WHERE ""MatchId"" = {id}";
                 var exRows = await _read.Set<ExchangeTodayRow>()
                     .FromSqlRaw(fullExSql)
                     .AsNoTracking()
@@ -233,6 +235,7 @@ public class MatchDetailsApiController : ControllerBase
                && m.Id != excludeMatchId
                && m.HomeGoal != null
                && m.AwayGoal != null
+               && m.StatusShort == "FT"  // solo partite terminate
             orderby m.Date descending
             select new
             {
