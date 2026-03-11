@@ -70,8 +70,8 @@ public class MatchDetailsApiController : ControllerBase
 
             if (analysisProno?.ViewValue is { Length: > 0 } sql)
             {
-                // Avvolgiamo la query in una subquery e filtriamo per Id
-                var fullSql = $@"SELECT * FROM ({sql.Trim()}) AS _sub WHERE ""Id"" = {id}";
+                // La query usa "MatchId" come alias (non "Id")
+                var fullSql = $@"SELECT * FROM ({sql.Trim()}) AS _sub WHERE ""MatchId"" = {id}";
                 var rows = await _read.Set<BestPickRow>()
                     .FromSqlRaw(fullSql)
                     .AsNoTracking()
@@ -93,32 +93,66 @@ public class MatchDetailsApiController : ControllerBase
         catch { /* pronostico non disponibile per questa partita */ }
 
         // ── 3. EXCHANGE ───────────────────────────────────────
-        // ExchangeTodayRow ha Match_Id, Odd_Home, Odd_Draw, Odd_Away,
-        // Score_To_Lay, Rating, Lay_Ok, Favorite_Side, Favorite_Odd, Rank_Diff
+        // Prova prima la view dedicata al singolo match (NextMatch_Prediction_Exchange)
+        // poi fallback su NextMatch_ExchangeToday filtrata per match_id
         object? exchange = null;
+        string? exchangeError = null;
         try
         {
-            var exRows = await _read.Set<ExchangeTodayRow>()
-                .FromSqlRaw($@"SELECT * FROM ""NextMatch_ExchangeToday"" WHERE match_id = {id}")
+            // La view NextMatch_Prediction_Exchange accetta un MatchId specifico
+            var exSql = await _read.Analyses
                 .AsNoTracking()
-                .ToListAsync();
+                .FirstOrDefaultAsync(a => a.ViewName == "NextMatch_Prediction_Exchange");
 
-            var ex = exRows.FirstOrDefault();
-            if (ex != null)
-                exchange = new
-                {
-                    scoreToLay = ex.Score_To_Lay,
-                    rating = ex.Rating,
-                    layOk = ex.Lay_Ok,
-                    favoriteSide = ex.Favorite_Side,
-                    favoriteOdd = ex.Favorite_Odd,
-                    oddHome = ex.Odd_Home,
-                    oddDraw = ex.Odd_Draw,
-                    oddAway = ex.Odd_Away,
-                    rankDiff = ex.Rank_Diff
-                };
+            if (exSql?.ViewValue is { Length: > 0 } exQuery)
+            {
+                var fullExSql = $@"SELECT * FROM ({exQuery.Trim()}) AS _ex WHERE ""MatchId"" = {id}";
+                var exRows = await _read.Set<ExchangeTodayRow>()
+                    .FromSqlRaw(fullExSql)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                var ex = exRows.FirstOrDefault();
+                if (ex != null)
+                    exchange = new
+                    {
+                        scoreToLay = ex.Score_To_Lay,
+                        rating = ex.Rating,
+                        layOk = ex.Lay_Ok,
+                        favoriteSide = ex.Favorite_Side,
+                        favoriteOdd = ex.Favorite_Odd,
+                        oddHome = ex.Odd_Home,
+                        oddDraw = ex.Odd_Draw,
+                        oddAway = ex.Odd_Away,
+                        rankDiff = ex.Rank_Diff
+                    };
+            }
+
+            // Fallback: NextMatch_ExchangeToday (partite di oggi)
+            if (exchange == null)
+            {
+                var exRows2 = await _read.Set<ExchangeTodayRow>()
+                    .FromSqlRaw($@"SELECT * FROM ""NextMatch_ExchangeToday"" WHERE match_id = {id}")
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                var ex2 = exRows2.FirstOrDefault();
+                if (ex2 != null)
+                    exchange = new
+                    {
+                        scoreToLay = ex2.Score_To_Lay,
+                        rating = ex2.Rating,
+                        layOk = ex2.Lay_Ok,
+                        favoriteSide = ex2.Favorite_Side,
+                        favoriteOdd = ex2.Favorite_Odd,
+                        oddHome = ex2.Odd_Home,
+                        oddDraw = ex2.Odd_Draw,
+                        oddAway = ex2.Odd_Away,
+                        rankDiff = ex2.Rank_Diff
+                    };
+            }
         }
-        catch { /* exchange non disponibile */ }
+        catch (Exception ex) { exchangeError = ex.Message; }
 
         // ── 4 + 5. FORMA HOME e AWAY (LINQ su _read.Matches) ─
         // Usiamo i DbSet già disponibili — nessuna SQL raw necessaria
@@ -184,7 +218,7 @@ public class MatchDetailsApiController : ControllerBase
         }
         catch { }
 
-        return Ok(new { match, prediction, exchange, homeForm, awayForm, standings, odds });
+        return Ok(new { match, prediction, exchange, exchangeError, homeForm, awayForm, standings, odds });
     }
 
     // ── Helper: ultime 5 partite di un team via LINQ ──────────
@@ -212,8 +246,8 @@ public class MatchDetailsApiController : ControllerBase
 
         return recentMatches.Select(m =>
         {
-            var scored = m.IsHome ? m.HomeGoal : m.AwayGoal;
-            var conceded = m.IsHome ? m.AwayGoal : m.HomeGoal;
+            var scored = (m.IsHome ? m.HomeGoal : m.AwayGoal) ?? 0;
+            var conceded = (m.IsHome ? m.AwayGoal : m.HomeGoal) ?? 0;
             var result = scored > conceded ? "W" : scored < conceded ? "L" : "D";
             return (object)new
             {
