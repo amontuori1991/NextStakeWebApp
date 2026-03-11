@@ -162,9 +162,9 @@ public class MatchDetailsApiController : ControllerBase
                 if (ex != null)
                     exchange = new
                     {
-                        banca1Pct = ex.Banca1Affidabilita,
-                        bancaXPct = ex.BancaXAffidabilita,
-                        banca2Pct = ex.Banca2Affidabilita,
+                        banca1Affidabilita = ex.Banca1Affidabilita,
+                        bancaXAffidabilita = ex.BancaXAffidabilita,
+                        banca2Affidabilita = ex.Banca2Affidabilita,
                         bancataConsigliata = ex.BancataConsigliata,
                         bancaRisultato1 = ex.BancaRisultato1,
                         bancaRisultato2 = ex.BancaRisultato2,
