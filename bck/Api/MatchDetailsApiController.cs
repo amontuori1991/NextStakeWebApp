@@ -7,20 +7,7 @@ using NextStakeWebApp.Models;
 
 namespace NextStakeWebApp.bck.Api;
 
-// Modello keyless per NextMatch_Prediction_Exchange
-// Le colonne SQL hanno nomi con spazi, quindi usiamo un SELECT wrapper con alias
-[Keyless]
-public class ExchangePredictionRow
-{
-    public long MatchId { get; set; }
-    public int? Banca1Pct { get; set; }
-    public int? BancaXPct { get; set; }
-    public int? Banca2Pct { get; set; }
-    public string? BancataConsigliata { get; set; }
-    public string? BancaRisultato1 { get; set; }
-    public string? BancaRisultato2 { get; set; }
-    public string? BancaRisultato3 { get; set; }
-}
+
 
 [ApiController]
 [Route("api/match")]
@@ -118,9 +105,9 @@ public class MatchDetailsApiController : ControllerBase
                 // Wrapper con alias semplici perché le colonne originali hanno spazi
                 var wrapSql = "SELECT"
                     + @" ""MatchId"" AS ""MatchId"","
-                    + @" ""Banca 1 - Affidabilità %"" AS ""Banca1Pct"","
-                    + @" ""Banca X - Affidabilità %"" AS ""BancaXPct"","
-                    + @" ""Banca 2 - Affidabilità %"" AS ""Banca2Pct"","
+                    + @" ""Banca 1 - Affidabilità %"" AS ""Banca1Affidabilita"","
+                    + @" ""Banca X - Affidabilità %"" AS ""BancaXAffidabilita"","
+                    + @" ""Banca 2 - Affidabilità %"" AS ""Banca2Affidabilita"","
                     + @" ""Bancata consigliata"" AS ""BancataConsigliata"","
                     + @" ""Banca Risultato 1"" AS ""BancaRisultato1"","
                     + @" ""Banca Risultato 2"" AS ""BancaRisultato2"","
@@ -136,9 +123,9 @@ public class MatchDetailsApiController : ControllerBase
                 if (ex != null)
                     exchange = new
                     {
-                        banca1Pct = ex.Banca1Pct,
-                        bancaXPct = ex.BancaXPct,
-                        banca2Pct = ex.Banca2Pct,
+                        banca1Pct = ex.Banca1Affidabilita,
+                        bancaXPct = ex.BancaXAffidabilita,
+                        banca2Pct = ex.Banca2Affidabilita,
                         bancataConsigliata = ex.BancataConsigliata,
                         bancaRisultato1 = ex.BancaRisultato1,
                         bancaRisultato2 = ex.BancaRisultato2,
