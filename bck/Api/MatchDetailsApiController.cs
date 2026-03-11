@@ -61,30 +61,69 @@ public class MatchDetailsApiController : ControllerBase
         object? prediction = null;
         try
         {
-            var analysisRow = await _read.Analyses
+            // Prima cerca nella cache pre-calcolata
+            var cached = await _read.Set<PredictionDbRow>()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.ViewName == ".." && a.Description == "Partite in Pronostico");
+                .FirstOrDefaultAsync(p => p.MatchId == id);
 
-            if (analysisRow?.ViewValue is { Length: > 0 } sql)
+            if (cached != null)
             {
-                var execSql = sql.Trim().TrimEnd(';').Replace("@MatchId", id.ToString());
-
-                var rows = await _read.Set<BestPickRow>()
-                    .FromSqlRaw(execSql)
+                prediction = new
+                {
+                    esito = cached.Esito,
+                    gG_NG = cached.GG_NG,
+                    overUnderRange = cached.OverUnderRange,
+                    comboFinale = cached.ComboFinale,
+                    over1_5 = cached.Over1_5,
+                    over2_5 = cached.Over2_5,
+                    over3_5 = cached.Over3_5,
+                    goalSimHome = cached.GoalSimulatiCasa,
+                    goalSimAway = cached.GoalSimulatiOspite,
+                    totaleGoal = cached.TotaleGoalSimulati,
+                    multigoalCasa = cached.MultigoalCasa,
+                    multigoalOspite = cached.MultigoalOspite
+                };
+            }
+            else
+            {
+                // Fallback: esegue la view NextMatch_Prediction_New
+                var analysisRow = await _read.Analyses
                     .AsNoTracking()
-                    .ToListAsync();
+                    .FirstOrDefaultAsync(a => a.ViewName == "NextMatch_Prediction_New");
 
-                var p = rows.FirstOrDefault();
-                if (p != null)
-                    prediction = new
-                    {
-                        esito = p.Esito,
-                        gG_NG = p.GG_NG,
-                        overUnderRange = p.OverUnderRange,
-                        comboFinale = p.ComboFinale,
-                        over1_5 = p.Over15,
-                        over2_5 = p.Over25
-                    };
+                if (analysisRow?.ViewValue is { Length: > 0 } sql)
+                {
+                    var execSql = sql.Trim().TrimEnd(';').Replace("@MatchId", id.ToString());
+
+                    // La view restituisce colonne con alias es. "Esito", "GG_NG" ecc.
+                    // Wrappiamo per mappare su BestPickRow
+                    var wrapSql = "SELECT"
+                        + @" ""Id"" AS ""Id"","
+                        + @" ""Esito"" AS ""Esito"","
+                        + @" ""GG_NG"" AS ""GG_NG"","
+                        + @" ""OverUnderRange"" AS ""OverUnderRange"","
+                        + @" ""ComboFinale"" AS ""ComboFinale"","
+                        + @" ""Over1_5"" AS ""Over1_5"","
+                        + @" ""Over2_5"" AS ""Over2_5"""
+                        + " FROM (" + execSql + ") AS _pred";
+
+                    var rows = await _read.Set<BestPickRow>()
+                        .FromSqlRaw(wrapSql)
+                        .AsNoTracking()
+                        .ToListAsync();
+
+                    var p = rows.FirstOrDefault();
+                    if (p != null)
+                        prediction = new
+                        {
+                            esito = p.Esito,
+                            gG_NG = p.GG_NG,
+                            overUnderRange = p.OverUnderRange,
+                            comboFinale = p.ComboFinale,
+                            over1_5 = p.Over15,
+                            over2_5 = p.Over25
+                        };
+                }
             }
         }
         catch { }
