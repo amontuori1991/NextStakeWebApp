@@ -104,7 +104,7 @@ public class MatchDetailsApiController : ControllerBase
 
                 // Wrapper con alias semplici perché le colonne originali hanno spazi
                 var wrapSql = "SELECT"
-                    + @" ""MatchId"" AS ""MatchId"","
+                    + @" matchid AS ""MatchId"","
                     + @" ""Banca 1 - Affidabilità %"" AS ""Banca1Affidabilita"","
                     + @" ""Banca X - Affidabilità %"" AS ""BancaXAffidabilita"","
                     + @" ""Banca 2 - Affidabilità %"" AS ""Banca2Affidabilita"","
