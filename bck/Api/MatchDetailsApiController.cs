@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NextStakeWebApp.Api;
 using NextStakeWebApp.Data;
 using NextStakeWebApp.Models;
 
@@ -229,8 +230,18 @@ public class MatchDetailsApiController : ControllerBase
                 .ToListAsync();
         }
         catch { }
+        // ── 8. ANALISI ────────────────────────────────────────────
+        object? analysis = null;
+        try
+        {
+            var analysisController = new MatchAnalysisApiController(_read);
+            var analysisResult = await analysisController.GetAsync(id);
+            if (analysisResult is OkObjectResult ok)
+                analysis = ok.Value;
+        }
+        catch { }
 
-        return Ok(new { match, prediction, exchange, exchangeError, homeForm, awayForm, standings, odds });
+        return Ok(new { match, prediction, exchange, exchangeError, homeForm, awayForm, standings, odds, analysis });
     }
 
     // ── Helper: ultime 5 partite di un team (solo FT) ────────
