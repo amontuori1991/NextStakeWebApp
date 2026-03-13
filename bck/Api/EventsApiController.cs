@@ -223,7 +223,7 @@ namespace NextStakeWebApp.bck.Api
                     p.Xg_Pred_Total,
                     p.Favorite_Side,
                     p.Favorite_Odd,
-                    p.Score_To_Lay_Contrarian,
+                    Score_To_Lay_Contrarian = p.Score_To_Lay,
                     p.Lay_Ok,
                     p.Rating,
                     leagueLogo = assets.ContainsKey((long)p.Match_Id) ? assets[(long)p.Match_Id].leagueLogo : null,
