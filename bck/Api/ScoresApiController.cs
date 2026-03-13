@@ -39,35 +39,46 @@ namespace NextStakeWebApp.bck.Api
             client.DefaultRequestHeaders.Remove("x-apisports-key");
             client.DefaultRequestHeaders.Add("x-apisports-key", apiKey);
 
-            // Usa gli ID direttamente — niente problemi di fuso orario
-            var idsParam = string.Join("-", idList.Take(20));
-            var json = await client.GetStringAsync($"fixtures?ids={idsParam}");
-            using var doc = JsonDocument.Parse(json);
-            var response = doc.RootElement.GetProperty("response");
-
-            var result = response.EnumerateArray()
-                .Select(f =>
-                {
-                    var fixture = f.GetProperty("fixture");
-                    var goals = f.GetProperty("goals");
-                    var status = fixture.GetProperty("status");
-
-                    return new
-                    {
-                        matchId = fixture.GetProperty("id").GetInt64(),
-                        statusShort = status.GetProperty("short").GetString(),
-                        elapsed = status.TryGetProperty("elapsed", out var el) &&
-                                      el.ValueKind != JsonValueKind.Null
-                                      ? el.GetInt32() : (int?)null,
-                        homeGoals = goals.GetProperty("home").ValueKind != JsonValueKind.Null
-                                      ? goals.GetProperty("home").GetInt32() : (int?)null,
-                        awayGoals = goals.GetProperty("away").ValueKind != JsonValueKind.Null
-                                      ? goals.GetProperty("away").GetInt32() : (int?)null
-                    };
-                })
+            // Dividi in gruppi da 20 e chiama in parallelo
+            var chunks = idList
+                .Select((id, i) => new { id, i })
+                .GroupBy(x => x.i / 20)
+                .Select(g => g.Select(x => x.id).ToList())
                 .ToList();
 
-            return Ok(result);
+            var tasks = chunks.Select(async chunk =>
+            {
+                var idsParam = string.Join("-", chunk);
+                var json = await client.GetStringAsync($"fixtures?ids={idsParam}");
+                using var doc = JsonDocument.Parse(json);
+                return doc.RootElement.GetProperty("response")
+                    .EnumerateArray()
+                    .Select(f =>
+                    {
+                        var fixture = f.GetProperty("fixture");
+                        var goals = f.GetProperty("goals");
+                        var status = fixture.GetProperty("status");
+
+                        return new
+                        {
+                            matchId = fixture.GetProperty("id").GetInt64(),
+                            statusShort = status.GetProperty("short").GetString(),
+                            elapsed = status.TryGetProperty("elapsed", out var el) &&
+                                          el.ValueKind != JsonValueKind.Null
+                                          ? el.GetInt32() : (int?)null,
+                            homeGoals = goals.GetProperty("home").ValueKind != JsonValueKind.Null
+                                          ? goals.GetProperty("home").GetInt32() : (int?)null,
+                            awayGoals = goals.GetProperty("away").ValueKind != JsonValueKind.Null
+                                          ? goals.GetProperty("away").GetInt32() : (int?)null
+                        };
+                    })
+                    .ToList();
+            });
+
+            var results = await Task.WhenAll(tasks);
+            var flat = results.SelectMany(r => r).ToList();
+
+            return Ok(flat);
         }
     }
 }
