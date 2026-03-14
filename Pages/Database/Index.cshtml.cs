@@ -55,7 +55,7 @@ namespace NextStakeWebApp.Pages.Database
 
         private async Task<List<CachedPredictionRow>> LoadTodayCacheAsync()
         {
-            var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
+            var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
 
             var cs = _identityDb.Database.GetConnectionString();
             var csb = new NpgsqlConnectionStringBuilder(cs)
@@ -92,8 +92,8 @@ FROM ""NextMatchPredictionsCache""
 WHERE ""EventDate"" >= @utcStart AND ""EventDate"" < @utcEnd
 ORDER BY ""EventDate"", ""MatchId"";
 ";
-            cmd.Parameters.AddWithValue("utcStart", utcStart);
-            cmd.Parameters.AddWithValue("utcEnd", utcEnd);
+            cmd.Parameters.AddWithValue("utcStart", localStart);
+            cmd.Parameters.AddWithValue("utcEnd", localEnd);
 
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
@@ -142,11 +142,11 @@ ORDER BY ""EventDate"", ""MatchId"";
                     return Page();
                 }
 
-                var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
+                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
 
                 var todayMatchIds = await _read.Matches
                     .AsNoTracking()
-                    .Where(m => m.Date >= utcStart && m.Date < utcEnd)
+                    .Where(m => m.Date >= localStart && m.Date < localEnd)
                     .Select(m => (long)m.Id)
                     .ToListAsync();
 
@@ -218,12 +218,12 @@ ORDER BY ""EventDate"", ""MatchId"";
                     return new EmptyResult();
                 }
 
-                var (utcStart, utcEnd) = GetTodayUtcRangeEuropeRome();
-                await Log($"📅 Range oggi (Europe/Rome) in UTC: {utcStart:yyyy-MM-dd HH:mm} -> {utcEnd:yyyy-MM-dd HH:mm}\n");
+                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
+                await Log($"📅 Range oggi (Europe/Rome) locale: {localStart:yyyy-MM-dd HH:mm} -> {localEnd:yyyy-MM-dd HH:mm}\n");
 
                 var todayMatches = await _read.Matches
                     .AsNoTracking()
-                    .Where(m => m.Date >= utcStart && m.Date < utcEnd)
+                    .Where(m => m.Date >= localStart && m.Date < localEnd)
                     .Select(m => new { m.Id, m.Date })
                     .ToListAsync();
 
@@ -423,6 +423,16 @@ ON CONFLICT (""MatchId"", ""EventDate"") DO UPDATE SET
             return user != null && (int)user.Plan == 1;
         }
 
+        // ✅ FIX: range basato su ora locale italiana (matches.date è timestamp without time zone salvato in ora italiana)
+        private static (DateTime localStart, DateTime localEnd) GetTodayLocalRangeEuropeRome()
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+            var localStart = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 0, 0, 0);
+            return (localStart, localStart.AddDays(1));
+        }
+
+        // Mantenuto per retrocompatibilità, non più usato internamente
         private static (DateTime utcStart, DateTime utcEnd) GetTodayUtcRangeEuropeRome()
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
