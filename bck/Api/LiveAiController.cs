@@ -226,8 +226,8 @@ namespace NextStakeWebApp.bck.Api
                 """;
 
             var prompt = isBrief
-                ? $"""
-                   Sei un analista sportivo. Basandoti SOLO sui dati forniti, dai un parere BREVISSIMO (max 3 righe).
+                           ? $"""
+                   Sei un commentatore sportivo esperto. Basandoti SOLO sui dati forniti, dai un parere BREVISSIMO (max 3 righe) in prosa fluida.
 
                    Partita: {homeName} vs {awayName}
                    Minuto: {elapsed}' ({statusShort})
@@ -240,10 +240,10 @@ namespace NextStakeWebApp.bck.Api
                    {awayFormText}
 
                    {dataInstruction}
-                   Rispondi in italiano, massimo 3 righe, diretto e conciso.
+                   Rispondi in italiano, massimo 3 righe, tono diretto e giornalistico.
                    """
-                : $"""
-                   Sei un analista sportivo. Basandoti SOLO sui dati forniti, analizza questa partita.
+                           : $"""
+                   Sei un commentatore sportivo esperto. Basandoti SOLO sui dati forniti, scrivi un'analisi in prosa fluida e argomentata.
 
                    Partita: {homeName} vs {awayName}
                    Minuto: {elapsed}' ({statusShort})
@@ -256,14 +256,7 @@ namespace NextStakeWebApp.bck.Api
                    {awayFormText}
 
                    {dataInstruction}
-
-                   Fornisci in italiano:
-                   1. Andamento partita (solo se ci sono statistiche live o eventi)
-                   2. Pronostico finale (coerente con i dati del sistema)
-                   3. Suggerimento scommessa live (basato su quote e pronostici forniti)
-                   4. Livello di confidenza (basso/medio/alto) con motivazione basata sui dati
-
-                   Non aggiungere informazioni esterne ai dati forniti.
+                   Scrivi in italiano, in prosa continua senza elenchi numerati. Argomenta il pronostico basandoti sui dati disponibili, commenta la forma delle squadre, le quote e il pronostico del sistema. Concludi con un suggerimento scommessa motivato e un giudizio sul livello di confidenza.
                    """;
 
             // ── 8. CHIAMATA OPENAI ───────────────────────────────
@@ -278,12 +271,12 @@ namespace NextStakeWebApp.bck.Api
             {
                 model = openAiModel,
                 messages = new[]
-                {
-                    new { role = "system", content = "Sei un analista sportivo professionale. Rispondi SOLO in italiano. Usa esclusivamente i dati forniti dall'utente, senza aggiungere informazioni esterne." },
-                    new { role = "user", content = prompt }
-                },
+{
+    new { role = "system", content = "Sei un commentatore sportivo esperto e appassionato. Scrivi in italiano in modo fluido e argomentato, come se stessi commentando per un giornale sportivo. Usa i dati forniti come base del ragionamento. Non elencare punti numerati, scrivi sempre in prosa." },
+    new { role = "user", content = prompt }
+},
                 max_tokens = isBrief ? 200 : 600,
-                temperature = 0.3
+                temperature = 0.5
             });
 
             var aiResponse = await openAiClient.PostAsync(
