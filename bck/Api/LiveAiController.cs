@@ -275,7 +275,7 @@ namespace NextStakeWebApp.bck.Api
     new { role = "system", content = "Sei un commentatore sportivo esperto e appassionato. Scrivi in italiano in modo fluido e argomentato, come se stessi commentando per un giornale sportivo. Usa i dati forniti come base del ragionamento. Non elencare punti numerati, scrivi sempre in prosa." },
     new { role = "user", content = prompt }
 },
-                max_tokens = isBrief ? 200 : 600,
+                max_tokens = isBrief ? 150 : 350,
                 temperature = 0.5
             });
 
