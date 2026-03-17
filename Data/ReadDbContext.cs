@@ -17,6 +17,8 @@ namespace NextStakeWebApp.Data
         public DbSet<Standing> Standings => Set<Standing>();
         public DbSet<Odds> Odds { get; set; } = null!;
 
+        public DbSet<FavoriteMatch> FavoriteMatches { get; set; }
+
         // Rimane un DbSet anche se keyless, per poter fare query LINQ
         public DbSet<Analysis> Analyses => Set<Analysis>();
 
