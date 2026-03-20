@@ -287,14 +287,15 @@ ORDER BY ""EventDate"", ""MatchId"";
                 foreach (var batch in batches)
                 {
                     b++;
-
                     var matchList = batch.ToList();
                     var matchId = matchList.FirstOrDefault();
 
+                    // ✅ Log PRIMA del SQL — così il client vede subito il batch corrente
+                    //    mentre il server sta ancora elaborando
                     await Log($"📦 Batch {b}/{batches.Count} | matchId: {matchId}\n");
+                    await Log($"   ⏳ START SQL matchId={matchId} {DateTime.UtcNow:HH:mm:ss}\n");
 
                     var sw = System.Diagnostics.Stopwatch.StartNew();
-                    await Log($"   ⏳ START SQL matchId={matchId} {DateTime.UtcNow:HH:mm:ss}\n");
 
                     try
                     {
@@ -305,11 +306,9 @@ ORDER BY ""EventDate"", ""MatchId"";
                             await st2.ExecuteNonQueryAsync();
 
                         var ins = await PopulateCacheBulkAsync(connBatch, script, matchList);
-
                         sw.Stop();
-                        await Log($"   ✅ END SQL matchId={matchId} {DateTime.UtcNow:HH:mm:ss}\n");
-
                         totalInserted += ins;
+
                         await Log($"   ✅ OK | Inserite: {ins} | Totale: {totalInserted} | Tempo: {sw.Elapsed.TotalSeconds:n1}s\n\n");
                     }
                     catch (Exception ex)
