@@ -17,101 +17,126 @@
 }
 
 <style>
-/* ── Card lega ── */
-.league-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: .75rem;
-}
+    /* ── Card lega ── */
+    .league-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: .75rem;
+    }
 
-.league-stat-card {
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.14);
-    border-radius: .6rem;
-    padding: .75rem .6rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: .3rem;
-}
+    .league-stat-card {
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: .6rem;
+        padding: .75rem .6rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: .3rem;
+    }
 
-.league-stat-header {
-    display: flex;
-    align-items: center;
-    gap: .35rem;
-    justify-content: center;
-}
+    .league-stat-header {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        justify-content: center;
+    }
 
-.league-stat-logo {
-    height: 32px;
-    width: auto;
-    object-fit: contain;
-}
+    .league-stat-logo {
+        height: 32px;
+        width: auto;
+        object-fit: contain;
+    }
 
-.league-stat-logo-placeholder {
-    font-size: 1.5rem;
-    line-height: 1;
-}
+    .league-stat-logo-placeholder {
+        font-size: 1.5rem;
+        line-height: 1;
+    }
 
-.league-stat-flag {
-    height: 14px;
-    width: auto;
-    vertical-align: middle;
-}
+    .league-stat-flag {
+        height: 14px;
+        width: auto;
+        vertical-align: middle;
+    }
 
-.league-stat-name {
-    font-size: .72rem;
-    font-weight: 600;
-    line-height: 1.2;
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+    .league-stat-name {
+        font-size: .72rem;
+        font-weight: 600;
+        line-height: 1.2;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
-.league-stat-matches {
-    font-size: .68rem;
-}
+    .league-stat-matches {
+        font-size: .68rem;
+    }
 
-.league-stat-pills {
-    display: flex;
-    gap: .25rem;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin-top: .25rem;
-}
+    .league-stat-pills {
+        display: flex;
+        gap: .25rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-top: .25rem;
+    }
 
-.league-pill {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    border-radius: .4rem;
-    padding: .2rem .35rem;
-    min-width: 36px;
-}
+    .league-pill {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        border-radius: .4rem;
+        padding: .2rem .35rem;
+        min-width: 36px;
+    }
 
-.pill-ok   { background: rgba(25,135,84,.85);  color:#fff; }
-.pill-warn { background: rgba(255,193,7,.85);   color:#111; }
-.pill-ko   { background: rgba(220,53,69,.85);   color:#fff; }
+    .pill-ok {
+        background: rgba(25,135,84,.85);
+        color: #fff;
+    }
 
-.pill-label { font-size: .58rem; opacity: .85; line-height: 1; }
-.pill-value { font-size: .8rem;  font-weight: 700; line-height: 1.2; }
+    .pill-warn {
+        background: rgba(255,193,7,.85);
+        color: #111;
+    }
 
-/* ── Nomi squadre nella tabella ── */
-.team-name-cell {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-size: .8rem;
-    max-width: 90px;
-}
+    .pill-ko {
+        background: rgba(220,53,69,.85);
+        color: #fff;
+    }
 
-@@media (max-width: 576px) {
-    .league-stats-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
-    .team-name-cell { max-width: 70px; }
-}
+    .pill-label {
+        font-size: .58rem;
+        opacity: .85;
+        line-height: 1;
+    }
+
+    .pill-value {
+        font-size: .8rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    /* ── Nomi squadre nella tabella ── */
+    .team-name-cell {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        font-size: .8rem;
+        max-width: 90px;
+    }
+
+    @@media (max-width: 576px) {
+        .league-stats-grid {
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        }
+
+        .team-name-cell {
+            max-width: 70px;
+        }
+    }
 </style>
 
 <h2>Database</h2>
@@ -312,26 +337,26 @@ else
             <div class="accordion accordion-flush" id="accordionVerifica">
                 @{
                     var giorni = Model.Verifica
-                        .GroupBy(r => r.EventDate.HasValue ? r.EventDate.Value.Date : DateTime.MinValue)
-                        .OrderByDescending(g => g.Key)
-                        .ToList();
+                    .GroupBy(r => r.EventDate.HasValue ? r.EventDate.Value.Date : DateTime.MinValue)
+                    .OrderByDescending(g => g.Key)
+                    .ToList();
                     var dayIdx = 0;
                 }
                 @foreach (var giorno in giorni)
                 {
                     dayIdx++;
-                    var dayId     = $"day-{dayIdx}";
-                    var isFirst   = dayIdx == 1;
+                    var dayId = $"day-{dayIdx}";
+                    var isFirst = dayIdx == 1;
                     var dateLabel = giorno.Key != DateTime.MinValue
-                        ? giorno.Key.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("it-IT"))
-                        : "–";
+                    ? giorno.Key.ToString("dddd dd/MM/yyyy", new System.Globalization.CultureInfo("it-IT"))
+                    : "–";
                     dateLabel = char.ToUpper(dateLabel[0]) + dateLabel.Substring(1);
 
-                    var dayRows    = giorno.ToList();
-                    var dayFin     = dayRows.Where(x => x.EsitoOK != null).ToList();
-                    var dayEsitoOk = dayFin.Count > 0 ? dayFin.Count(x => x.EsitoOK    == "OK") : 0;
-                    var dayOuOk    = dayFin.Count > 0 ? dayFin.Count(x => x.OverUnderOK == "OK") : 0;
-                    var dayGgOk    = dayFin.Count > 0 ? dayFin.Count(x => x.GG_NG_OK   == "OK") : 0;
+                    var dayRows = giorno.ToList();
+                    var dayFin = dayRows.Where(x => x.EsitoOK != null).ToList();
+                    var dayEsitoOk = dayFin.Count > 0 ? dayFin.Count(x => x.EsitoOK == "OK") : 0;
+                    var dayOuOk = dayFin.Count > 0 ? dayFin.Count(x => x.OverUnderOK == "OK") : 0;
+                    var dayGgOk = dayFin.Count > 0 ? dayFin.Count(x => x.GG_NG_OK == "OK") : 0;
 
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="h-@dayId">
@@ -433,50 +458,53 @@ else
 @section Scripts {
     <script>
         (function () {
-            const form = document.getElementById('refreshForm');
-            const modalEl = document.getElementById('refreshLogModal');
-            const logBox = document.getElementById('refreshLogBox');
-            const btnClose = document.getElementById('btnCloseLog');
-
+            const form        = document.getElementById('refreshForm');
+            const modalEl     = document.getElementById('refreshLogModal');
+            const logBox      = document.getElementById('refreshLogBox');
+            const btnClose    = document.getElementById('btnCloseLog');
             const progressText = document.getElementById('refreshProgressText');
-            const progressPct = document.getElementById('refreshProgressPct');
-            const progressBar = document.getElementById('refreshProgressBar');
+            const progressPct  = document.getElementById('refreshProgressPct');
+            const progressBar  = document.getElementById('refreshProgressBar');
 
             if (!form || !modalEl || !logBox || !btnClose) return;
-            let lastIdx = 0;
+
+            let lastIdx   = 0;
             let lastTotal = 0;
 
             function resetProgress() {
+                lastIdx = 0; lastTotal = 0;
                 if (progressText) progressText.textContent = 'Progresso: 0/0';
-                if (progressPct) progressPct.textContent = '0%';
-                if (progressBar) {
-                    progressBar.style.width = '0%';
-                    progressBar.setAttribute('aria-valuenow', '0');
-                }
+                if (progressPct)  progressPct.textContent  = '0%';
+                if (progressBar)  { progressBar.style.width = '0%'; progressBar.setAttribute('aria-valuenow', '0'); }
             }
 
-            function updateProgressFromText(fullText) {
-                const all = fullText.match(/📦\s*Batch\s*(\d+)\s*\/\s*(\d+)/g);
-                if (!all || !all.length) return;
+            function setProgress(idx, total) {
+                lastIdx   = idx;
+                lastTotal = total;
+                const pct = total > 0 ? Math.min(100, Math.round((idx / total) * 100)) : 0;
+                if (progressText) progressText.textContent = `Progresso: ${idx}/${total}`;
+                if (progressPct)  progressPct.textContent  = `${pct}%`;
+                if (progressBar)  { progressBar.style.width = `${pct}%`; progressBar.setAttribute('aria-valuenow', String(pct)); }
+            }
 
-                const raw = all[0];
-                const m = raw.match(/📦\s*Batch\s*(\d+)\s*\/\s*(\d+)/);
-                if (!m) return;
+            function setProgressComplete() {
+                // ✅ FIX: forza la barra al 100% visivamente prima della chiusura,
+                //    indipendentemente dall'ultimo batch ricevuto dallo stream
+                if (lastTotal > 0) setProgress(lastTotal, lastTotal);
+                else               setProgress(1, 1); // fallback se total non è arrivato
+            }
 
-                lastIdx = parseInt(m[1], 10);
-                lastTotal = parseInt(m[2], 10);
-
-                const pct = lastTotal > 0 ? Math.min(100, Math.round((lastIdx / lastTotal) * 100)) : 0;
-
-                if (progressText) progressText.textContent = `Progresso: ${lastIdx}/${lastTotal}`;
-                if (progressPct) progressPct.textContent = `${pct}%`;
-                if (progressBar) {
-                    progressBar.style.width = `${pct}%`;
-                    progressBar.setAttribute('aria-valuenow', String(pct));
-                }
+            function updateProgressFromText(text) {
+                // Cerca tutti i "📦 Batch N/M" nel testo e prende l'ultimo
+                const matches = [...text.matchAll(/📦\s*Batch\s*(\d+)\s*\/\s*(\d+)/g)];
+                if (!matches.length) return;
+                const last = matches[matches.length - 1];
+                setProgress(parseInt(last[1], 10), parseInt(last[2], 10));
             }
 
             function prependLog(chunk) {
+                // ✅ FIX: ignora i chunk di soli spazi (il padding iniziale server-side)
+                if (chunk.trim() === '') return;
                 logBox.textContent = chunk + logBox.textContent;
                 const bodyEl = modalEl.querySelector('.modal-body');
                 if (bodyEl) bodyEl.scrollTop = 0;
@@ -487,20 +515,20 @@ else
                 e.preventDefault();
 
                 logBox.textContent = '';
-                btnClose.disabled = true;
+                btnClose.disabled  = true;
                 resetProgress();
 
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: false });
                 modal.show();
 
                 const tokenInput = form.querySelector('input[name="__RequestVerificationToken"]');
-                const token = tokenInput ? tokenInput.value : null;
+                const token      = tokenInput ? tokenInput.value : null;
 
                 try {
                     const resp = await fetch(form.action, {
-                        method: 'POST',
+                        method:  'POST',
                         headers: token ? { 'RequestVerificationToken': token } : {},
-                        body: new FormData(form)
+                        body:    new FormData(form)
                     });
 
                     if (!resp.ok) {
@@ -516,7 +544,7 @@ else
                         return;
                     }
 
-                    const reader = resp.body.getReader();
+                    const reader  = resp.body.getReader();
                     const decoder = new TextDecoder('utf-8');
 
                     while (true) {
@@ -526,34 +554,30 @@ else
                         prependLog(chunk);
                     }
 
-                    prependLog("\n🏁 STREAM TERMINATO.\n");
+                    // ✅ FIX: stream terminato → porta barra a 100% prima di qualsiasi altra azione
+                    setProgressComplete();
+                    prependLog("\n🏁 Stream completato.\n");
 
-                    if (lastTotal > 0 && lastIdx >= lastTotal) {
-                        if (progressText) progressText.textContent = `Progresso: ${lastTotal}/${lastTotal}`;
-                        if (progressPct) progressPct.textContent = `100%`;
-                        if (progressBar) {
-                            progressBar.style.width = `100%`;
-                            progressBar.setAttribute('aria-valuenow', '100');
-                        }
-                    }
-
+                    // ✅ FIX: controllo errori più preciso — solo segnali espliciti di fallimento,
+                    //    non parole generiche come "FAIL" che possono comparire nei log normali
+                    const logText = logBox.textContent;
                     const hasError =
-                        logBox.textContent.includes("❌") ||
-                        logBox.textContent.includes("ERROR") ||
-                        logBox.textContent.includes("FAIL") ||
-                        logBox.textContent.includes("SQL ERROR") ||
-                        logBox.textContent.includes("EX:");
+                        logText.includes("❌ ERRORE:") ||
+                        logText.includes("SQL ERROR")  ||
+                        logText.includes("EX:\n")      ||
+                        logText.includes("❌ HTTP");
 
                     btnClose.disabled = false;
 
                     if (!hasError) {
+                        // ✅ FIX: attendi 2.5s così l'utente vede la barra al 100% prima che si chiuda
                         setTimeout(() => {
-                            try { modal.hide(); } catch { }
-                            setTimeout(() => location.reload(), 250);
-                        }, 900);
+                            try { modal.hide(); } catch {}
+                            setTimeout(() => location.reload(), 300);
+                        }, 2500);
                         btnClose.addEventListener('click', () => location.reload(), { once: true });
                     } else {
-                        prependLog("\n🛑 ERRORE RILEVATO: finestra lasciata aperta per copia/incolla.\n");
+                        prependLog("\n🛑 Errore rilevato — finestra lasciata aperta per diagnosi.\n");
                     }
 
                 } catch (err) {

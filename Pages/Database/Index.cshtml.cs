@@ -55,7 +55,7 @@ namespace NextStakeWebApp.Pages.Database
 
         private async Task<List<CachedPredictionRow>> LoadTodayCacheAsync()
         {
-            var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
+            var (localStart, localEnd) = GetTodayLocalRangeEuropeRome();
 
             var cs = _identityDb.Database.GetConnectionString();
             var csb = new NpgsqlConnectionStringBuilder(cs)
@@ -142,7 +142,7 @@ ORDER BY ""EventDate"", ""MatchId"";
                     return Page();
                 }
 
-                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
+                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome();
 
                 var todayMatchIds = await _read.Matches
                     .AsNoTracking()
@@ -164,10 +164,7 @@ ORDER BY ""EventDate"", ""MatchId"";
                 await using var conn = new NpgsqlConnection(csb.ToString());
                 await conn.OpenAsync();
 
-                // ✅ SVUOTA CACHE PRIMA DI INSERIRE I NUOVI RECORD (run giornaliero)
                 await ClearPredictionsCacheAsync(conn);
-
-                // ✅ POPOLA CACHE IN UN SOLO COLPO (NO LOOP)
                 UpsertedCount = await PopulateCacheBulkAsync(conn, script, todayMatchIds);
             }
             catch (Exception ex)
@@ -179,7 +176,8 @@ ORDER BY ""EventDate"", ""MatchId"";
         }
 
         // -------------------------
-        // Helpers
+        // ✅ FIX STREAMING: padding iniziale per superare il buffer nginx di Render
+        //    + Log helper che garantisce flush immediato ad ogni riga
         // -------------------------
         public async Task<IActionResult> OnPostRefreshPredictionsStreamAsync()
         {
@@ -193,8 +191,15 @@ ORDER BY ""EventDate"", ""MatchId"";
 
             Response.ContentType = "text/plain; charset=utf-8";
             Response.Headers["Cache-Control"] = "no-store";
-            Response.Headers["X-Accel-Buffering"] = "no";
+            Response.Headers["X-Accel-Buffering"] = "no";       // nginx: disabilita buffering
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
 
+            // ✅ FIX: invia subito 8KB di spazi per superare la soglia di buffering
+            //    di nginx/Render. Senza questo il proxy trattiene tutto fino alla fine.
+            await Response.WriteAsync(new string(' ', 8192));
+            await Response.Body.FlushAsync();
+
+            // Helper locale: scrive + flush immediato ad ogni chiamata
             async Task Log(string s)
             {
                 await Response.WriteAsync(s);
@@ -218,7 +223,7 @@ ORDER BY ""EventDate"", ""MatchId"";
                     return new EmptyResult();
                 }
 
-                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome(); // ✅ FIX: usa range locale
+                var (localStart, localEnd) = GetTodayLocalRangeEuropeRome();
                 await Log($"📅 Range oggi (Europe/Rome) locale: {localStart:yyyy-MM-dd HH:mm} -> {localEnd:yyyy-MM-dd HH:mm}\n");
 
                 var todayMatches = await _read.Matches
@@ -252,7 +257,6 @@ ORDER BY ""EventDate"", ""MatchId"";
                 }
                 catch (Exception exV)
                 {
-                    // non blocchiamo il job se la verifica fallisce
                     await Log($"⚠️ Verifica non salvata (non bloccante): {exV.Message}\n\n");
                 }
 
@@ -274,7 +278,7 @@ ORDER BY ""EventDate"", ""MatchId"";
 
                 var ids = todayMatches.Select(x => (long)x.Id).ToList();
 
-                const int batchSize = 1; // DEBUG: 1 match alla volta
+                const int batchSize = 1;
                 int totalInserted = 0;
 
                 var batches = ids.Chunk(batchSize).ToList();
@@ -320,7 +324,6 @@ ORDER BY ""EventDate"", ""MatchId"";
                 UpsertedCount = totalInserted;
 
                 await Log($"✅ Inserite righe in cache: {UpsertedCount}\n");
-                await Log("🎉 Fine.\n");
                 await Log($"🎉 Fine. Match: {TodayMatchesCount} | Insert: {UpsertedCount}\n");
             }
             catch (Exception ex)
@@ -337,7 +340,6 @@ ORDER BY ""EventDate"", ""MatchId"";
         // ─────────────────────────────────────────────────────────────────────
         private async Task<int> SaveDailyVerificaAsync(NpgsqlConnection conn)
         {
-            // Carica la query di verifica da Analyses
             var verificaScript = await _read.Analyses
                 .Where(a => a.ViewName == "NextMatch_Verifica_Giornaliera")
                 .Select(a => a.ViewValue)
@@ -347,7 +349,6 @@ ORDER BY ""EventDate"", ""MatchId"";
             if (string.IsNullOrWhiteSpace(verificaScript))
                 return 0;
 
-            // Rimuove eventuale ';' finale che romperebbe la subquery
             var cleaned = verificaScript.Trim();
             while (cleaned.EndsWith(";"))
                 cleaned = cleaned.Substring(0, cleaned.Length - 1).Trim();
@@ -423,7 +424,6 @@ ON CONFLICT (""MatchId"", ""EventDate"") DO UPDATE SET
             return user != null && (int)user.Plan == 1;
         }
 
-        // ✅ FIX: range basato su ora locale italiana (matches.date è timestamp without time zone salvato in ora italiana)
         private static (DateTime localStart, DateTime localEnd) GetTodayLocalRangeEuropeRome()
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
@@ -432,7 +432,6 @@ ON CONFLICT (""MatchId"", ""EventDate"") DO UPDATE SET
             return (localStart, localStart.AddDays(1));
         }
 
-        // Mantenuto per retrocompatibilità, non più usato internamente
         private static (DateTime utcStart, DateTime utcEnd) GetTodayUtcRangeEuropeRome()
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
@@ -517,17 +516,12 @@ ON CONFLICT (""MatchId"", ""EventDate"") DO UPDATE SET
             if (matchIds == null || matchIds.Count == 0)
                 return 0;
 
-            // 1) Pulizia script: spesso termina con ';' e dentro un CTE rompe la sintassi
             var cleaned = (script ?? string.Empty).Trim();
             while (cleaned.EndsWith(";"))
                 cleaned = cleaned.Substring(0, cleaned.Length - 1).Trim();
 
-            // 2) Lo script è fatto per @MatchId (singolo).
-            //    Lo trasformiamo in "ids.matchid" così diventa set-based.
             var scriptSetBased = cleaned.Replace("@MatchId", "ids.matchid");
 
-            // 3) Wrapper set-based + LIMIT 1 per evitare duplicati dal tuo script
-            //    + ON CONFLICT per non esplodere se esiste già la riga (PK su MatchId)
             var sql = $@"
 WITH ids AS (
     SELECT unnest(@MatchIds::bigint[]) AS matchid
@@ -633,7 +627,6 @@ DO UPDATE SET
             }
         }
 
-        // ✅ INSERT puro (tabella svuotata prima)
         private async Task<bool> InsertCacheAsync(NpgsqlConnection conn, CachedPredictionRow r)
         {
             await using var cmd = conn.CreateCommand();
@@ -689,7 +682,6 @@ VALUES (
 
         // ─────────────────────────────────────────────────────────────────────
         // Carica storico verifica da PredictionsVerifica (ultimi 30 giorni)
-        // con join su matches → leagues per recuperare logo e flag
         // ─────────────────────────────────────────────────────────────────────
         private async Task<(List<VerificaRow>, VerificaStats)> LoadVerificaAsync()
         {
@@ -706,12 +698,10 @@ VALUES (
             await using var conn = new NpgsqlConnection(csb.ToString());
             await conn.OpenAsync();
 
-            // Usa ReadDb connection string per il join su matches/leagues
             var readCs = _read.Database.GetConnectionString();
             await using var connRead = new NpgsqlConnection(readCs);
             await connRead.OpenAsync();
 
-            // Step 1: carica dati verifica
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 SELECT
@@ -748,12 +738,10 @@ ORDER BY ""EventDate"" DESC, ""MatchId"";
             }
             await rd.CloseAsync();
 
-            // Step 2: recupera logo+flag per lega via join matches→leagues (ReadDb)
             if (list.Count > 0)
             {
                 var matchIds = list.Select(x => x.MatchId).Distinct().ToList();
 
-                // Costruisce array literal PostgreSQL
                 await using var cmdLogos = connRead.CreateCommand();
                 cmdLogos.CommandText = @"
 SELECT m.id AS match_id, lg.logo, lg.flag
@@ -773,7 +761,6 @@ WHERE m.id = ANY(@ids);
                     logoMap[mid] = (logo, flag);
                 }
 
-                // Applica logo/flag a ogni riga
                 foreach (var row in list)
                 {
                     if (logoMap.TryGetValue(row.MatchId, out var lf))
@@ -784,7 +771,6 @@ WHERE m.id = ANY(@ids);
                 }
             }
 
-            // Step 3: statistiche aggregate globali
             var finished = list.Where(x => x.EsitoOK != null).ToList();
             var stats = new VerificaStats
             {
@@ -795,7 +781,6 @@ WHERE m.id = ANY(@ids);
                 PctCombo = finished.Count > 0 ? Math.Round(finished.Count(x => x.ComboOK == "OK") * 100.0 / finished.Count, 1) : 0,
             };
 
-            // Step 4: statistiche per lega
             stats.PerLega = finished
                 .GroupBy(x => x.Lega ?? "–")
                 .Select(g => new LeagueStatsRow
