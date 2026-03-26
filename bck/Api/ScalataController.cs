@@ -258,7 +258,19 @@ namespace NextStakeWebApp.bck.Api
                     var quota = realQuota
                         ?? (pick.TryGetProperty("quotaStimata", out var q) ? q.GetDouble() : 1.0);
 
+                    // Scarta il pick se la quota reale è fuori range (l'AI potrebbe aver
+                    // scelto un mercato con quota non disponibile o fuori soglia)
+                    if (quota < 1.20 || quota > 1.45) continue;
+
                     quotaTotale *= quota;
+
+                    // GG e NG hanno per definizione ~50% di probabilità:
+                    // la confidenza non può essere ALTA indipendentemente da cosa dice l'AI
+                    var confidenzaAi = pick.TryGetProperty("confidenza", out var cf)
+                        ? cf.GetString() ?? "MEDIA" : "MEDIA";
+                    var confidenzaFinale = (pickType == "GG" || pickType == "NG")
+                        ? "MEDIA"
+                        : confidenzaAi;
 
                     enrichedPicks.Add(new
                     {
@@ -274,8 +286,7 @@ namespace NextStakeWebApp.bck.Api
                         countryCode = match.countryCode,
                         pick = pickType,
                         quotaStimata = Math.Round(quota, 2),
-                        confidenza = pick.TryGetProperty("confidenza", out var cf)
-                                           ? cf.GetString() : "MEDIA",
+                        confidenza = confidenzaFinale,
                         motivazione = pick.TryGetProperty("motivazione", out var mv)
                                            ? mv.GetString() : ""
                     });
@@ -309,7 +320,7 @@ namespace NextStakeWebApp.bck.Api
 
         private static void AddIfInRange(
             List<string> list, string label, double? odd,
-            double min = 1.10, double max = 2.50)
+            double min = 1.20, double max = 1.45)
         {
             if (odd.HasValue && odd.Value >= min && odd.Value <= max)
                 list.Add($"{label}={odd.Value:0.00}");
