@@ -399,11 +399,11 @@ namespace NextStakeWebApp.bck.Api
                 {
                     MatchId = m.Id,
                     Date = m.Date,
-                    HomeName = th.Name,
-                    AwayName = ta.Name,
+                    HomeName = th.Name ?? "",
+                    AwayName = ta.Name ?? "",
                     HomeLogo = th.Logo,
                     AwayLogo = ta.Logo,
-                    LeagueName = lg.Name,
+                    LeagueName = lg.Name ?? "",
                     LeagueLogo = lg.Logo,
                     LeagueFlag = lg.Flag,
                     CountryCode = lg.CountryCode,
@@ -595,7 +595,6 @@ namespace NextStakeWebApp.bck.Api
             }
         }
 
-        // Classe interna per evitare tipo anonimo tra metodi
         private class MatchPredRow
         {
             public long MatchId { get; set; }
