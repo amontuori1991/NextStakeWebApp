@@ -329,21 +329,22 @@ namespace NextStakeWebApp.bck.Api
 
             var prompt =
                 "Sei un analista sportivo esperto di value betting.\n" +
-                "Costruisci una MULTIPLA che raggiunga una quota totale il più vicino possibile a " +
-                $"{quotaTarget:0.00} (tolleranza ±20%).\n\n" +
+                $"Costruisci una MULTIPLA la cui quota totale sia il più vicino possibile a {quotaTarget:0.00}.\n" +
+                $"La quota totale è il PRODOTTO delle singole quote. Es: 1.30 × 1.40 × 1.35 = {1.30 * 1.40 * 1.35:0.00}.\n" +
+                $"Intervallo accettabile: da {quotaTarget * 0.75:0.00} a {quotaTarget * 1.25:0.00}.\n\n" +
                 matchesContext +
                 "REGOLE FONDAMENTALI:\n" +
-                "1. Seleziona da 2 a 8 partite\n" +
-                "2. Le quote dei pick moltiplicati tra loro devono avvicinarsi a " + $"{quotaTarget:0.00}\n" +
+                $"1. Scegli il numero di pick (2-8) tale che il PRODOTTO delle loro quote sia tra {quotaTarget * 0.75:0.00} e {quotaTarget * 1.25:0.00}\n" +
+                "2. Prima di rispondere, calcola esplicitamente il prodotto delle quote scelte e verifica che rientri nell'intervallo\n" +
                 "3. Usa ESCLUSIVAMENTE quote dalla sezione 'QUOTE REALI' di ogni match\n" +
                 "4. quotaStimata deve essere ESATTAMENTE il numero dalla lista QUOTE REALI\n" +
                 "5. Se un mercato non è nella lista QUOTE REALI, non puoi usarlo\n" +
                 "6. Escludi match con 'nessuna quota disponibile'\n" +
                 "7. Privilegia pick coerenti con il pronostico del modello\n\n" +
                 "Rispondi ESCLUSIVAMENTE con questo JSON:\n" +
-                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.80,\"confidenza\":\"ALTA\",\"motivazione\":\"Breve motivazione.\"}],\"summary\":\"Riepilogo multipla.\"}";
+                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.80,\"confidenza\":\"ALTA\",\"motivazione\":\"Breve motivazione.\"}],\"summary\":\"Multipla da X pick, quota totale Y.XX.\"}";
 
-            return await CallAiAndBuildResponse(prompt, matchesWithPreds, oddsByMatch, quotaTarget);
+            return await CallAiAndBuildResponse(prompt, matchesWithPreds, oddsByMatch, quotaTarget, quotaRangeMin: 0, quotaRangeMax: 0);
         }
 
         // ════════════════════════════════════════════════════════════
