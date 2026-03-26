@@ -762,7 +762,7 @@ public class ApiGoals
 public record PushSubscribeDto(
     string Endpoint,
     string P256Dh,
-    string Auth
+    string Auth 
 );
 
 public record PushUnsubscribeDto(
