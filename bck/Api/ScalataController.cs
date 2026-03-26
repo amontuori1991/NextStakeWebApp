@@ -19,6 +19,9 @@ namespace NextStakeWebApp.bck.Api
         private readonly IHttpClientFactory _http;
         private readonly ReadDbContext _read;
 
+        // betId rilevanti per la scalata
+        private static readonly int[] RelevantBetIds = { 1, 5, 8, 12 };
+
         public ScalataController(IConfiguration config, IHttpClientFactory http, ReadDbContext read)
         {
             _config = config;
@@ -77,83 +80,111 @@ namespace NextStakeWebApp.bck.Api
                     summary = "Nessun match con pronostici disponibili oggi."
                 });
 
-            // ── 2. QUOTE 1X2 PER OGNI MATCH ─────────────────────
+            // ── 2. QUOTE REALI PER TUTTI I MERCATI RILEVANTI ────
             var matchIdsLong = matchesWithPreds
                 .Select(m => m.matchId)
                 .Distinct()
                 .ToList();
 
-            // Con entità HasNoKey() EF non supporta Contains() direttamente.
-            // Usiamo FromSqlRaw con array PostgreSQL.
-            var idsParam = string.Join(",", matchIdsLong);
-
             var idsArray = matchIdsLong.ToArray();
+            var betIdsArray = RelevantBetIds;
+
             var allOdds = await _read.Odds
-                .FromSql($"SELECT * FROM odds WHERE id = ANY({idsArray}::bigint[]) AND betid = 1")
+                .FromSql($"SELECT * FROM odds WHERE id = ANY({idsArray}::bigint[]) AND betid = ANY({betIdsArray}::int[])")
                 .AsNoTracking()
                 .ToListAsync();
 
+            // matchId -> betId -> value -> odd
             var oddsByMatch = allOdds
                 .GroupBy(o => o.Id)
-                .ToDictionary(g => g.Key, g => g.ToList());
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.GroupBy(o => o.Betid)
+                          .ToDictionary(
+                              bg => bg.Key,
+                              bg => bg.ToDictionary(o => o.Value ?? "", o => (double)o.Odd)
+                          )
+                );
 
             // ── 3. COSTRUZIONE CONTESTO PER L'AI ────────────────
             var matchesContext = new StringBuilder();
-            matchesContext.AppendLine("PARTITE DISPONIBILI OGGI CON PRONOSTICI:");
-            matchesContext.AppendLine("Formato: ID | Kickoff | Lega | Partita | Esito | Over/Under | GG/NG | Combo | GS Casa-Ospite | Over1.5% | Over2.5% | Over3.5% | Quote 1/X/2 | QuotaPick stimata");
+            matchesContext.AppendLine("PARTITE DISPONIBILI OGGI CON PRONOSTICI E QUOTE REALI:");
             matchesContext.AppendLine();
 
             foreach (var m in matchesWithPreds)
             {
-                var odds = oddsByMatch.TryGetValue(m.matchId, out var o) ? o : new();
-                var q1 = odds.FirstOrDefault(x => x.Value == "Home")?.Odd;
-                var qx = odds.FirstOrDefault(x => x.Value == "Draw")?.Odd;
-                var q2 = odds.FirstOrDefault(x => x.Value == "Away")?.Odd;
+                var betMap = oddsByMatch.TryGetValue(m.matchId, out var bm) ? bm : new();
 
-                double? quotaPick = m.esito switch
-                {
-                    "1" => (double?)q1,
-                    "2" => (double?)q2,
-                    "X" => (double?)qx,
-                    "1X" => q1.HasValue && qx.HasValue
-                                ? (double?)Math.Min((double)q1, (double)qx) : null,
-                    "X2" => qx.HasValue && q2.HasValue
-                                ? (double?)Math.Min((double)qx, (double)q2) : null,
-                    _ => null
-                };
+                // betId=1: 1X2
+                betMap.TryGetValue(1, out var o1x2);
+                var q1 = GetOdd(o1x2, "Home");
+                var qx = GetOdd(o1x2, "Draw");
+                var q2 = GetOdd(o1x2, "Away");
 
-                matchesContext.AppendLine(
-                    $"ID={m.matchId} | {m.date:HH:mm} | {m.leagueName} | " +
-                    $"{m.homeName} vs {m.awayName} | " +
-                    $"Esito={m.esito} | {m.overUnder} | {m.ggNg} | Combo={m.combo} | " +
-                    $"GS={m.gsCasa:0.0}-{m.gsOspite:0.0} | " +
-                    $"O1.5={m.over15:0}% O2.5={m.over25:0}% O3.5={m.over35:0}% | " +
-                    $"Quote: 1={q1:0.00} X={qx:0.00} 2={q2:0.00} | " +
-                    $"QuotaPick={quotaPick:0.00}"
-                );
+                // betId=5: Over/Under
+                betMap.TryGetValue(5, out var ou);
+                var over15 = GetOdd(ou, "Over 1.5");
+                var over25 = GetOdd(ou, "Over 2.5");
+                var over35 = GetOdd(ou, "Over 3.5");
+                var under25 = GetOdd(ou, "Under 2.5");
+                var under35 = GetOdd(ou, "Under 3.5");
+
+                // betId=8: GG/NG
+                betMap.TryGetValue(8, out var ggng);
+                var gg = GetOdd(ggng, "Yes");
+                var ng = GetOdd(ggng, "No");
+
+                // betId=12: Double Chance
+                betMap.TryGetValue(12, out var dc);
+                var dc1x = GetOdd(dc, "Home/Draw");
+                var dcx2 = GetOdd(dc, "Draw/Away");
+                var dc12 = GetOdd(dc, "Home/Away");
+
+                // Lista quote disponibili nel range utile (1.10 - 2.50)
+                var available = new List<string>();
+                AddIfInRange(available, "1", q1);
+                AddIfInRange(available, "X", qx);
+                AddIfInRange(available, "2", q2);
+                AddIfInRange(available, "Over 1.5", over15);
+                AddIfInRange(available, "Over 2.5", over25);
+                AddIfInRange(available, "Over 3.5", over35);
+                AddIfInRange(available, "Under 2.5", under25);
+                AddIfInRange(available, "Under 3.5", under35);
+                AddIfInRange(available, "GG", gg);
+                AddIfInRange(available, "NG", ng);
+                AddIfInRange(available, "1X", dc1x);
+                AddIfInRange(available, "X2", dcx2);
+                AddIfInRange(available, "12", dc12);
+
+                matchesContext.AppendLine("---");
+                matchesContext.AppendLine($"ID={m.matchId} | {m.date:HH:mm} | {m.leagueName}");
+                matchesContext.AppendLine($"  {m.homeName} vs {m.awayName}");
+                matchesContext.AppendLine($"  Pronostico modello: Esito={m.esito} | {m.overUnder} | {m.ggNg} | Combo={m.combo}");
+                matchesContext.AppendLine($"  GS={m.gsCasa:0.0}-{m.gsOspite:0.0} | O1.5={m.over15:0}% O2.5={m.over25:0}% O3.5={m.over35:0}%");
+
+                if (available.Count > 0)
+                    matchesContext.AppendLine($"  QUOTE REALI (usa SOLO queste): {string.Join(" | ", available)}");
+                else
+                    matchesContext.AppendLine($"  QUOTE REALI: nessuna quota disponibile nel range — ESCLUDI questo match");
+
+                matchesContext.AppendLine();
             }
 
             // ── 4. PROMPT ────────────────────────────────────────
-            // NOTA: il formato JSON di esempio nel prompt usa {{}} per
-            // fare escape delle parentesi graffe dentro l'interpolated string
             var prompt =
                 "Sei un analista sportivo esperto di value betting.\n" +
                 "Analizza le partite del giorno e costruisci una SCALATA OTTIMALE.\n\n" +
-                matchesContext.ToString() + "\n\n" +
-                "OBIETTIVO SCALATA:\n" +
-                "- Seleziona da 3 a 6 partite (non di più)\n" +
-                "- Ogni pick deve avere una quota bookmaker stimata tra 1.20 e 1.40\n" +
-                "- Privilegia pick con alta confidenza del modello (Over% alti, differenza GS chiara)\n" +
-                "- Puoi usare: esito 1X2, Over/Under, GG/NG — scegli il più sicuro per ogni match\n" +
-                "- NON includere partite dove i dati sono contraddittori o la confidenza è bassa\n\n" +
-                "Per ogni pick selezionato fornisci:\n" +
-                "1. matchId (numerico esatto dalla lista)\n" +
-                "2. pick: tipo di scommessa (es. \"1\", \"Over 2.5\", \"GG\")\n" +
-                "3. quotaStimata: numero tra 1.20 e 1.40\n" +
-                "4. confidenza: \"ALTA\" o \"MEDIA\"\n" +
-                "5. motivazione: 1-2 righe concise e tecniche\n\n" +
+                matchesContext.ToString() +
+                "REGOLE FONDAMENTALI — rispettale TUTTE senza eccezioni:\n" +
+                "1. Seleziona da 3 a 6 partite\n" +
+                "2. Per ogni pick scegli UN'unica opzione dalla lista 'QUOTE REALI' del match\n" +
+                "3. quotaStimata deve essere ESATTAMENTE il numero dalla lista QUOTE REALI, non un valore inventato\n" +
+                "4. Non inventare mai una quota: se un mercato non compare nella lista QUOTE REALI, non puoi scommetterci\n" +
+                "5. Escludi i match con 'nessuna quota disponibile'\n" +
+                "6. Il campo 'pick' deve usare ESATTAMENTE la stessa stringa della lista (es. 'Over 2.5', 'GG', '1X', '1')\n" +
+                "7. Privilegia pick coerenti con il pronostico del modello e con Over% / GS alti\n\n" +
                 "Rispondi ESCLUSIVAMENTE con questo JSON (nessun testo prima o dopo):\n" +
-                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.30,\"confidenza\":\"ALTA\",\"motivazione\":\"Motivazione qui.\"}],\"summary\":\"Riepilogo scalata.\"}";
+                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.80,\"confidenza\":\"ALTA\",\"motivazione\":\"Breve motivazione tecnica.\"}],\"summary\":\"Riepilogo scalata in 1-2 righe.\"}";
 
             // ── 5. CHIAMATA OPENAI ───────────────────────────────
             var openAiKey = _config["OpenAI:ApiKey"]
@@ -175,8 +206,8 @@ namespace NextStakeWebApp.bck.Api
                     },
                     new { role = "user", content = prompt }
                 },
-                max_tokens = 1200,
-                temperature = 0.3
+                max_tokens = 1500,
+                temperature = 0.2
             });
 
             var aiResponse = await openAiClient.PostAsync(
@@ -198,7 +229,6 @@ namespace NextStakeWebApp.bck.Api
             // ── 6. PARSE + ARRICCHIMENTO ─────────────────────────
             try
             {
-                // Pulizia difensiva nel caso l'AI aggiunga backtick
                 var cleaned = rawContent
                     .Trim()
                     .Replace("```json", "")
@@ -219,8 +249,15 @@ namespace NextStakeWebApp.bck.Api
                     var match = matchesWithPreds.FirstOrDefault(m => m.matchId == mId);
                     if (match == null) continue;
 
-                    var quota = pick.TryGetProperty("quotaStimata", out var q)
-                        ? q.GetDouble() : 1.0;
+                    var pickType = pick.TryGetProperty("pick", out var pk)
+                        ? pk.GetString() ?? "" : "";
+
+                    // Usa sempre la quota reale dal DB, non quella stimata dall'AI
+                    var betMap = oddsByMatch.TryGetValue(mId, out var bm) ? bm : new();
+                    var realQuota = ResolveRealQuota(pickType, betMap);
+                    var quota = realQuota
+                        ?? (pick.TryGetProperty("quotaStimata", out var q) ? q.GetDouble() : 1.0);
+
                     quotaTotale *= quota;
 
                     enrichedPicks.Add(new
@@ -235,9 +272,8 @@ namespace NextStakeWebApp.bck.Api
                         leagueLogo = match.leagueLogo,
                         leagueFlag = match.leagueFlag,
                         countryCode = match.countryCode,
-                        pick = pick.TryGetProperty("pick", out var pk)
-                                           ? pk.GetString() : "",
-                        quotaStimata = quota,
+                        pick = pickType,
+                        quotaStimata = Math.Round(quota, 2),
                         confidenza = pick.TryGetProperty("confidenza", out var cf)
                                            ? cf.GetString() : "MEDIA",
                         motivazione = pick.TryGetProperty("motivazione", out var mv)
@@ -262,6 +298,60 @@ namespace NextStakeWebApp.bck.Api
                     generatedAt = DateTime.UtcNow
                 });
             }
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // HELPERS
+        // ════════════════════════════════════════════════════════════
+
+        private static double? GetOdd(Dictionary<string, double>? map, string key)
+            => map?.TryGetValue(key, out var v) == true ? v : null;
+
+        private static void AddIfInRange(
+            List<string> list, string label, double? odd,
+            double min = 1.10, double max = 2.50)
+        {
+            if (odd.HasValue && odd.Value >= min && odd.Value <= max)
+                list.Add($"{label}={odd.Value:0.00}");
+        }
+
+        private static double? ResolveRealQuota(
+            string pickType,
+            Dictionary<int, Dictionary<string, double>> betMap)
+        {
+            if (string.IsNullOrEmpty(pickType)) return null;
+
+            if (betMap.TryGetValue(1, out var o1x2))
+            {
+                if (pickType == "1" && o1x2.TryGetValue("Home", out var v1)) return v1;
+                if (pickType == "X" && o1x2.TryGetValue("Draw", out var vx)) return vx;
+                if (pickType == "2" && o1x2.TryGetValue("Away", out var v2)) return v2;
+            }
+
+            if (betMap.TryGetValue(12, out var dc))
+            {
+                if (pickType == "1X" && dc.TryGetValue("Home/Draw", out var v1x)) return v1x;
+                if (pickType == "X2" && dc.TryGetValue("Draw/Away", out var vx2)) return vx2;
+                if (pickType == "12" && dc.TryGetValue("Home/Away", out var v12)) return v12;
+            }
+
+            if (betMap.TryGetValue(5, out var ou))
+            {
+                // Normalizza spazi (l'AI a volte scrive "Over2.5" senza spazio)
+                var normalized = System.Text.RegularExpressions.Regex
+                    .Replace(pickType, @"(Over|Under)(\d)", "$1 $2");
+
+                if (ou.TryGetValue(normalized, out var vou)) return vou;
+                if (ou.TryGetValue(pickType, out var vouOr)) return vouOr;
+            }
+
+            if (betMap.TryGetValue(8, out var ggng))
+            {
+                if (pickType == "GG" && ggng.TryGetValue("Yes", out var vgg)) return vgg;
+                if (pickType == "NG" && ggng.TryGetValue("No", out var vng)) return vng;
+            }
+
+            return null;
         }
     }
 }
