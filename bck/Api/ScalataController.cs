@@ -312,6 +312,314 @@ namespace NextStakeWebApp.bck.Api
         }
 
         // ════════════════════════════════════════════════════════════
+        // GET /api/events/multipla?quotaTarget=5.00
+        // ════════════════════════════════════════════════════════════
+        [HttpGet("multipla")]
+        public async Task<IActionResult> GetMultipla([FromQuery] double quotaTarget = 5.0)
+        {
+            if (quotaTarget < 1.5)
+                return BadRequest(new { error = "quotaTarget deve essere almeno 1.50" });
+
+            var matchesWithPreds = await LoadMatchesWithPredsAsync();
+            if (matchesWithPreds.Count == 0)
+                return Ok(new { picks = new List<object>(), summary = "Nessun match disponibile oggi." });
+
+            var oddsByMatch = await LoadOddsAsync(matchesWithPreds);
+            var matchesContext = BuildMatchContext(matchesWithPreds, oddsByMatch, minOdd: 1.20, maxOdd: 3.50);
+
+            var prompt =
+                "Sei un analista sportivo esperto di value betting.\n" +
+                "Costruisci una MULTIPLA che raggiunga una quota totale il più vicino possibile a " +
+                $"{quotaTarget:0.00} (tolleranza ±20%).\n\n" +
+                matchesContext +
+                "REGOLE FONDAMENTALI:\n" +
+                "1. Seleziona da 2 a 8 partite\n" +
+                "2. Le quote dei pick moltiplicati tra loro devono avvicinarsi a " + $"{quotaTarget:0.00}\n" +
+                "3. Usa ESCLUSIVAMENTE quote dalla sezione 'QUOTE REALI' di ogni match\n" +
+                "4. quotaStimata deve essere ESATTAMENTE il numero dalla lista QUOTE REALI\n" +
+                "5. Se un mercato non è nella lista QUOTE REALI, non puoi usarlo\n" +
+                "6. Escludi match con 'nessuna quota disponibile'\n" +
+                "7. Privilegia pick coerenti con il pronostico del modello\n\n" +
+                "Rispondi ESCLUSIVAMENTE con questo JSON:\n" +
+                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.80,\"confidenza\":\"ALTA\",\"motivazione\":\"Breve motivazione.\"}],\"summary\":\"Riepilogo multipla.\"}";
+
+            return await CallAiAndBuildResponse(prompt, matchesWithPreds, oddsByMatch, quotaTarget);
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // GET /api/events/singola
+        // ════════════════════════════════════════════════════════════
+        [HttpGet("singola")]
+        public async Task<IActionResult> GetSingola()
+        {
+            var matchesWithPreds = await LoadMatchesWithPredsAsync();
+            if (matchesWithPreds.Count == 0)
+                return Ok(new { picks = new List<object>(), summary = "Nessun match disponibile oggi." });
+
+            var oddsByMatch = await LoadOddsAsync(matchesWithPreds);
+            // Per la singola vogliamo quote più alte: 1.50 - 3.50
+            var matchesContext = BuildMatchContext(matchesWithPreds, oddsByMatch, minOdd: 1.50, maxOdd: 3.50);
+
+            var prompt =
+                "Sei un analista sportivo esperto di value betting.\n" +
+                "Individua la MIGLIORE SINGOLA DI VALORE tra i match di oggi.\n\n" +
+                matchesContext +
+                "REGOLE FONDAMENTALI:\n" +
+                "1. Scegli UNA SOLA partita e UN SOLO pick\n" +
+                "2. La quota deve essere >= 1.50 e presente nella sezione 'QUOTE REALI'\n" +
+                "3. Privilegia il pick con il miglior rapporto confidenza/quota: alta probabilità reale, quota bookmaker elevata (value)\n" +
+                "4. quotaStimata deve essere ESATTAMENTE il numero dalla lista QUOTE REALI\n" +
+                "5. Escludi match con 'nessuna quota disponibile'\n" +
+                "6. Fornisci una motivazione tecnica solida basata su GS, Over% e pronostico modello\n\n" +
+                "Rispondi ESCLUSIVAMENTE con questo JSON (un solo pick):\n" +
+                "{\"picks\":[{\"matchId\":123456,\"pick\":\"Over 2.5\",\"quotaStimata\":1.80,\"confidenza\":\"ALTA\",\"motivazione\":\"Motivazione tecnica approfondita.\"}],\"summary\":\"Perché questa è la singola di valore del giorno.\"}";
+
+            return await CallAiAndBuildResponse(prompt, matchesWithPreds, oddsByMatch, 0,
+                quotaRangeMin: 1.50, quotaRangeMax: 3.50);
+        }
+
+        // ════════════════════════════════════════════════════════════
+        // METODI COMUNI ESTRATTI
+        // ════════════════════════════════════════════════════════════
+
+        private async Task<List<MatchPredRow>> LoadMatchesWithPredsAsync()
+        {
+            var today = DateTime.Today;
+            var tomorrow = today.AddDays(1);
+            return await (
+                from m in _read.Matches
+                join lg in _read.Leagues on m.LeagueId equals lg.Id
+                join th in _read.Teams on m.HomeId equals th.Id
+                join ta in _read.Teams on m.AwayId equals ta.Id
+                join c in _read.Set<PredictionDbRow>() on m.Id equals c.MatchId
+                where m.Date >= today && m.Date < tomorrow
+                   && (m.StatusShort == null || m.StatusShort == "NS")
+                orderby m.Date
+                select new MatchPredRow
+                {
+                    MatchId = m.Id,
+                    Date = m.Date,
+                    HomeName = th.Name,
+                    AwayName = ta.Name,
+                    HomeLogo = th.Logo,
+                    AwayLogo = ta.Logo,
+                    LeagueName = lg.Name,
+                    LeagueLogo = lg.Logo,
+                    LeagueFlag = lg.Flag,
+                    CountryCode = lg.CountryCode,
+                    Esito = c.Esito,
+                    OverUnder = c.OverUnderRange,
+                    GgNg = c.GG_NG,
+                    Combo = c.ComboFinale,
+                    GsCasa = c.GoalSimulatiCasa,
+                    GsOspite = c.GoalSimulatiOspite,
+                    Over15 = c.Over1_5,
+                    Over25 = c.Over2_5,
+                    Over35 = c.Over3_5
+                }
+            ).AsNoTracking().ToListAsync();
+        }
+
+        private async Task<Dictionary<long, Dictionary<int, Dictionary<string, double>>>> LoadOddsAsync(
+            List<MatchPredRow> matches)
+        {
+            var idsArray = matches.Select(m => m.MatchId).Distinct().ToArray();
+            var betIdsArray = RelevantBetIds;
+            var allOdds = await _read.Odds
+                .FromSql($"SELECT * FROM odds WHERE id = ANY({idsArray}::bigint[]) AND betid = ANY({betIdsArray}::int[])")
+                .AsNoTracking()
+                .ToListAsync();
+
+            return allOdds
+                .GroupBy(o => o.Id)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.GroupBy(o => o.Betid)
+                          .ToDictionary(
+                              bg => bg.Key,
+                              bg => bg.ToDictionary(o => o.Value ?? "", o => (double)o.Odd)
+                          )
+                );
+        }
+
+        private string BuildMatchContext(
+            List<MatchPredRow> matches,
+            Dictionary<long, Dictionary<int, Dictionary<string, double>>> oddsByMatch,
+            double minOdd, double maxOdd)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("PARTITE DISPONIBILI OGGI CON PRONOSTICI E QUOTE REALI:");
+            sb.AppendLine();
+
+            foreach (var m in matches)
+            {
+                var betMap = oddsByMatch.TryGetValue(m.MatchId, out var bm) ? bm : new();
+
+                betMap.TryGetValue(1, out var o1x2);
+                betMap.TryGetValue(5, out var ou);
+                betMap.TryGetValue(8, out var ggng);
+                betMap.TryGetValue(12, out var dc);
+
+                var available = new List<string>();
+                AddIfInRange(available, "1", GetOdd(o1x2, "Home"), minOdd, maxOdd);
+                AddIfInRange(available, "X", GetOdd(o1x2, "Draw"), minOdd, maxOdd);
+                AddIfInRange(available, "2", GetOdd(o1x2, "Away"), minOdd, maxOdd);
+                AddIfInRange(available, "Over 1.5", GetOdd(ou, "Over 1.5"), minOdd, maxOdd);
+                AddIfInRange(available, "Over 2.5", GetOdd(ou, "Over 2.5"), minOdd, maxOdd);
+                AddIfInRange(available, "Over 3.5", GetOdd(ou, "Over 3.5"), minOdd, maxOdd);
+                AddIfInRange(available, "Under 2.5", GetOdd(ou, "Under 2.5"), minOdd, maxOdd);
+                AddIfInRange(available, "Under 3.5", GetOdd(ou, "Under 3.5"), minOdd, maxOdd);
+                AddIfInRange(available, "GG", GetOdd(ggng, "Yes"), minOdd, maxOdd);
+                AddIfInRange(available, "NG", GetOdd(ggng, "No"), minOdd, maxOdd);
+                AddIfInRange(available, "1X", GetOdd(dc, "Home/Draw"), minOdd, maxOdd);
+                AddIfInRange(available, "X2", GetOdd(dc, "Draw/Away"), minOdd, maxOdd);
+                AddIfInRange(available, "12", GetOdd(dc, "Home/Away"), minOdd, maxOdd);
+
+                sb.AppendLine("---");
+                sb.AppendLine($"ID={m.MatchId} | {m.Date:HH:mm} | {m.LeagueName}");
+                sb.AppendLine($"  {m.HomeName} vs {m.AwayName}");
+                sb.AppendLine($"  Pronostico modello: Esito={m.Esito} | {m.OverUnder} | {m.GgNg} | Combo={m.Combo}");
+                sb.AppendLine($"  GS={m.GsCasa:0.0}-{m.GsOspite:0.0} | O1.5={(m.Over15 ?? 0):0}% O2.5={(m.Over25 ?? 0):0}% O3.5={(m.Over35 ?? 0):0}%");
+
+                sb.AppendLine(available.Count > 0
+                    ? $"  QUOTE REALI (usa SOLO queste): {string.Join(" | ", available)}"
+                    : $"  QUOTE REALI: nessuna quota disponibile nel range — ESCLUDI questo match");
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
+
+        private async Task<IActionResult> CallAiAndBuildResponse(
+            string prompt,
+            List<MatchPredRow> matchesWithPreds,
+            Dictionary<long, Dictionary<int, Dictionary<string, double>>> oddsByMatch,
+            double quotaTargetForLog,
+            double quotaRangeMin = 1.20,
+            double quotaRangeMax = 1.45)
+        {
+            var openAiKey = _config["OpenAI:ApiKey"]
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            var openAiModel = _config["OpenAI:Model"] ?? "gpt-4o-mini";
+
+            var openAiClient = _http.CreateClient("OpenAI");
+            openAiClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiKey}");
+
+            var requestBody = JsonSerializer.Serialize(new
+            {
+                model = openAiModel,
+                messages = new[]
+                {
+                    new { role = "system", content = "Sei un analista di scommesse sportive esperto. Rispondi SEMPRE e SOLO con JSON valido, senza markdown, senza backtick, senza testo aggiuntivo prima o dopo il JSON." },
+                    new { role = "user", content = prompt }
+                },
+                max_tokens = 1500,
+                temperature = 0.2
+            });
+
+            var aiResponse = await openAiClient.PostAsync(
+                "chat/completions",
+                new StringContent(requestBody, Encoding.UTF8, "application/json"));
+
+            if (!aiResponse.IsSuccessStatusCode)
+                return StatusCode(503, new { error = "Servizio AI temporaneamente non disponibile." });
+
+            var responseJson = await aiResponse.Content.ReadAsStringAsync();
+            using var responseDoc = JsonDocument.Parse(responseJson);
+            var rawContent = responseDoc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "{}";
+
+            try
+            {
+                var cleaned = rawContent.Trim().Replace("```json", "").Replace("```", "").Trim();
+                using var aiDoc = JsonDocument.Parse(cleaned);
+                var picksEl = aiDoc.RootElement.GetProperty("picks");
+                var summary = aiDoc.RootElement.TryGetProperty("summary", out var s) ? s.GetString() : "";
+
+                var enrichedPicks = new List<object>();
+                double quotaTotale = 1.0;
+
+                foreach (var pick in picksEl.EnumerateArray())
+                {
+                    var mId = pick.GetProperty("matchId").GetInt64();
+                    var match = matchesWithPreds.FirstOrDefault(m => m.MatchId == mId);
+                    if (match == null) continue;
+
+                    var pickType = pick.TryGetProperty("pick", out var pk) ? pk.GetString() ?? "" : "";
+                    var betMap = oddsByMatch.TryGetValue(mId, out var bm) ? bm : new();
+                    var realQuota = ResolveRealQuota(pickType, betMap);
+                    var quota = realQuota ?? (pick.TryGetProperty("quotaStimata", out var q) ? q.GetDouble() : 1.0);
+
+                    // Per scalata filtra stretto; per multipla/singola usa il range passato
+                    if (quotaRangeMin > 0 && quotaRangeMax > 0)
+                        if (quota < quotaRangeMin || quota > quotaRangeMax) continue;
+
+                    var confidenzaAi = pick.TryGetProperty("confidenza", out var cf) ? cf.GetString() ?? "MEDIA" : "MEDIA";
+                    var confidenzaFinale = (pickType == "GG" || pickType == "NG") ? "MEDIA" : confidenzaAi;
+
+                    quotaTotale *= quota;
+
+                    enrichedPicks.Add(new
+                    {
+                        matchId = mId,
+                        kickoff = match.Date,
+                        homeName = match.HomeName,
+                        awayName = match.AwayName,
+                        homeLogo = match.HomeLogo,
+                        awayLogo = match.AwayLogo,
+                        leagueName = match.LeagueName,
+                        leagueLogo = match.LeagueLogo,
+                        leagueFlag = match.LeagueFlag,
+                        countryCode = match.CountryCode,
+                        pick = pickType,
+                        quotaStimata = Math.Round(quota, 2),
+                        confidenza = confidenzaFinale,
+                        motivazione = pick.TryGetProperty("motivazione", out var mv) ? mv.GetString() : ""
+                    });
+                }
+
+                return Ok(new
+                {
+                    picks = enrichedPicks,
+                    quotaTotale = Math.Round(quotaTotale, 2),
+                    summary,
+                    generatedAt = DateTime.UtcNow
+                });
+            }
+            catch
+            {
+                return Ok(new { picks = new List<object>(), summary = rawContent, generatedAt = DateTime.UtcNow });
+            }
+        }
+
+        // Classe interna per evitare tipo anonimo tra metodi
+        private class MatchPredRow
+        {
+            public long MatchId { get; set; }
+            public DateTime Date { get; set; }
+            public string HomeName { get; set; } = "";
+            public string AwayName { get; set; } = "";
+            public string? HomeLogo { get; set; }
+            public string? AwayLogo { get; set; }
+            public string LeagueName { get; set; } = "";
+            public string? LeagueLogo { get; set; }
+            public string? LeagueFlag { get; set; }
+            public string? CountryCode { get; set; }
+            public string? Esito { get; set; }
+            public string? OverUnder { get; set; }
+            public string? GgNg { get; set; }
+            public string? Combo { get; set; }
+            public double GsCasa { get; set; }
+            public double GsOspite { get; set; }
+            public decimal? Over15 { get; set; }
+            public decimal? Over25 { get; set; }
+            public decimal? Over35 { get; set; }
+        }
+
+        // ════════════════════════════════════════════════════════════
         // HELPERS
         // ════════════════════════════════════════════════════════════
 
