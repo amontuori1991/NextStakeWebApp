@@ -278,7 +278,9 @@ namespace NextStakeWebApp.bck.Api
                     enrichedPicks.Add(new
                     {
                         matchId = mId,
-                        kickoff = DateTime.SpecifyKind(match.date, DateTimeKind.Unspecified),
+                        kickoff = TimeZoneInfo.ConvertTimeFromUtc(
+    DateTime.SpecifyKind(match.date, DateTimeKind.Utc),
+    TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome")),
                         homeName = match.homeName,
                         awayName = match.awayName,
                         homeLogo = match.homeLogo,
@@ -572,7 +574,9 @@ namespace NextStakeWebApp.bck.Api
                     enrichedPicks.Add(new
                     {
                         matchId = mId,
-                        kickoff = DateTime.SpecifyKind(match.Date, DateTimeKind.Unspecified),
+                        kickoff = TimeZoneInfo.ConvertTimeFromUtc(
+    DateTime.SpecifyKind(match.Date, DateTimeKind.Utc),
+    TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome")),
                         homeName = match.HomeName,
                         awayName = match.AwayName,
                         homeLogo = match.HomeLogo,
