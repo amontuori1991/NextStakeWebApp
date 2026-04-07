@@ -36,8 +36,14 @@ namespace NextStakeWebApp.bck.Api
         public async Task<IActionResult> GetScalata()
         {
             // ── 1. MATCH DEL GIORNO CON PRONOSTICI ──────────────
-            var today = DateTime.Today;
-            var tomorrow = today.AddDays(1);
+            var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            var nowRome = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romeZone);
+            var todayRome = new DateTime(nowRome.Year, nowRome.Month, nowRome.Day);
+            var today = TimeZoneInfo.ConvertTimeToUtc(todayRome, romeZone);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(todayRome.AddDays(1), romeZone);
+
+            // Escludi partite già iniziate (con 10 min di margine)
+            var cutoffUtc = DateTime.UtcNow.AddMinutes(-10);
 
             var matchesWithPreds = await (
                 from m in _read.Matches
@@ -46,6 +52,7 @@ namespace NextStakeWebApp.bck.Api
                 join ta in _read.Teams on m.AwayId equals ta.Id
                 join c in _read.Set<PredictionDbRow>() on m.Id equals c.MatchId
                 where m.Date >= today && m.Date < tomorrow
+                   && m.Date > cutoffUtc
                    && (m.StatusShort == null || m.StatusShort == "NS")
                 orderby m.Date
                 select new
@@ -94,7 +101,6 @@ namespace NextStakeWebApp.bck.Api
                 .AsNoTracking()
                 .ToListAsync();
 
-            // matchId -> betId -> value -> odd
             var oddsByMatch = allOdds
                 .GroupBy(o => o.Id)
                 .ToDictionary(
@@ -115,13 +121,11 @@ namespace NextStakeWebApp.bck.Api
             {
                 var betMap = oddsByMatch.TryGetValue(m.matchId, out var bm) ? bm : new();
 
-                // betId=1: 1X2
                 betMap.TryGetValue(1, out var o1x2);
                 var q1 = GetOdd(o1x2, "Home");
                 var qx = GetOdd(o1x2, "Draw");
                 var q2 = GetOdd(o1x2, "Away");
 
-                // betId=5: Over/Under
                 betMap.TryGetValue(5, out var ou);
                 var over15 = GetOdd(ou, "Over 1.5");
                 var over25 = GetOdd(ou, "Over 2.5");
@@ -129,18 +133,15 @@ namespace NextStakeWebApp.bck.Api
                 var under25 = GetOdd(ou, "Under 2.5");
                 var under35 = GetOdd(ou, "Under 3.5");
 
-                // betId=8: GG/NG
                 betMap.TryGetValue(8, out var ggng);
                 var gg = GetOdd(ggng, "Yes");
                 var ng = GetOdd(ggng, "No");
 
-                // betId=12: Double Chance
                 betMap.TryGetValue(12, out var dc);
                 var dc1x = GetOdd(dc, "Home/Draw");
                 var dcx2 = GetOdd(dc, "Draw/Away");
                 var dc12 = GetOdd(dc, "Home/Away");
 
-                // Lista quote disponibili nel range utile (1.10 - 2.50)
                 var available = new List<string>();
                 AddIfInRange(available, "1", q1);
                 AddIfInRange(available, "X", qx);
@@ -157,7 +158,6 @@ namespace NextStakeWebApp.bck.Api
                 AddIfInRange(available, "12", dc12);
 
                 matchesContext.AppendLine("---");
-                var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
                 var kickoffRome = TimeZoneInfo.ConvertTimeFromUtc(
                     DateTime.SpecifyKind(m.date, DateTimeKind.Utc), romeZone);
                 matchesContext.AppendLine($"ID={m.matchId} | {kickoffRome:HH:mm} | {m.leagueName}");
@@ -255,20 +255,15 @@ namespace NextStakeWebApp.bck.Api
                     var pickType = pick.TryGetProperty("pick", out var pk)
                         ? pk.GetString() ?? "" : "";
 
-                    // Usa sempre la quota reale dal DB, non quella stimata dall'AI
                     var betMap = oddsByMatch.TryGetValue(mId, out var bm) ? bm : new();
                     var realQuota = ResolveRealQuota(pickType, betMap);
                     var quota = realQuota
                         ?? (pick.TryGetProperty("quotaStimata", out var q) ? q.GetDouble() : 1.0);
 
-                    // Scarta il pick se la quota reale è fuori range (l'AI potrebbe aver
-                    // scelto un mercato con quota non disponibile o fuori soglia)
                     if (quota < 1.20 || quota > 1.45) continue;
 
                     quotaTotale *= quota;
 
-                    // GG e NG hanno per definizione ~50% di probabilità:
-                    // la confidenza non può essere ALTA indipendentemente da cosa dice l'AI
                     var confidenzaAi = pick.TryGetProperty("confidenza", out var cf)
                         ? cf.GetString() ?? "MEDIA" : "MEDIA";
                     var confidenzaFinale = (pickType == "GG" || pickType == "NG")
@@ -279,8 +274,7 @@ namespace NextStakeWebApp.bck.Api
                     {
                         matchId = mId,
                         kickoff = TimeZoneInfo.ConvertTimeFromUtc(
-    DateTime.SpecifyKind(match.date, DateTimeKind.Utc),
-    TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome")),
+                            DateTime.SpecifyKind(match.date, DateTimeKind.Utc), romeZone),
                         homeName = match.homeName,
                         awayName = match.awayName,
                         homeLogo = match.homeLogo,
@@ -390,8 +384,14 @@ namespace NextStakeWebApp.bck.Api
 
         private async Task<List<MatchPredRow>> LoadMatchesWithPredsAsync()
         {
-            var today = DateTime.Today;
-            var tomorrow = today.AddDays(1);
+            var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            var nowRome = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, romeZone);
+            var todayRome = new DateTime(nowRome.Year, nowRome.Month, nowRome.Day);
+            var tomorrowRome = todayRome.AddDays(1);
+            var today = TimeZoneInfo.ConvertTimeToUtc(todayRome, romeZone);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(tomorrowRome, romeZone);
+            // Soglia: escludi partite già iniziate (con 5 min di margine)
+            var cutoffUtc = DateTime.UtcNow.AddMinutes(-5);
             return await (
                 from m in _read.Matches
                 join lg in _read.Leagues on m.LeagueId equals lg.Id
@@ -399,6 +399,7 @@ namespace NextStakeWebApp.bck.Api
                 join ta in _read.Teams on m.AwayId equals ta.Id
                 join c in _read.Set<PredictionDbRow>() on m.Id equals c.MatchId
                 where m.Date >= today && m.Date < tomorrow
+                && m.Date > cutoffUtc
                    && (m.StatusShort == null || m.StatusShort == "NS")
                 orderby m.Date
                 select new MatchPredRow

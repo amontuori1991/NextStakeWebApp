@@ -877,14 +877,14 @@
 
             // Il server restituisce DateTime come UTC ma i dati sono già ora Italia
             // quindi leggiamo le ore UTC direttamente (non convertiamo)
-            function formatTime(isoStr) {
-    if (!isoStr) return '--:--';
-    const d = new Date(isoStr);
-    const hasZ = isoStr.endsWith('Z') || isoStr.includes('+');
-    const h = hasZ ? d.getUTCHours() : d.getHours();
-    const m = hasZ ? d.getUTCMinutes() : d.getMinutes();
-    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-}
+                    function formatTime(isoStr) {
+            if (!isoStr) return '--:--';
+            const d = new Date(isoStr);
+            const hasZ = isoStr.endsWith('Z') || isoStr.includes('+');
+            const h = hasZ ? d.getUTCHours() : d.getHours();
+            const m = hasZ ? d.getUTCMinutes() : d.getMinutes();
+            return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+        }
 
             function logoHtml(url, alt) {
                 if (!url) return '';
