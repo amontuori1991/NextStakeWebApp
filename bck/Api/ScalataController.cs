@@ -157,7 +157,10 @@ namespace NextStakeWebApp.bck.Api
                 AddIfInRange(available, "12", dc12);
 
                 matchesContext.AppendLine("---");
-                matchesContext.AppendLine($"ID={m.matchId} | {m.date:HH:mm} | {m.leagueName}");
+                var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+                var kickoffRome = TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(m.date, DateTimeKind.Utc), romeZone);
+                matchesContext.AppendLine($"ID={m.matchId} | {kickoffRome:HH:mm} | {m.leagueName}");
                 matchesContext.AppendLine($"  {m.homeName} vs {m.awayName}");
                 matchesContext.AppendLine($"  Pronostico modello: Esito={m.esito} | {m.overUnder} | {m.ggNg} | Combo={m.combo}");
                 matchesContext.AppendLine($"  GS={m.gsCasa:0.0}-{m.gsOspite:0.0} | O1.5={m.over15:0}% O2.5={m.over25:0}% O3.5={m.over35:0}%");
@@ -275,7 +278,7 @@ namespace NextStakeWebApp.bck.Api
                     enrichedPicks.Add(new
                     {
                         matchId = mId,
-                        kickoff = match.date,
+                        kickoff = DateTime.SpecifyKind(match.date, DateTimeKind.Unspecified),
                         homeName = match.homeName,
                         awayName = match.awayName,
                         homeLogo = match.homeLogo,
@@ -477,7 +480,10 @@ namespace NextStakeWebApp.bck.Api
                 AddIfInRange(available, "12", GetOdd(dc, "Home/Away"), minOdd, maxOdd);
 
                 sb.AppendLine("---");
-                sb.AppendLine($"ID={m.MatchId} | {m.Date:HH:mm} | {m.LeagueName}");
+                var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+                var kickoffRome = TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(m.Date, DateTimeKind.Utc), romeZone);
+                sb.AppendLine($"ID={m.MatchId} | {kickoffRome:HH:mm} | {m.LeagueName}");
                 sb.AppendLine($"  {m.HomeName} vs {m.AwayName}");
                 sb.AppendLine($"  Pronostico modello: Esito={m.Esito} | {m.OverUnder} | {m.GgNg} | Combo={m.Combo}");
                 sb.AppendLine($"  GS={m.GsCasa:0.0}-{m.GsOspite:0.0} | O1.5={(m.Over15 ?? 0):0}% O2.5={(m.Over25 ?? 0):0}% O3.5={(m.Over35 ?? 0):0}%");
@@ -566,7 +572,7 @@ namespace NextStakeWebApp.bck.Api
                     enrichedPicks.Add(new
                     {
                         matchId = mId,
-                        kickoff = match.Date,
+                        kickoff = DateTime.SpecifyKind(match.Date, DateTimeKind.Unspecified),
                         homeName = match.HomeName,
                         awayName = match.AwayName,
                         homeLogo = match.HomeLogo,
