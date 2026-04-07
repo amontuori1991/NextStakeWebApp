@@ -52,7 +52,12 @@ namespace NextStakeWebApp.Pages.Match
             _banner = banner;
             _logger = logger; // <-- AGGIUNTO
         }
-
+        private static DateTime ToRomeTime(DateTime utc)
+        {
+            var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(utc, DateTimeKind.Utc), romeZone);
+        }
         [TempData]
         public string? StatusMessage { get; set; }
 
@@ -1050,7 +1055,7 @@ TESTO DA RISCRIVERE:
             // 7) Header e preview finale
             var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
             var header =
-     $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+     $"{flag} <b>{dto.LeagueName}</b> 🕒 {ToRomeTime(dto.KickoffUtc):yyyy-MM-dd HH:mm}\n" +
      $"⚽️ {dto.Home} - {dto.Away}\n\n";
 
             var extraHeaderLines = "";
@@ -1617,7 +1622,7 @@ TESTO DA RISCRIVERE:
                     dto.Home, dto.Away,
                     dto.HomeLogo, dto.AwayLogo,
                     dto.LeagueName,
-                    dto.KickoffUtc.ToLocalTime(),
+                    ToRomeTime(dto.KickoffUtc),
                     id
                 );
 
@@ -1684,7 +1689,7 @@ TESTO DA RISCRIVERE:
                 dto.Home, dto.Away,
                 dto.HomeLogo, dto.AwayLogo,
                 dto.LeagueName,
-                dto.KickoffUtc.ToLocalTime(),
+                ToRomeTime(dto.KickoffUtc),
                 dto.MatchId
             );
 
@@ -1944,7 +1949,7 @@ TESTO DA RISCRIVERE:
             var flag = EmojiHelper.FromCountryCode(dto.CountryCode);
 
             string message =
-                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {ToRomeTime(dto.KickoffUtc):yyyy-MM-dd HH:mm}\n" +
                 $"⚽️ {dto.Home} - {dto.Away}\n\n" +
                 $"🧠 <b>Pronostici:</b>\n" +
                 $"  Esito: {p?.Esito}\n" +
@@ -2150,7 +2155,7 @@ TESTO DA RISCRIVERE:
 
             // 📝 Messaggio Telegram
             string message =
-                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {ToRomeTime(dto.KickoffUtc):yyyy-MM-dd HH:mm}\n" +
                 $"⚽️ {dto.Home} - {dto.Away}\n" +
                 $"Pronostico: {pronostico} - Quota: {oddFormatted}";
 
@@ -2196,7 +2201,7 @@ TESTO DA RISCRIVERE:
             string tipoBancata = isScore ? "Banca Risultato Esatto" : "Banca 1X2";
 
             string message =
-                $"{flag} <b>{dto.LeagueName}</b> 🕒 {dto.KickoffUtc.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
+                $"{flag} <b>{dto.LeagueName}</b> 🕒 {ToRomeTime(dto.KickoffUtc):yyyy-MM-dd HH:mm}\n" +
                 $"⚽️ {dto.Home} - {dto.Away}\n\n" +
                 $"🧠 <b>Bancate consigliate:</b>\n" +
                 $"♦️ {tipoBancata}: {customLay} ⚠️ Rischio: {riskLevel}";

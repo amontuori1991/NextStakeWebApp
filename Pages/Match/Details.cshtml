@@ -5,6 +5,16 @@
 @using System.Text.Unicode
 @using System.Linq
 
+@functions {
+    static readonly TimeZoneInfo _rome =
+        TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+
+    static string ToRome(DateTime dt, string fmt) =>
+        TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.SpecifyKind(dt, DateTimeKind.Utc), _rome)
+        .ToString(fmt);
+}
+
 @{
     ViewData["Title"] = "Dettaglio Match";
 }
@@ -65,7 +75,7 @@
         </div>
 
         <div class="text-muted">
-            @Model.Data.KickoffUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                @ToRome(Model.Data.KickoffUtc, "dd/MM/yyyy HH:mm")
         </div>
     </div>
         <div class="card p-3 mb-3">
@@ -1157,7 +1167,7 @@ switch (esitoGoals)
                             {
                                 <a asp-page="/Match/Details" asp-route-id="@m.MatchId" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                     <div>
-                                        <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
+                                            <small class="text-muted">@ToRome(m.DateUtc, "dd/MM")</small>
                                         <span class="ms-2">@m.Opponent</span>
                                         <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
                                     </div>
@@ -1195,7 +1205,7 @@ switch (esitoGoals)
                             {
                                 <a asp-page="/Match/Details" asp-route-id="@m.MatchId" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                     <div>
-                                        <small class="text-muted">@m.DateUtc.ToLocalTime().ToString("dd/MM")</small>
+                                            <small class="text-muted">@ToRome(m.DateUtc, "dd/MM")</small>
                                         <span class="ms-2">@m.Opponent</span>
                                         <span class="badge bg-light text-dark ms-2">@(m.IsHome ? "Casa" : "Trasferta")</span>
                                     </div>
@@ -1290,7 +1300,7 @@ switch (esitoGoals)
                             <td>@o.Description</td>
                             <td>@o.Value</td>
                             <td>@o.Odd.ToString("0.00")</td>
-                            <td>@o.DateUpdated.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td>@ToRome(o.DateUpdated, "yyyy-MM-dd HH:mm")</td>
                         </tr>
                     }
                 </tbody>
