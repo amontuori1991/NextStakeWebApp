@@ -258,8 +258,10 @@ namespace NextStakeWebApp.Pages.Events
                                      .ToHashSet();
 
             // Finestra del giorno: *** in locale ITALIA, senza conversioni ***
-            var dayStartLocal = SelectedDate.ToDateTime(TimeOnly.MinValue);      // 00:00
-            var dayEndLocal = dayStartLocal.AddDays(1);                        // 24:00
+            var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+            var dayStartRome = SelectedDate.ToDateTime(TimeOnly.MinValue);
+            var dayEndLocal = TimeZoneInfo.ConvertTimeToUtc(dayStartRome.AddDays(1), romeZone);
+            var dayStartLocal = TimeZoneInfo.ConvertTimeToUtc(dayStartRome, romeZone);
 
             // Query base eventi del giorno (DB contiene orari già Italia)
             IQueryable<RawRow> baseQuery =
@@ -324,7 +326,9 @@ namespace NextStakeWebApp.Pages.Events
                 HomeGoal = r.HomeGoal,
                 AwayGoal = r.AwayGoal,
                 LeagueFlag = r.Flag,
-                KickoffLocal = DateTime.SpecifyKind(r.Date, DateTimeKind.Unspecified) // manteniamo "locale" senza offset
+                KickoffLocal = TimeZoneInfo.ConvertTimeFromUtc(
+    DateTime.SpecifyKind(r.Date, DateTimeKind.Utc),
+    TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome"))
             }).ToList();
             // =========================
             // 🔴 LIVE DISABILITATO TEMPORANEAMENTE
@@ -430,9 +434,12 @@ namespace NextStakeWebApp.Pages.Events
                     .Distinct()
                     .ToList();
 
-                // Finestra del giorno corrente (Italia), come fai per Rows
-                var dayStartLocal = SelectedDate.ToDateTime(TimeOnly.MinValue);
-                var dayEndLocal = dayStartLocal.AddDays(1);
+                // Finestra del giorno in UTC (il DB contiene orari UTC)
+                var romeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Rome");
+                var dayStartRome = SelectedDate.ToDateTime(TimeOnly.MinValue);
+                var dayEndRome = dayStartRome.AddDays(1);
+                var dayStartLocal = TimeZoneInfo.ConvertTimeToUtc(dayStartRome, romeZone);
+                var dayEndLocal = TimeZoneInfo.ConvertTimeToUtc(dayEndRome, romeZone);
 
                 // Recupero meta-informazioni dal DB lettura
                 var meta = await (

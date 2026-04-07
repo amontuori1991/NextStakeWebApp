@@ -79,6 +79,14 @@ builder.Services.AddAuthorization(options =>
             || ctx.User.IsInRole("SuperAdmin")
         );
     });
+
+    options.AddPolicy("JwtOrCookie", policy =>
+    {
+        policy.AddAuthenticationSchemes(
+            "Bearer",
+            "Identity.Application");
+        policy.RequireAuthenticatedUser();
+    });
 });
 
 builder.Services.AddRazorPages()
