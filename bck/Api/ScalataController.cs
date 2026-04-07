@@ -12,7 +12,7 @@ namespace NextStakeWebApp.bck.Api
 {
     [ApiController]
     [Route("api/events")]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [Authorize(Policy = "JwtOrCookie")]
     public class ScalataController : ControllerBase
     {
         private readonly IConfiguration _config;
